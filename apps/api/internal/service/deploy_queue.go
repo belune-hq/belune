@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5/pgtype"
 
@@ -80,6 +81,13 @@ func FormatDeploymentID(id pgtype.UUID) string {
 // active (running) task, so a delete failure means a run is genuinely in
 // progress and the original ErrTaskIDConflict is returned unchanged.
 func (q *DeployQueue) EnqueueLike(queue, applicationID string, task *asynq.Task) error {
+	// Canonical form only: callers pass the raw URL param, so "ABC…" and
+	// "abc…" for one application would otherwise be two TaskIDs, and the
+	// guard that serialises one app's deploys would not see them as the same
+	// app. Same rule as the WebSocket channel names (parseCanonicalUUID).
+	if u, err := uuid.Parse(applicationID); err == nil {
+		applicationID = u.String()
+	}
 	taskID := "deploy:" + applicationID
 	opts := []asynq.Option{
 		asynq.Queue(queue),

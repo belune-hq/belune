@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -63,6 +64,23 @@ func TestDeployQueue_EnqueueLikeOptions(t *testing.T) {
 	assert.Equal(t, 30*time.Minute, optionValue(t, o, asynq.TimeoutOpt))
 	assert.Equal(t, "deploy:app-1", optionValue(t, o, asynq.TaskIDOpt), "one TaskID serialises every deploy-like op per app")
 	assert.Equal(t, "critical", optionValue(t, o, asynq.QueueOpt))
+}
+
+// Two spellings of one application id must take the same TaskID, or the guard
+// that serialises an app's deploys would let two run at once. Every caller
+// passes the raw URL param, so this is where the spelling is normalised.
+func TestDeployQueue_TaskIDIsCanonicalAcrossSpellings(t *testing.T) {
+	const lower = "0a1b2c3d-4e5f-6789-abcd-ef0123456789"
+	enq := &captureEnqueuer{}
+	q := service.NewDeployQueue(nil, enq, &fakeDeleter{}, 30)
+
+	for _, spelling := range []string{lower, strings.ToUpper(lower), "{" + lower + "}"} {
+		require.NoError(t, q.EnqueueLike("critical", spelling, asynq.NewTask("deploy", nil)))
+	}
+	require.Len(t, enq.opts, 3)
+	for _, o := range enq.opts {
+		assert.Equal(t, "deploy:"+lower, optionValue(t, o, asynq.TaskIDOpt))
+	}
 }
 
 func TestDeployQueue_ReclaimsStaleTaskButNotActiveOne(t *testing.T) {

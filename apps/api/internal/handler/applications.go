@@ -344,30 +344,18 @@ func (h *Handler) StopApplication(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	row, err := h.queries.GetApplicationWithProjectSlug(r.Context(), applicationUUID)
+	app, err := h.appService.Stop(r.Context(), applicationUUID)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "application not found")
-		return
-	}
-
-	rt, err := h.runtimes.For(r.Context(), row.ServerID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to reach the application's server")
-		return
-	}
-
-	containerName := naming.ContainerName(row.ProjectSlug, row.Slug, applicationID)
-	if err := rt.StopContainer(r.Context(), containerName); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to stop application")
-		return
-	}
-
-	app, err := h.queries.UpdateApplicationStatus(r.Context(), generated.UpdateApplicationStatusParams{
-		ID:     applicationUUID,
-		Status: status.ApplicationStopped,
-	})
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update application status")
+		switch {
+		case errors.Is(err, service.ErrApplicationNotFound):
+			writeError(w, http.StatusNotFound, "application not found")
+		case errors.Is(err, service.ErrServerUnreachable):
+			writeError(w, http.StatusInternalServerError, "failed to reach the application's server")
+		case errors.Is(err, service.ErrContainerAction):
+			writeError(w, http.StatusInternalServerError, "failed to stop application")
+		default:
+			writeError(w, http.StatusInternalServerError, "failed to update application status")
+		}
 		return
 	}
 
@@ -392,31 +380,18 @@ func (h *Handler) StartApplication(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	row, err := h.queries.GetApplicationWithProjectSlug(r.Context(), applicationUUID)
+	app, err := h.appService.Start(r.Context(), applicationUUID)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "application not found")
-		return
-	}
-
-	rt, err := h.runtimes.For(r.Context(), row.ServerID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to reach the application's server")
-		return
-	}
-
-	containerName := naming.ContainerName(row.ProjectSlug, row.Slug, applicationID)
-	if err := rt.StartContainer(r.Context(), containerName); err != nil {
-		slog.Error("failed to start application container", "container", containerName, "error", err)
-		writeError(w, http.StatusInternalServerError, "failed to start application")
-		return
-	}
-
-	app, err := h.queries.UpdateApplicationStatus(r.Context(), generated.UpdateApplicationStatusParams{
-		ID:     applicationUUID,
-		Status: status.ApplicationRunning,
-	})
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update application status")
+		switch {
+		case errors.Is(err, service.ErrApplicationNotFound):
+			writeError(w, http.StatusNotFound, "application not found")
+		case errors.Is(err, service.ErrServerUnreachable):
+			writeError(w, http.StatusInternalServerError, "failed to reach the application's server")
+		case errors.Is(err, service.ErrContainerAction):
+			writeError(w, http.StatusInternalServerError, "failed to start application")
+		default:
+			writeError(w, http.StatusInternalServerError, "failed to update application status")
+		}
 		return
 	}
 

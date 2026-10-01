@@ -18,7 +18,7 @@ import (
 func registeredTools(t *testing.T) []string {
 	t.Helper()
 	ctx := context.Background()
-	srv := newServer(nil, nil, nil, nil)
+	srv := newServer(Deps{})
 	st, ct := mcp.NewInMemoryTransports()
 	ss, err := srv.Connect(ctx, st, nil)
 	require.NoError(t, err)

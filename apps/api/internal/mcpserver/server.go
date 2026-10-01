@@ -27,14 +27,25 @@ import (
 	"github.com/weiliang79/belune/internal/version"
 )
 
+// Deps is everything the tools need. A struct rather than positional
+// arguments because each mutating tool brings its own service, and a
+// positional list of same-shaped pointers is how two get swapped.
+type Deps struct {
+	Queries  *generated.Queries
+	Runtimes runtime.Runtimes
+	Audit    Auditor
+	Deploys  *service.DeployQueue
+	Apps     *service.ApplicationService
+}
+
 // New builds the MCP server and wraps it in a stateless streamable-HTTP
 // handler. Stateless + JSONResponse: every tool here is a plain
 // request/response with nothing server-initiated, so there is no SSE stream,
 // no session store, and nothing lost on a control-plane restart — each
 // request stands alone, authenticated by its own Bearer token exactly like
 // REST.
-func New(queries *generated.Queries, runtimes runtime.Runtimes, audit Auditor, deploys *service.DeployQueue) http.Handler {
-	srv := newServer(queries, runtimes, audit, deploys)
+func New(d Deps) http.Handler {
+	srv := newServer(d)
 	return mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
 		return srv
 	}, &mcp.StreamableHTTPOptions{
@@ -45,7 +56,7 @@ func New(queries *generated.Queries, runtimes runtime.Runtimes, audit Auditor, d
 
 // newServer is split out of New so a test can enumerate the REAL registered
 // tools rather than a hand-written list.
-func newServer(queries *generated.Queries, runtimes runtime.Runtimes, audit Auditor, deploys *service.DeployQueue) *mcp.Server {
+func newServer(d Deps) *mcp.Server {
 	srv := mcp.NewServer(&mcp.Implementation{
 		Name:    "belune",
 		Version: version.Version,
@@ -53,14 +64,15 @@ func newServer(queries *generated.Queries, runtimes runtime.Runtimes, audit Audi
 
 	srv.AddReceivingMiddleware(requireToolScope)
 
-	registerProjectTools(srv, queries)
-	registerApplicationTools(srv, queries)
-	registerDatabaseTools(srv, queries)
-	registerDeploymentTools(srv, queries)
-	registerLogTools(srv, queries, runtimes)
-	registerDomainTools(srv, queries)
-	registerBackupTools(srv, queries)
-	registerDeployActionTools(srv, queries, deploys, audit)
+	registerProjectTools(srv, d.Queries)
+	registerApplicationTools(srv, d.Queries)
+	registerDatabaseTools(srv, d.Queries)
+	registerDeploymentTools(srv, d.Queries)
+	registerLogTools(srv, d.Queries, d.Runtimes)
+	registerDomainTools(srv, d.Queries)
+	registerBackupTools(srv, d.Queries)
+	registerDeployActionTools(srv, d.Queries, d.Deploys, d.Audit)
+	registerApplicationActionTools(srv, d)
 
 	return srv
 }

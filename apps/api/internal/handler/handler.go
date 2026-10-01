@@ -175,7 +175,13 @@ func New(
 		serverSvc:         service.NewServerService(queries),
 		totpSvc:           service.NewTOTPService(db, queries, cfg.Keyring),
 		tokenSvc:          tokenSvc,
-		mcpHandler:        mcpserver.New(queries, rts, mcpAuditor(auditSvc), deployQueue),
+		mcpHandler: mcpserver.New(mcpserver.Deps{
+			Queries:  queries,
+			Runtimes: rts,
+			Audit:    mcpAuditor(auditSvc),
+			Deploys:  deployQueue,
+			Apps:     appSvc,
+		}),
 	}
 }
 

@@ -38,8 +38,7 @@ type TaskDeleter interface {
 // the Handler's enqueueDeployLike/failDeploymentEnqueue; it lives in a service
 // so the REST handlers and the MCP tools share a single set of rules instead
 // of each re-deriving the TaskID guard, the no-retry policy and the stale-task
-// reclaim. (Not to be confused with DeployService, which nothing in production
-// uses and which does NOT carry those rules.)
+// reclaim.
 type DeployQueue struct {
 	queries     *generated.Queries
 	asynq       TaskEnqueuer

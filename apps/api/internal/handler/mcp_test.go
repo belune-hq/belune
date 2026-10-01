@@ -439,10 +439,11 @@ func TestMCP_ListProjectsPinSurvivesLimit(t *testing.T) {
 	assert.ElementsMatch(t, []string{pinnedProjectAID, pinnedProjectBID}, gotIDs)
 }
 
-// TestMCP_ToolsListing_NoDestructiveTools structurally asserts the read-only
-// boundary: delete/restore/deploy tools must not be registered at all, not
-// merely unreachable behind a scope check that a future refactor could
-// accidentally loosen.
+// TestMCP_ToolsListing_NoDestructiveTools structurally asserts the destructive
+// boundary: delete/restore tools must not be registered at all, not merely
+// unreachable behind a scope check that a future refactor could accidentally
+// loosen. The exact list is a deliberate tripwire — adding a tool means
+// editing it here, in review, alongside its scope in mcpserver/scope.go.
 func TestMCP_ToolsListing_NoDestructiveTools(t *testing.T) {
 	resetDB(t)
 	adminToken := env.SetupAdmin(t, "mcp-tools-list@test.com", "password123")
@@ -477,11 +478,14 @@ func TestMCP_ToolsListing_NoDestructiveTools(t *testing.T) {
 		"list_databases", "get_database",
 		"list_deployments", "get_application_logs", "get_deployment_logs",
 		"list_domain_tls_status", "list_project_backups",
+		"trigger_deployment",
 	}, names)
 
 	for _, name := range names {
-		assert.True(t, strings.HasPrefix(name, "list_") || strings.HasPrefix(name, "get_"),
-			"tool %q does not read as read-only — every phase 1 tool name must start with list_ or get_", name)
+		for _, word := range []string{"delete", "restore", "destroy", "remove", "drop"} {
+			assert.False(t, strings.Contains(name, word),
+				"tool %q reads as destructive — tokens cannot destroy, so no MCP tool may", name)
+		}
 	}
 }
 

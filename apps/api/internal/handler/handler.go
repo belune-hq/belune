@@ -142,6 +142,9 @@ func New(
 	emailSvc *email.Service,
 	tokenSvc *service.TokenService,
 ) *Handler {
+	// Shared with the MCP tools so a deploy started by either takes the same
+	// TaskID guard, retry policy and stale-task reclaim.
+	deployQueue := service.NewDeployQueue(queries, asynqClient, inspector, cfg.TaskTimeoutMinutes)
 	return &Handler{
 		cfg:               cfg,
 		db:                db,
@@ -161,7 +164,7 @@ func New(
 		backupDestSvc:     backupDestSvc,
 		hub:               hub,
 		auditSvc:          auditSvc,
-		deployQueue:       service.NewDeployQueue(queries, asynqClient, inspector, cfg.TaskTimeoutMinutes),
+		deployQueue:       deployQueue,
 		notifySvc:         notifySvc,
 		termManager:       termMgr,
 		quotaSvc:          quotaSvc,
@@ -172,7 +175,7 @@ func New(
 		serverSvc:         service.NewServerService(queries),
 		totpSvc:           service.NewTOTPService(db, queries, cfg.Keyring),
 		tokenSvc:          tokenSvc,
-		mcpHandler:        mcpserver.New(queries, rts, mcpAuditor(auditSvc)),
+		mcpHandler:        mcpserver.New(queries, rts, mcpAuditor(auditSvc), deployQueue),
 	}
 }
 

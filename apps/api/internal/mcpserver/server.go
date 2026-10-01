@@ -22,6 +22,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/weiliang79/belune/internal/runtime"
+	"github.com/weiliang79/belune/internal/service"
 	"github.com/weiliang79/belune/internal/store/generated"
 	"github.com/weiliang79/belune/internal/version"
 )
@@ -32,8 +33,8 @@ import (
 // no session store, and nothing lost on a control-plane restart — each
 // request stands alone, authenticated by its own Bearer token exactly like
 // REST.
-func New(queries *generated.Queries, runtimes runtime.Runtimes, audit Auditor) http.Handler {
-	srv := newServer(queries, runtimes, audit)
+func New(queries *generated.Queries, runtimes runtime.Runtimes, audit Auditor, deploys *service.DeployQueue) http.Handler {
+	srv := newServer(queries, runtimes, audit, deploys)
 	return mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
 		return srv
 	}, &mcp.StreamableHTTPOptions{
@@ -44,7 +45,7 @@ func New(queries *generated.Queries, runtimes runtime.Runtimes, audit Auditor) h
 
 // newServer is split out of New so a test can enumerate the REAL registered
 // tools rather than a hand-written list.
-func newServer(queries *generated.Queries, runtimes runtime.Runtimes, audit Auditor) *mcp.Server {
+func newServer(queries *generated.Queries, runtimes runtime.Runtimes, audit Auditor, deploys *service.DeployQueue) *mcp.Server {
 	srv := mcp.NewServer(&mcp.Implementation{
 		Name:    "belune",
 		Version: version.Version,
@@ -59,6 +60,7 @@ func newServer(queries *generated.Queries, runtimes runtime.Runtimes, audit Audi
 	registerLogTools(srv, queries, runtimes)
 	registerDomainTools(srv, queries)
 	registerBackupTools(srv, queries)
+	registerDeployActionTools(srv, queries, deploys, audit)
 
 	return srv
 }

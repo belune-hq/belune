@@ -35,6 +35,7 @@ var toolScopes = map[string]string{
 	"get_application_logs":   "read",
 	"list_domain_tls_status": "read",
 	"list_project_backups":   "read",
+	"trigger_deployment":     "deploy",
 }
 
 var errScopeDenied = errors.New("token lacks required scope")

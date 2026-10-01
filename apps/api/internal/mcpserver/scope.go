@@ -38,6 +38,8 @@ var toolScopes = map[string]string{
 	"list_project_backups":   "read",
 	"trigger_deployment":     "deploy",
 	"update_application":     "write",
+	"start_application":      "write",
+	"stop_application":       "write",
 }
 
 var errScopeDenied = errors.New("token lacks required scope")

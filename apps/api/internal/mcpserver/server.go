@@ -73,6 +73,7 @@ func newServer(d Deps) *mcp.Server {
 	registerBackupTools(srv, d.Queries)
 	registerDeployActionTools(srv, d.Queries, d.Deploys, d.Audit)
 	registerApplicationActionTools(srv, d)
+	registerApplicationLifecycleTools(srv, d)
 
 	return srv
 }

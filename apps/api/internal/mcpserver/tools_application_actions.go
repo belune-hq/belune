@@ -3,8 +3,10 @@ package mcpserver
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/weiliang79/belune/internal/service"
@@ -158,4 +160,64 @@ func registerApplicationActionTools(srv *mcp.Server, d Deps) {
 		}
 		return textResult(out)
 	})
+}
+
+// lifecycleResult is deliberately tiny: the caller needs to know what state
+// the application was recorded in, and nothing else about it changed.
+type lifecycleResult struct {
+	ApplicationID string `json:"application_id"`
+	Status        string `json:"status"`
+}
+
+func registerApplicationLifecycleTools(srv *mcp.Server, d Deps) {
+	// lifecycle builds one handler for start and stop: both authorize the same
+	// way and differ only in the service call and the audit action.
+	lifecycle := func(verb string, run func(context.Context, pgtype.UUID) (generated.Application, error)) mcp.ToolHandlerFor[applicationIDInput, any] {
+		return func(ctx context.Context, _ *mcp.CallToolRequest, in applicationIDInput) (*mcp.CallToolResult, any, error) {
+			id, err := parseUUID(in.ApplicationID)
+			if err != nil {
+				return nil, nil, err
+			}
+			app, err := d.Queries.GetApplication(ctx, id)
+			if err != nil {
+				return nil, nil, notFoundOr(ctx, "application not found")
+			}
+			if err := authorizeApplication(ctx, d.Queries, app.ID, app.ProjectID); err != nil {
+				return nil, nil, err
+			}
+
+			updated, err := run(ctx, app.ID)
+			if err != nil {
+				switch {
+				case errors.Is(err, service.ErrApplicationNotFound):
+					return nil, nil, notFoundOr(ctx, "application not found")
+				case errors.Is(err, service.ErrContainerAction):
+					slog.Error("mcpserver: container action failed", "action", verb, "error", err)
+					return nil, nil, errors.New("failed to " + verb + " the application: the container could not be " + verb + "ed. " +
+						"Check list_deployments to see whether it has ever been deployed")
+				default:
+					return nil, nil, internalError("failed to "+verb+" the application", err)
+				}
+			}
+
+			auditTool(ctx, d.Audit, verb+"_application", "application", in.ApplicationID, nil)
+			return textResult(lifecycleResult{ApplicationID: uuidToString(updated.ID), Status: updated.Status})
+		}
+	}
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "stop_application",
+		Description: "Stop an application's running container right now. The application goes offline immediately — " +
+			"its domains stop serving — and there is no confirmation step. " +
+			"Nothing is deleted: the container, volumes, environment variables and settings are kept, and start_application " +
+			"brings it back. It does not stop a deployment that is currently building.",
+	}, lifecycle("stop", d.Apps.Stop))
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "start_application",
+		Description: "Start an application's existing stopped container right now. " +
+			"It does not build, pull or deploy anything, so it brings back the version that was last deployed, " +
+			"and it fails for an application that has no container yet — use trigger_deployment for that. " +
+			"It takes effect immediately and there is no confirmation step.",
+	}, lifecycle("start", d.Apps.Start))
 }

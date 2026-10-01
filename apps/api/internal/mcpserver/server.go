@@ -1,16 +1,19 @@
-// Package mcpserver implements Belune's read-only Model Context Protocol
-// server. It is registered as a single stateless JSON-RPC-over-HTTP handler
-// at POST /mcp (see internal/server/routes.go) so an AI assistant can inspect
+// Package mcpserver implements Belune's Model Context Protocol server. It is
+// registered as a single stateless JSON-RPC-over-HTTP handler at POST /mcp
+// (see internal/server/routes.go) so an AI assistant can inspect and operate
 // projects, applications, deployments and infrastructure state through the
 // same personal-access-token model a CI script would use.
 //
-// Phase 1 (0.1.x #4) is read-only: mutating tools are out of scope
-// permanently, not just for this release, so registerXTools functions in
-// this package must never add one. Tool handlers read request identity
-// (role, user id, project pin) off the context via internal/server/middleware
-// accessors — the SDK threads the originating *http.Request's context
-// through to every tool call, so the same Auth/RequireScope/RequireToken
-// chain that gates the route gates each tool invocation too.
+// Destructive tools (delete, restore, anything dropping a volume or backup)
+// are out of scope permanently: a token cannot destroy, so registerXTools
+// functions in this package must never add one. Mutating tools are a later
+// phase than the read tools, and each must declare the PAT scope it requires,
+// because the /mcp route can only enforce the read floor. Tool handlers read
+// request identity (role, user id, project pin) off the context via
+// internal/server/middleware accessors — the SDK threads the originating
+// *http.Request's context through to every tool call, so the same
+// Auth/RequireScope/RequireToken chain that gates the route gates each tool
+// invocation too.
 package mcpserver
 
 import (

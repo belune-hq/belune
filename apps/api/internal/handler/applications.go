@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
-	"unicode"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/hibiken/asynq"
@@ -1003,56 +1001,4 @@ func (h *Handler) maybeEnqueueQuotaAlert(r *http.Request, projectID, ownerUserID
 	if _, err := h.asynq.Enqueue(task); err != nil {
 		slog.Warn("quota alert: failed to enqueue email task", "error", err)
 	}
-}
-
-// validBranchName reports whether a branch name is safe to hand to
-// `git clone --branch`. Not a full git-refname validator — just enough to keep
-// obviously broken input out of an argv slot and out of the database.
-//
-// A leading "-" is rejected specifically: git would read it as a flag rather
-// than a ref name if argument order ever changed.
-func validBranchName(branch string) bool {
-	if branch == "" {
-		return true // empty is meaningful: the repository's default ref
-	}
-	if len(branch) > 255 || strings.HasPrefix(branch, "-") {
-		return false
-	}
-	for _, r := range branch {
-		if unicode.IsSpace(r) || unicode.IsControl(r) {
-			return false
-		}
-	}
-	// Refs cannot contain these, per git-check-ref-format.
-	return !strings.ContainsAny(branch, "~^:?*[\\") && !strings.Contains(branch, "..")
-}
-
-// validRootDirectory reports whether a root directory value is safe to join
-// onto a clone's temp directory and hand to a builder. Not a full path
-// validator — just enough to keep traversal and control characters out.
-//
-// Empty is meaningful: build from the repository root, today's only
-// behavior. A leading "/" is rejected because the value is relative to the
-// clone root, not absolute; ".." (and empty) segments are rejected outright
-// rather than relying solely on the worker's post-join containment check, so
-// a bad value is caught at save time instead of surfacing as a deploy
-// failure.
-func validRootDirectory(dir string) bool {
-	if dir == "" {
-		return true
-	}
-	if len(dir) > 500 || strings.HasPrefix(dir, "/") {
-		return false
-	}
-	for _, r := range dir {
-		if r == 0 || unicode.IsControl(r) {
-			return false
-		}
-	}
-	for segment := range strings.SplitSeq(dir, "/") {
-		if segment == "" || segment == "." || segment == ".." {
-			return false
-		}
-	}
-	return true
 }

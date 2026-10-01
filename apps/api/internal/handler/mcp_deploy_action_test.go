@@ -47,7 +47,9 @@ func TestMCP_TriggerDeployment_ScopeAndPin(t *testing.T) {
 	// The route's read floor admits a read token, so only the per-tool gate
 	// stands between it and a deploy.
 	readToken := mintScoped(t, adminToken, []string{"read"})
-	assert.Contains(t, rpcError(t, callToolArgs(t, readToken, "trigger_deployment", triggerArgs(appID))), "scope")
+	assert.Equal(t, `the trigger_deployment tool requires the "deploy" scope; this token has: read`,
+		rpcError(t, callToolArgs(t, readToken, "trigger_deployment", triggerArgs(appID))),
+		"the refusal must name what was observed, not a generic denial")
 	assert.Empty(t, env.Asynq.Tasks, "a refused call must not queue anything")
 
 	// deploy is narrower than write but is exactly what this tool needs.

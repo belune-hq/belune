@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -46,6 +47,12 @@ func TestToolScopesMatchRegisteredTools(t *testing.T) {
 	for name, scope := range toolScopes {
 		declared = append(declared, name)
 		assert.Contains(t, []string{"read", "write", "deploy"}, scope, "tool %s", name)
+		// Correctness, not just existence: a tool that is not a plain reader
+		// must not be declared "read", or a read-only token could drive it.
+		// The table above would otherwise accept that without complaint.
+		if !strings.HasPrefix(name, "list_") && !strings.HasPrefix(name, "get_") {
+			assert.NotEqual(t, "read", scope, "tool %s does not read as a reader but declares read", name)
+		}
 	}
 	sort.Strings(declared)
 	assert.Equal(t, registered, declared)

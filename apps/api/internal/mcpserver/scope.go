@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -59,8 +60,17 @@ func requireToolScope(next mcp.MethodHandler) mcp.MethodHandler {
 		}
 		// A session JWT never reaches /mcp (RequireToken), so nil scopes here
 		// is anomalous and is refused rather than read as "unrestricted".
-		if !middleware.ScopesSatisfy(middleware.ScopesFromContext(ctx), required) {
-			return nil, errScopeDenied
+		scopes := middleware.ScopesFromContext(ctx)
+		if !middleware.ScopesSatisfy(scopes, required) {
+			// Scope is a property of the caller's own token, so saying it
+			// back leaks nothing (unlike a pin or ownership refusal, which
+			// must stay indistinguishable from absence) — and an assistant
+			// can act on it by telling the user which scope to grant.
+			held := "none"
+			if len(scopes) > 0 {
+				held = strings.Join(scopes, ", ")
+			}
+			return nil, fmt.Errorf("the %s tool requires the %q scope; this token has: %s", params.Name, required, held)
 		}
 		return next(ctx, method, req)
 	}

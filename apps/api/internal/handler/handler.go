@@ -170,7 +170,7 @@ func New(
 		serverSvc:         service.NewServerService(queries),
 		totpSvc:           service.NewTOTPService(db, queries, cfg.Keyring),
 		tokenSvc:          tokenSvc,
-		mcpHandler:        mcpserver.New(queries, rts),
+		mcpHandler:        mcpserver.New(queries, rts, mcpAuditor(auditSvc)),
 	}
 }
 
@@ -187,6 +187,16 @@ func (h *Handler) runtimeForDatabase(ctx context.Context, dbID pgtype.UUID) (run
 
 func (h *Handler) runtimeForProject(ctx context.Context, projectID pgtype.UUID) (runtime.ContainerRuntime, error) {
 	return service.RuntimeForProject(ctx, h.queries, h.runtimes, projectID)
+}
+
+// mcpAuditor avoids handing mcpserver a non-nil interface wrapping a nil
+// *AuditService, which would panic on first use rather than skip like
+// Handler.audit does.
+func mcpAuditor(s *service.AuditService) mcpserver.Auditor {
+	if s == nil {
+		return nil
+	}
+	return s
 }
 
 // audit is a nil-safe wrapper for audit logging. Extracts user ID, the

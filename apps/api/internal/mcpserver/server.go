@@ -32,11 +32,25 @@ import (
 // no session store, and nothing lost on a control-plane restart — each
 // request stands alone, authenticated by its own Bearer token exactly like
 // REST.
-func New(queries *generated.Queries, runtimes runtime.Runtimes) http.Handler {
+func New(queries *generated.Queries, runtimes runtime.Runtimes, audit Auditor) http.Handler {
+	srv := newServer(queries, runtimes, audit)
+	return mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
+		return srv
+	}, &mcp.StreamableHTTPOptions{
+		Stateless:    true,
+		JSONResponse: true,
+	})
+}
+
+// newServer is split out of New so a test can enumerate the REAL registered
+// tools rather than a hand-written list.
+func newServer(queries *generated.Queries, runtimes runtime.Runtimes, audit Auditor) *mcp.Server {
 	srv := mcp.NewServer(&mcp.Implementation{
 		Name:    "belune",
 		Version: version.Version,
 	}, nil)
+
+	srv.AddReceivingMiddleware(requireToolScope)
 
 	registerProjectTools(srv, queries)
 	registerApplicationTools(srv, queries)
@@ -46,10 +60,5 @@ func New(queries *generated.Queries, runtimes runtime.Runtimes) http.Handler {
 	registerDomainTools(srv, queries)
 	registerBackupTools(srv, queries)
 
-	return mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
-		return srv
-	}, &mcp.StreamableHTTPOptions{
-		Stateless:    true,
-		JSONResponse: true,
-	})
+	return srv
 }

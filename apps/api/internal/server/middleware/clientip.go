@@ -1,10 +1,26 @@
 package middleware
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"strings"
 )
+
+type clientIPKey struct{}
+
+// ContextWithClientIP carries the resolved client IP on the context for code
+// that has no *http.Request — the MCP tools, which still must attribute an
+// audit row to an address.
+func ContextWithClientIP(ctx context.Context, ip string) context.Context {
+	return context.WithValue(ctx, clientIPKey{}, ip)
+}
+
+// ClientIPFromContext returns the IP stored by ContextWithClientIP, or "".
+func ClientIPFromContext(ctx context.Context) string {
+	v, _ := ctx.Value(clientIPKey{}).(string)
+	return v
+}
 
 // ClientIP extracts the real client IP from a request. It reads the leftmost
 // value from X-Forwarded-For (populated by Caddy, which is the trusted proxy)

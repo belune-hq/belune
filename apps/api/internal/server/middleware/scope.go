@@ -48,6 +48,16 @@ func scopeSatisfies(tokenScopes []string, required string) bool {
 	return false
 }
 
+// ScopesSatisfy reports whether a PAT's scopes grant the required scope, by
+// the same total order RequireScope applies. Exported for callers that gate
+// finer than a route — the MCP server, whose single POST /mcp route carries
+// tools of every scope. Unlike RequireScope it does NOT treat nil as a
+// session: callers that can be reached by a session must decide that
+// themselves.
+func ScopesSatisfy(tokenScopes []string, required string) bool {
+	return scopeSatisfies(tokenScopes, required)
+}
+
 // writeForbiddenScope writes the standard "token lacks scope" 403. Kept as
 // one place so RequireScope and RequireScopeByMethod produce an identical
 // body regardless of how the requirement was derived.

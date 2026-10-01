@@ -83,6 +83,7 @@ type Handler struct {
 	backupDestSvc     *service.BackupDestinationService
 	hub               *ws.Hub
 	auditSvc          *service.AuditService
+	deployQueue       *service.DeployQueue
 	notifySvc         *service.NotificationService
 	termManager       *terminal.Manager
 	// docker system df is far too slow to run inside a request (33s on a small
@@ -160,6 +161,7 @@ func New(
 		backupDestSvc:     backupDestSvc,
 		hub:               hub,
 		auditSvc:          auditSvc,
+		deployQueue:       service.NewDeployQueue(queries, asynqClient, inspector, cfg.TaskTimeoutMinutes),
 		notifySvc:         notifySvc,
 		termManager:       termMgr,
 		quotaSvc:          quotaSvc,

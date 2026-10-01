@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"time"
 	"unicode"
 
 	"github.com/go-chi/chi/v5"
@@ -288,13 +287,9 @@ func (h *Handler) ListApplications(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toApplicationResponses(applications))
 }
 
-type deployPayload struct {
-	ApplicationID    string            `json:"application_id"`
-	DeploymentID     string            `json:"deployment_id"`
-	RollbackImageTag string            `json:"rollback_image_tag,omitempty"` // non-empty = skip build, redeploy this image (rollback/reload)
-	CommitSHA        string            `json:"commit_sha,omitempty"`         // non-empty = rebuild this exact commit instead of branch HEAD
-	TraceCarrier     map[string]string `json:"trace_carrier,omitempty"`
-}
+// deployPayload is the worker payload; the type lives with the service that
+// builds it so REST and MCP cannot drift.
+type deployPayload = service.DeployPayload
 
 //apidoc:tag applications/deployments
 //apidoc:title Deploy App
@@ -319,36 +314,14 @@ func (h *Handler) DeployApplication(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create deployment record
-	deployment, err := h.queries.CreateDeployment(r.Context(), generated.CreateDeploymentParams{
-		ApplicationID: applicationUUID,
-		Status:        status.DeploymentPending,
-		TriggeredBy:   "manual",
-	})
+	deployment, err := h.deployQueue.TriggerDeployment(r.Context(), applicationUUID, "manual")
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create deployment")
-		return
-	}
-
-	// Enqueue deploy task
-	payload, err := json.Marshal(deployPayload{
-		ApplicationID: applicationID,
-		DeploymentID:  fmt.Sprintf("%x-%x-%x-%x-%x", deployment.ID.Bytes[0:4], deployment.ID.Bytes[4:6], deployment.ID.Bytes[6:8], deployment.ID.Bytes[8:10], deployment.ID.Bytes[10:16]),
-		TraceCarrier:  tracing.InjectContext(r.Context()),
-	})
-	if err != nil {
-		slog.Error("failed to marshal deploy payload", "error", err)
-		writeError(w, http.StatusInternalServerError, "failed to create deploy task")
-		return
-	}
-
-	if err := h.enqueueDeployTask(applicationID, payload); err != nil {
-		h.failDeploymentEnqueue(r.Context(), deployment.ID, err)
-		if errors.Is(err, asynq.ErrTaskIDConflict) {
+		if errors.Is(err, service.ErrDeployInProgress) {
 			writeError(w, http.StatusConflict, "a deployment is already in progress for this application")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "failed to enqueue deploy task")
+		slog.Error("failed to trigger deployment", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to create deployment")
 		return
 	}
 
@@ -653,58 +626,21 @@ func (h *Handler) RebuildApplication(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, deployment)
 }
 
-// formatDeploymentID renders a pgtype.UUID as the canonical 8-4-4-4-12 string
-// the deploy worker expects in its payload.
-func formatDeploymentID(id pgtype.UUID) string {
-	return fmt.Sprintf("%x-%x-%x-%x-%x",
-		id.Bytes[0:4], id.Bytes[4:6], id.Bytes[6:8], id.Bytes[8:10], id.Bytes[10:16])
-}
+func formatDeploymentID(id pgtype.UUID) string { return service.FormatDeploymentID(id) }
 
-// enqueueDeployLike enqueues task on `queue` under the per-application deploy
-// TaskID guard that serialises deploy/build/reload/rebuild/rollback for one app.
-// If that TaskID is already held but only by a *stale* task — pending, retry, or
-// an archived task left by a previous run that exhausted its retries — the stale
-// task is deleted and the new one re-enqueued, so a dead task can't block the
-// app from ever deploying again. asynq.Inspector.DeleteTask refuses to remove an
-// active (running) task, so a delete failure means a run is genuinely in
-// progress and the original ErrTaskIDConflict is returned unchanged.
+// enqueueDeployLike, enqueueDeployTask and failDeploymentEnqueue delegate to
+// service.DeployQueue, which owns the per-application TaskID guard, the
+// no-retry policy and the stale-task reclaim.
 func (h *Handler) enqueueDeployLike(queue, applicationID string, task *asynq.Task) error {
-	taskID := "deploy:" + applicationID
-	opts := []asynq.Option{
-		asynq.Queue(queue),
-		asynq.Timeout(time.Duration(h.cfg.TaskTimeoutMinutes) * time.Minute),
-		// No automatic retries: a deploy runs exactly once. Deploy failures are
-		// almost always deterministic (bad build, bad config), so retrying just
-		// re-runs the whole build 3 more times and delays the failure the user
-		// needs to see. The user re-triggers manually after fixing the cause.
-		asynq.MaxRetry(0),
-		asynq.TaskID(taskID),
-	}
-	_, err := h.asynq.Enqueue(task, opts...)
-	if errors.Is(err, asynq.ErrTaskIDConflict) {
-		if delErr := h.inspector.DeleteTask(queue, taskID); delErr == nil {
-			_, err = h.asynq.Enqueue(task, opts...)
-		}
-	}
-	return err
+	return h.deployQueue.EnqueueLike(queue, applicationID, task)
 }
 
-// enqueueDeployTask enqueues the standard deploy task on the critical queue.
 func (h *Handler) enqueueDeployTask(applicationID string, payload []byte) error {
-	return h.enqueueDeployLike("critical", applicationID, asynq.NewTask("deploy", payload))
+	return h.deployQueue.EnqueueDeploy(applicationID, payload)
 }
 
-// failDeploymentEnqueue marks a freshly created deployment row as failed when
-// its task could not be queued, so it does not linger in "pending" forever.
 func (h *Handler) failDeploymentEnqueue(ctx context.Context, deploymentID pgtype.UUID, cause error) {
-	if _, err := h.queries.UpdateDeploymentStatus(ctx, generated.UpdateDeploymentStatusParams{
-		ID:           deploymentID,
-		Status:       status.DeploymentFailed,
-		ErrorMessage: pgtype.Text{String: "could not queue deploy task: " + cause.Error(), Valid: true},
-	}); err != nil {
-		slog.Error("could not mark deployment failed after enqueue error",
-			"deployment_id", formatDeploymentID(deploymentID), "error", err)
-	}
+	h.deployQueue.FailEnqueue(ctx, deploymentID, cause)
 }
 
 // The source fields are pointers so an omitted key (nil: keep the stored value)

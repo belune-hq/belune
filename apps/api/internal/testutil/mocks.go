@@ -21,6 +21,8 @@ type MockContainerRuntime struct {
 	RestartCalls      []string
 	RestartErr        error
 	StartCalls        []string
+	StartErr          error // when set, StartContainer returns it
+	StopErr           error // when set, StopContainer returns it
 	CreateCalls       []runtime.ContainerConfig
 	PullCalls         []string // image tags passed to PullImage
 	HealthStatus_     string   // returned by ContainerHealth (empty → "healthy")
@@ -75,14 +77,14 @@ func (m *MockContainerRuntime) StartContainer(_ context.Context, id string) erro
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.StartCalls = append(m.StartCalls, id)
-	return nil
+	return m.StartErr
 }
 
 func (m *MockContainerRuntime) StopContainer(_ context.Context, id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.StopCalls = append(m.StopCalls, id)
-	return nil
+	return m.StopErr
 }
 
 func (m *MockContainerRuntime) RemoveContainer(_ context.Context, id string) error {

@@ -170,6 +170,9 @@ type lifecycleResult struct {
 }
 
 func registerApplicationLifecycleTools(srv *mcp.Server, d Deps) {
+	// Spelled out because "stop"+"ed" is not a word.
+	done := map[string]string{"start": "started", "stop": "stopped"}
+
 	// lifecycle builds one handler for start and stop: both authorize the same
 	// way and differ only in the service call and the audit action.
 	lifecycle := func(verb string, run func(context.Context, pgtype.UUID) (generated.Application, error)) mcp.ToolHandlerFor[applicationIDInput, any] {
@@ -193,7 +196,7 @@ func registerApplicationLifecycleTools(srv *mcp.Server, d Deps) {
 					return nil, nil, notFoundOr(ctx, "application not found")
 				case errors.Is(err, service.ErrContainerAction):
 					slog.Error("mcpserver: container action failed", "action", verb, "error", err)
-					return nil, nil, errors.New("failed to " + verb + " the application: the container could not be " + verb + "ed. " +
+					return nil, nil, errors.New("failed to " + verb + " the application: the container could not be " + done[verb] + ". " +
 						"Check list_deployments to see whether it has ever been deployed")
 				default:
 					return nil, nil, internalError("failed to "+verb+" the application", err)

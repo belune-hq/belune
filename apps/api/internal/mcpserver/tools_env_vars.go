@@ -61,13 +61,22 @@ func registerEnvVarTools(srv *mcp.Server, d Deps) {
 			return nil, nil, internalError("failed to save environment variables", err)
 		}
 
-		// Key names only: the audit log is the operator's record of what the
-		// assistant did, and it must not become a second copy of the secrets.
-		keys := make([]string, len(results))
-		for i, r := range results {
-			keys[i] = r.Key
+		// Same action, resource type and details shape as the REST replace, so
+		// one filter finds an environment change however it was made; the token
+		// id on the row is what says it was an assistant. Key names only: the
+		// log is the operator's record of what the assistant did, and must not
+		// become a second copy of the secrets. A merge never removes, so
+		// "removed" is always empty and is left out.
+		created, updated := []string{}, []string{}
+		for _, r := range results {
+			if r.Created {
+				created = append(created, r.Key)
+			} else {
+				updated = append(updated, r.Key)
+			}
 		}
-		auditTool(ctx, d.Audit, "set_env_vars", "application", in.ApplicationID, map[string]any{"keys": keys})
+		auditTool(ctx, d.Audit, "update_env_vars", "env_var", in.ApplicationID,
+			map[string]any{"created": created, "updated": updated, "removed": []string{}})
 
 		return textResult(setEnvVarsResult{
 			Variables: results,

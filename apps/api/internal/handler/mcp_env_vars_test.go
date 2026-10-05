@@ -2,6 +2,7 @@ package handler_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -209,17 +210,24 @@ func TestMCP_SetEnvVars_AuditNamesKeysNeverValues(t *testing.T) {
 	const secretValue = "sk-live-VERY-SECRET-9f8e7d"
 
 	decodeToolResult(t, callToolAt(t, base, token, "set_application_env_vars", setEnvArgs(appID,
-		map[string]any{"key": "PAYMENT_KEY", "value": secretValue})), &struct{}{})
+		map[string]any{"key": "PAYMENT_KEY", "value": secretValue},
+		map[string]any{"key": "DATABASE_URL", "value": "postgres://db/other"})), &struct{}{})
 
 	var tokenID *string
 	var details string
 	require.Eventually(t, func() bool {
 		return env.Pool.QueryRow(context.Background(),
-			"SELECT token_id::text, details::text FROM audit_logs WHERE action = 'set_env_vars' AND resource_id = $1", appID,
+			"SELECT token_id::text, details::text FROM audit_logs WHERE action = 'update_env_vars' AND resource_type = 'env_var' AND resource_id = $1", appID,
 		).Scan(&tokenID, &details) == nil
 	}, 2*time.Second, 10*time.Millisecond, "the tool must write an audit row")
 	require.NotNil(t, tokenID, "attributed to the token")
-	assert.Contains(t, details, "PAYMENT_KEY")
+	var d struct {
+		Created, Updated, Removed []string
+	}
+	require.NoError(t, json.Unmarshal([]byte(details), &d))
+	assert.Equal(t, []string{"PAYMENT_KEY"}, d.Created)
+	assert.Equal(t, []string{"DATABASE_URL"}, d.Updated)
+	assert.Empty(t, d.Removed, "a merge never removes")
 	assert.False(t, strings.Contains(details, secretValue), "the audit row must not contain the value")
 }
 

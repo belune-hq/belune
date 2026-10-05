@@ -25,21 +25,22 @@ import (
 // the server's REAL registered tools and requires an exact match with this
 // table in both directions.
 var toolScopes = map[string]string{
-	"list_projects":          "read",
-	"get_project":            "read",
-	"list_applications":      "read",
-	"get_application":        "read",
-	"list_databases":         "read",
-	"get_database":           "read",
-	"list_deployments":       "read",
-	"get_deployment_logs":    "read",
-	"get_application_logs":   "read",
-	"list_domain_tls_status": "read",
-	"list_project_backups":   "read",
-	"trigger_deployment":     "deploy",
-	"update_application":     "write",
-	"start_application":      "write",
-	"stop_application":       "write",
+	"list_projects":            "read",
+	"get_project":              "read",
+	"list_applications":        "read",
+	"get_application":          "read",
+	"list_databases":           "read",
+	"get_database":             "read",
+	"list_deployments":         "read",
+	"get_deployment_logs":      "read",
+	"get_application_logs":     "read",
+	"list_domain_tls_status":   "read",
+	"list_project_backups":     "read",
+	"trigger_deployment":       "deploy",
+	"update_application":       "write",
+	"start_application":        "write",
+	"stop_application":         "write",
+	"set_application_env_vars": "write",
 }
 
 var errScopeDenied = errors.New("token lacks required scope")

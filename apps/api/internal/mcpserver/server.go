@@ -36,6 +36,7 @@ type Deps struct {
 	Audit    Auditor
 	Deploys  *service.DeployQueue
 	Apps     *service.ApplicationService
+	Env      *service.EnvVarService
 }
 
 // New builds the MCP server and wraps it in a stateless streamable-HTTP
@@ -74,6 +75,7 @@ func newServer(d Deps) *mcp.Server {
 	registerDeployActionTools(srv, d.Queries, d.Deploys, d.Audit)
 	registerApplicationActionTools(srv, d)
 	registerApplicationLifecycleTools(srv, d)
+	registerEnvVarTools(srv, d)
 
 	return srv
 }

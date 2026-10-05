@@ -5,18 +5,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"regexp"
 	"sort"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/weiliang79/belune/internal/service"
 	"github.com/weiliang79/belune/internal/store"
 	"github.com/weiliang79/belune/internal/store/generated"
 )
 
-var envKeyRegex = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+// The key shape lives in the service so the REST replace and the MCP merge
+// cannot disagree about what a valid name is.
+var envKeyRegex = service.EnvKeyRegex
 
 // preparedEnvVar is one validated, already-encrypted variable ready to be
 // written.

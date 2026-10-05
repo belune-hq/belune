@@ -1,9 +1,9 @@
 ---
 title: MCP Server
-description: Give an AI assistant read-only access to your projects, deployments, and logs through the Model Context Protocol.
+description: Let an AI assistant inspect your projects, deployments, and logs — and, with a token that allows it, deploy and configure applications — through the Model Context Protocol.
 ---
 
-Belune has a [Model Context Protocol](https://modelcontextprotocol.io) server at `/mcp` — one endpoint an MCP-compatible client (Claude, and others as they add support) can call to inspect your projects, applications, deployments, and infrastructure state. It authenticates with the same personal access tokens as the rest of the API, and today it is **read-only**: nothing it exposes can change, deploy, restart, delete, or restore anything.
+Belune has a [Model Context Protocol](https://modelcontextprotocol.io) server at `/mcp` — one endpoint an MCP-compatible client (Claude, and others as they add support) can call to inspect your projects, applications, deployments, and infrastructure state. It authenticates with the same personal access tokens as the rest of the API. With a `read` token it can only look. With a `deploy` or `write` token it can also act — start a deployment, change an application's settings, start or stop it, and set its environment variables — and it can **never** delete or restore anything.
 
 ## Connecting
 
@@ -14,24 +14,26 @@ claude mcp add --transport http belune https://belune.example.com/mcp \
   --header "Authorization: Bearer belune_pat_..."
 ```
 
+A `read` token is enough to inspect, and it is the safe default. To let the assistant make changes, mint a token with the scope the tools you want need — see [Tools That Make Changes](#tools-that-make-changes) — from **Account → Personal Access Tokens**, and connect with that instead.
+
 <Callout type="warn">
 Both log tools strip terminal colour codes, as the dashboard does, and otherwise return output verbatim. Tools that read logs send them to whichever client you connect. Logs often contain connection strings and API keys — only connect a client you trust with that. This is the same warning the dialog shows, at the moment you actually connect something, rather than on every token you ever create.
 </Callout>
 
-To connect a different client, or build the command by hand, mint any token with at least `read` scope from **Account → Personal Access Tokens** and point your client at `https://belune.example.com/mcp` with `Authorization: Bearer <token>`.
+To connect a different client, or build the command by hand, mint a token from **Account → Personal Access Tokens** and point your client at `https://belune.example.com/mcp` with `Authorization: Bearer <token>`.
 
 ## Authentication
 
 `/mcp` uses the [same bearer tokens](/docs/api#authenticating) as everything else, with two differences from an ordinary endpoint:
 
 - **No session.** A dashboard session cookie is never accepted here, even though it works on every REST route — an MCP client is a machine, not a person at a browser, and the two credentials are kept apart. Mint a personal access token instead.
-- **`read` scope or wider.** `deploy` and `write` tokens work too — the scope ladder is unchanged — but a `metrics`-only token cannot connect at all, since it sits below `read` in the ladder and every tool here needs at least that much.
+- **A scope per tool.** The endpoint itself needs `read` or wider, so a `metrics`-only token cannot connect at all. Beyond that, each tool declares the scope it needs and is checked on every call — a `read` token connects and can look, but a call to a tool that needs `deploy` or `write` is refused before the tool runs. The refusal names what it saw: which scope the tool requires and which scopes the token has.
 
-Everything else about a token — the [100 req/min rate limit](/docs/api#limits-and-errors), audit attribution, expiry — applies exactly as it does to the REST API. One difference: read-only tools produce no audit log entries, the same way a `GET` never does — only a mutation is audited, and MCP has none to log.
+Everything else about a token — the [100 req/min rate limit](/docs/api#limits-and-errors), audit attribution, expiry — applies exactly as it does to the REST API. Read-only tools produce no audit log entries, the same way a `GET` never does. Every tool that changes something is audited, attributed to the token that made the call, with the client's address.
 
 ## What It Can See
 
-Reach is identical to what the same token could do through the REST API: an admin token sees every project on the install, a Member's token sees their own projects and any [shared](/docs/core/project/overview#sharing) with them, and a [project-pinned](/docs/api#project-pinning) token is narrowed to its pinned projects — enforced on every tool call, not just the ones that look project-scoped.
+Reach is identical to what the same token could do through the REST API: an admin token sees every project on the install, a Member's token sees their own projects and any [shared](/docs/core/project/overview#sharing) with them, and a [project-pinned](/docs/api#project-pinning) token is narrowed to its pinned projects — enforced on every tool call, not just the ones that look project-scoped. A tool that is refused for access reasons looks the same as one asking about something that does not exist.
 
 ## The Tools
 
@@ -51,9 +53,39 @@ Reach is identical to what the same token could do through the REST API: an admi
 
 Every list and log tool is bounded — a default and a hard maximum, never "everything." `get_application_logs` and `get_deployment_logs` default to 200 lines (capped at 1000); `list_deployments` and `list_project_backups` default to 20 (capped at 100).
 
+## Tools That Make Changes
+
+| Tool | Scope | What it does |
+| --- | --- | --- |
+| `trigger_deployment` | `deploy` | Starts a deployment of an application now. Returns a `pending` deployment immediately; follow it with `list_deployments` and `get_deployment_logs`. Refused, with an explanation, while another deploy, build, reload, rebuild, or rollback is running for that application. |
+| `update_application` | `write` | Changes an application's name, source repository or image, branch, root directory, Dockerfile path, build type override, or builder image. |
+| `start_application` | `write` | Starts an application's existing stopped container. Does not build or deploy anything. |
+| `stop_application` | `write` | Stops an application's running container. The application goes offline; nothing is deleted. |
+| `set_application_env_vars` | `write` | Sets environment variables on an application. See [below](#environment-variables-and-secrets). |
+
+`start_application` and `stop_application` need `write`, not `deploy`: `deploy` means "cause a deployment" and nothing more, so a token you hand to CI cannot take an application offline.
+
+Three things hold for all of them:
+
+- **There is no confirmation step.** A dashboard button has a person behind it; a tool call does not. Each tool takes effect the moment it is called, which is why this set is deliberately limited to changes that are reversible or additive.
+- **Saving is not deploying.** `update_application` and `set_application_env_vars` save a change; the running container is untouched until a deployment applies it. The application's `pending_change` shows that a change is waiting, and `trigger_deployment` applies it.
+- **Only what you name changes.** `update_application` changes only the fields passed — every field left out keeps its current value, and an empty string clears one that can be cleared. An assistant mentioning one field cannot wipe the others. It cannot change an application's environment variables, domains, resource limits, health check, git credentials, or type.
+
+## Environment Variables and Secrets
+
+<Callout type="warn">
+Connecting an MCP client with a `write` token lets an LLM **set** your environment variables, including secrets. It can never read a secret back — revealing a secret value is available only to a dashboard session, never to a token. The non-secret values it sets are readable by anyone with read access to the application, as they are in the dashboard. Only connect a client you trust to write to your applications' configuration.
+</Callout>
+
+`set_application_env_vars` **adds or updates only the variables you list**. Every other variable on the application is left exactly as it is, and the tool never removes one — to remove a variable, use the dashboard. Passing one variable changes one variable. Values are stored encrypted, and the tool's reply names the keys it set but never repeats a value.
+
+A variable the tool creates is a **secret** unless it is passed with `is_secret: false`, so a key the assistant did not label is hidden rather than shown. An existing variable keeps its current secret setting unless one is passed. If any entry is invalid — a bad name, a duplicate, or more than 100 in one call — nothing is written. The audit entry lists the variable names and never the values.
+
 ## What It Cannot Do
 
-MCP goes further than the REST API's own [token boundaries](/docs/api#what-a-token-can-never-do): every tool is read-only structurally, regardless of the token's actual scope. A `write`-scoped token gains nothing by going through MCP instead of the REST API — there is no deploy, restart, delete, or restore tool to call, full stop. Mutating tools are planned for a later phase; when they arrive, they will need `write` or `deploy` scope the same way the equivalent REST endpoint does today.
+A token has never been able to destroy anything, and going through MCP does not change that: **there is no delete tool and no restore tool, and there never will be.** No MCP tool deletes an application, a database, a project, a domain, an environment variable, a backup, or a volume, or restores any of them. The same goes for the install itself: tokens, users, settings, quotas, and backup destinations are not reachable through MCP at all, because install-wide configuration is not something a project-scoped token holds.
+
+What MCP can change is the short list in [Tools That Make Changes](#tools-that-make-changes), each gated by the scope in that table. A `read` token cannot change anything, and a `write` token gains nothing by going through MCP that it could not already do through the REST API — MCP is narrower than the REST API, never wider. It also goes further than the REST API's own [token boundaries](/docs/api#what-a-token-can-never-do) in one respect: it exposes only these tools, not every endpoint a `write` token could otherwise reach.
 
 ## Calling a Tool Directly
 

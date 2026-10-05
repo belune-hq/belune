@@ -28,11 +28,12 @@ import { ProjectPinSelect } from "@/lib/components/project-pin-select";
 import { useCreateToken } from "@/lib/hooks/use-tokens";
 import type { TokenScope } from "@/lib/types";
 
-// Every phase-1 MCP tool sits behind middleware.RequireScope("read") on the
-// route itself (see routes.go) — there is nothing narrower or broader to
-// choose here, and offering a picker would undercut the point: this is
-// meant to be the obvious, narrowest-useful token, not a re-skin of the
-// general Create Token dialog.
+// Read is the floor the /mcp route requires (see routes.go) and is enough for
+// every tool that only looks. The tools that change things each need a wider
+// scope, checked per tool in mcpserver/scope.go; this dialog deliberately never
+// mints one — a picker would undercut the point, which is the obvious,
+// narrowest-useful token. Someone who wants an assistant to act mints a wider
+// token from the general Create Token dialog, knowingly.
 const MCP_SCOPE: TokenScope = "read";
 
 function mcpAddCommand(token: string) {

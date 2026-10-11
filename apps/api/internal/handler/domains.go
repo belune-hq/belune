@@ -716,8 +716,25 @@ func (h *Handler) DeleteRouteFeature(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.queries.DeleteRouteFeature(r.Context(), featureUUID); err != nil {
+	// ⚠️ Keyed on the domain as well as the feature — see the query. The gate
+	// above authorizes the {domainId} in the path; nothing tied this
+	// {featureId} to it, so a caller could name a domain it may reach and ANY
+	// feature id and delete it. That is a cross-project destructive write: it
+	// strips an ip_allowlist or basic_auth control off another project's live
+	// public route. Reproduced with a project-pinned token before this.
+	//
+	// 404 on no rows, so "belongs to another domain" and "does not exist" are
+	// the same answer — the id is the only thing protecting it.
+	deleted, err := h.queries.DeleteRouteFeature(r.Context(), generated.DeleteRouteFeatureParams{
+		ID:       featureUUID,
+		DomainID: domainUUID,
+	})
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to delete route feature")
+		return
+	}
+	if deleted == 0 {
+		writeError(w, http.StatusNotFound, "route feature not found")
 		return
 	}
 

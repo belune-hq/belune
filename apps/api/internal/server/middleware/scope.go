@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"slices"
 
@@ -134,7 +135,13 @@ func DenyPinnedToken(reason string) func(http.Handler) http.Handler {
 			if TokenPinnedFromContext(r.Context()) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusForbidden)
-				_, _ = w.Write([]byte(`{"error":"` + reason + `"}`))
+				// Marshalled rather than interpolated: reason is a caller's
+				// string, and a quote or backslash in one would emit a
+				// malformed body that a client parses as a transport error
+				// instead of a 403 with a reason. Every call site passes a
+				// constant today — this keeps that from being load-bearing.
+				// handler.writeError is unreachable from here (import cycle).
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": reason})
 				return
 			}
 			next.ServeHTTP(w, r)

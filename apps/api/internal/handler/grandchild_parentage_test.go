@@ -55,6 +55,17 @@ func TestGrandchildrenAreCheckedAgainstTheirParent(t *testing.T) {
 	t.Run("a grandchild under its own parent still works", func(t *testing.T) {
 		assert.Equal(t, http.StatusOK, f.status(t, "GET",
 			fmt.Sprintf("/api/projects/%s/applications/%s/deployments/%s", f.mineID, f.mineApp, mineDeploy), nil, f.pinned))
+		// ⚠️ build-logs needs its own control, and had none. The parentage
+		// check here can be mutated to `if true` — an unconditional 404 on
+		// every build-log stream, i.e. the operator's "watch the build" view
+		// broken outright — and the ENTIRE handler suite still passes: no
+		// other test drives this route over HTTP. Found by mutation.
+		//
+		// Terminates rather than streaming forever because deployIn inserts
+		// status 'success', so the handler sends the stored logs and a done
+		// event and returns.
+		assert.Equal(t, http.StatusOK, f.status(t, "GET",
+			fmt.Sprintf("/api/projects/%s/applications/%s/deployments/%s/build-logs", f.mineID, f.mineApp, mineDeploy), nil, f.pinned))
 		assert.Equal(t, http.StatusOK, f.status(t, "DELETE",
 			fmt.Sprintf("/api/projects/%s/applications/%s/domains/%s/features/%s", f.mineID, f.mineApp, f.mineDom, mineFeature), nil, f.pinned))
 	})

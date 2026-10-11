@@ -215,8 +215,15 @@ func TestStreamAllRequestLogs_DeniedForPinnedToken(t *testing.T) {
 	pinned := createPinnedAPIToken(t, adminUserID, extractID(project["id"]), service.AllScopes)
 	resp := env.DoRequest(t, "GET", "/api/requests/stream", nil, testutil.AuthHeader(pinned))
 	defer resp.Body.Close()
-	assert.Equal(t, http.StatusForbidden, resp.StatusCode,
+	require.Equal(t, http.StatusForbidden, resp.StatusCode,
 		"a pinned token must not stream the cross-project firehose")
+	// ⚠️ The MESSAGE, not just the code. The role and scope gates on this
+	// route answer 403 too, so a mutation that broke one of those for a
+	// pinned token would read as the pin deny working. A quota mutation
+	// survived exactly this way earlier in v0.1.19.
+	assert.Contains(t, fmt.Sprint(testutil.ReadJSON(t, resp)["error"]),
+		"cannot stream requests across every project",
+		"the 403 must come from the pin deny, not from the role or scope gate")
 }
 
 // TestAuditLogs_DeniedForPinnedToken covers the other install-wide surface a
@@ -245,8 +252,14 @@ func TestAuditLogs_DeniedForPinnedToken(t *testing.T) {
 			"%s: an unpinned token must still reach it, or the refusal below proves nothing", path)
 
 		denied := env.DoRequest(t, "GET", path, nil, testutil.AuthHeader(pinned))
-		denied.Body.Close()
-		assert.Equal(t, http.StatusForbidden, denied.StatusCode,
+		require.Equal(t, http.StatusForbidden, denied.StatusCode,
 			"%s: a pinned token must not read the install-wide audit log", path)
+		// ⚠️ The MESSAGE, not just the code — these routes are also role- and
+		// scope-gated, and both answer 403, so the bare code cannot tell the
+		// pin deny from a mutation that broke one of those instead.
+		assert.Contains(t, fmt.Sprint(testutil.ReadJSON(t, denied)["error"]),
+			"the audit log is install-wide",
+			"%s: the 403 must come from DenyPinnedToken, not the role or scope gate", path)
+		denied.Body.Close()
 	}
 }

@@ -1,6 +1,12 @@
 {
-  "latest": "0.1.18",
+  "latest": "0.1.19",
   "releases": [
+    {
+      "version": "0.1.19",
+      "breaking": true,
+      "requires_host_update": false,
+      "notes_url": "https://github.com/weiliang79/belune/releases/tag/v0.1.19"
+    },
     {
       "version": "0.1.18",
       "breaking": false,

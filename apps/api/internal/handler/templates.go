@@ -457,7 +457,7 @@ var errForbidden = errors.New("forbidden")
 // newly created (so a failed instantiation can roll it back).
 func (h *Handler) resolveTemplateProject(r *http.Request, m *template.Manifest, req instantiateTemplateRequest) (generated.Project, bool, error) {
 	// The target project arrives in the body here, not a {projectId} URL
-	// param, so middleware.RequireProjectAccess never sees it — check the pin
+	// param, so middleware.RequirePinnedProjectMatch never sees it — check the pin
 	// directly. A pinned token targeting a project OUTSIDE its pin set, or
 	// creating a brand new one (project_id empty), are both a reach outside
 	// the pin.

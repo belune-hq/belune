@@ -254,7 +254,7 @@ func isValidScope(s string) bool { return s == quota.ScopeUser || s == quota.Sco
 // writing the refusal itself when not.
 //
 // ⚠️ These routes are admin-gated but the project arrives as {scopeId}, not
-// {projectId}, so middleware.RequireProjectAccess never fires on them and
+// {projectId}, so middleware.RequirePinnedProjectMatch never fires on them and
 // nothing else narrowed them: a project-pinned token could read, and WRITE,
 // any project's limits — capping another project at one application and
 // blocking its deploys. Found in review, verified by doing it.

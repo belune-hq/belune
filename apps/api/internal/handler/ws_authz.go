@@ -67,7 +67,7 @@ var wsResourceChannels = []struct {
 
 // wsChannelAuthorizer is the ws.ChannelAuthorizer for the dashboard socket. It
 // reuses the REST authorization rule (ownerMayAccess, the core of canAccessOwned)
-// and adds the token-pin gate that REST enforces in RequireProjectAccess by URL
+// and adds the token-pin gate that REST enforces in RequirePinnedProjectMatch by URL
 // param — a subscribe has no {projectId} in its path, so like the MCP tools it
 // has to ask the pin itself, once per subscription.
 type wsChannelAuthorizer struct {

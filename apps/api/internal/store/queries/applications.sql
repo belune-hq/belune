@@ -111,7 +111,12 @@ SELECT count(*) FROM applications;
 -- name: GetApplicationOwnerUserID :one
 -- shared rides along so canAccessApplication can grant every Member access to
 -- a shared project's applications, not only its owner.
-SELECT p.user_id, p.shared FROM applications a
+-- project_id rides along so the caller can compose a project-pinned token's
+-- pin, which is a separate axis from ownership — GetDatabaseOwnerUserID has
+-- carried it for the WebSocket authorizer since v0.1.12, and REST needed it
+-- for the same reason: without it canAccessOwned can only ask who owns the
+-- resource, never which project it belongs to.
+SELECT p.user_id, p.shared, a.project_id FROM applications a
 JOIN projects p ON p.id = a.project_id
 WHERE a.id = $1;
 

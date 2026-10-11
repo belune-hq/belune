@@ -88,7 +88,7 @@ ORDER BY scope, created_at DESC
 
 // project_ids is the PAT pin set, not a user-facing filter. This route has no
 // {projectId} param — the project arrives as {scopeId} — so
-// middleware.RequireProjectAccess never fires on it, and without this a pinned
+// middleware.RequirePinnedProjectMatch never fires on it, and without this a pinned
 // token reads every project's limits and usage.
 //
 // A pinned token sees ONLY project-scoped rows inside its pin: a user-scoped

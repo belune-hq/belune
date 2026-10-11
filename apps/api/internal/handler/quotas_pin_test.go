@@ -36,7 +36,7 @@ func quotaScopeIDs(t *testing.T, token string) []string {
 
 // TestQuotas_RespectPinOnReads covers the disclosure half of a hole that also
 // allowed a cross-project WRITE. These routes are admin-gated, but the project
-// arrives as {scopeId}, not {projectId}, so middleware.RequireProjectAccess
+// arrives as {scopeId}, not {projectId}, so middleware.RequirePinnedProjectMatch
 // never fires on them and nothing else narrowed them.
 func TestQuotas_RespectPinOnReads(t *testing.T) {
 	resetDB(t)

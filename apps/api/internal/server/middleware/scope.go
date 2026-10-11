@@ -107,7 +107,7 @@ func RequireScopeByMethod() func(http.Handler) http.Handler {
 // true for an unpinned token or one pinned to a set that includes projectID.
 // A pinned token whose set is empty (every project it was pinned to has
 // since become unreachable) allows nothing — an empty intersection, never a
-// fallback to unrestricted. Shared by RequireProjectAccess below (which
+// fallback to unrestricted. Shared by RequirePinnedProjectMatch below (which
 // compares against a {projectId} URL param) and internal/mcpserver's tools,
 // which have no URL param to compare against and call this directly, once
 // per tool call, instead.
@@ -119,13 +119,27 @@ func PinAllows(ctx context.Context, projectID string) bool {
 	return slices.Contains(ids, projectID)
 }
 
-// RequireProjectAccess returns a middleware that rejects a request whose
+// RequirePinnedProjectMatch returns a middleware that rejects a request whose
 // {projectId} URL param does not match a project-pinned PAT's pin. A route
 // with no projectId param, or a token that isn't pinned (every existing
 // token today, and a session always), passes through untouched. Must be used
 // after Auth, and after chi has parsed URL params (i.e. inside the route
 // tree, not before it).
-func RequireProjectAccess() func(http.Handler) http.Handler {
+//
+// ⚠️⚠️ It compares the pin to the URL AND NOTHING ELSE. It does not check that
+// a {applicationId}, {databaseId} or {domainId} further along the path belongs
+// to that project, and it cannot — it has no database. Until v0.1.19 it was
+// named RequireProjectAccess, and that name is why this gap went unnoticed on
+// ~92 nested route registrations: reviewers, comments and handlers all read
+// "project access is handled" and stopped looking. A pinned token could pass
+// its OWN project id with ANY child id and read, or write, the resource.
+//
+// The parentage half lives in handler.ownedAccess, which resolves the
+// resource's ACTUAL project and runs middleware.PinAllows against that. Both
+// are needed: this one is applied by route-group registration and so cannot be
+// forgotten, and it refuses before any database work; that one is the only
+// place that can know what the child really belongs to.
+func RequirePinnedProjectMatch() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			requested := chi.URLParam(r, "projectId")

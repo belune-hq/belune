@@ -22,7 +22,7 @@ type createProjectRequest struct {
 //apidoc:title Create Project
 //apidoc:order 3
 func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
-	// middleware.RequireProjectAccess only ever compares against a
+	// middleware.RequirePinnedProjectMatch only ever compares against a
 	// {projectId} URL param, so it has nothing to check here — creating a
 	// project has no existing id to pin against, but a new project is by
 	// definition not the one a pinned token was narrowed to. Reject
@@ -73,9 +73,10 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) projectOwner(projectID pgtype.UUID) ownerLookup {
-	return func(ctx context.Context) (pgtype.UUID, bool, error) {
+	return func(ctx context.Context) (pgtype.UUID, pgtype.UUID, bool, error) {
 		project, err := h.queries.GetProject(ctx, projectID)
-		return project.UserID, project.Shared, err
+		// The resource IS the project, so it is its own parent for the pin.
+		return project.ID, project.UserID, project.Shared, err
 	}
 }
 
@@ -126,7 +127,7 @@ func (h *Handler) GetProject(w http.ResponseWriter, r *http.Request) {
 //apidoc:order 1
 func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {
 	role := middleware.RoleFromContext(r.Context())
-	// This list has no {projectId} URL param for middleware.RequireProjectAccess
+	// This list has no {projectId} URL param for middleware.RequirePinnedProjectMatch
 	// to check, so a pinned token would otherwise see every project's
 	// name/slug it could enumerate before the pin — narrow the result here.
 	// nil means unpinned (no filtering); non-nil (even empty) means "only

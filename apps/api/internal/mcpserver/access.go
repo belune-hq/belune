@@ -110,7 +110,7 @@ func canAccessOwned(ctx context.Context, ownerID pgtype.UUID, shared bool) bool 
 // pinAllows is middleware.PinAllows under the name every call site in this
 // package already uses. Every tool that resolves a project id must call
 // this: unlike a REST route, an MCP tool call has no {projectId} URL param
-// for middleware.RequireProjectAccess to enforce the pin against, so each
+// for middleware.RequirePinnedProjectMatch to enforce the pin against, so each
 // tool does it itself, once per call.
 func pinAllows(ctx context.Context, projectID string) bool {
 	return middleware.PinAllows(ctx, projectID)

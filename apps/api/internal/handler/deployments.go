@@ -132,7 +132,7 @@ func (h *Handler) GetGlobalDeployments(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// project_id here is a query filter, not a {projectId} URL param, so
-	// middleware.RequireProjectAccess never sees it — enforce the pin
+	// middleware.RequirePinnedProjectMatch never sees it — enforce the pin
 	// directly. An explicit filter outside the pin set is rejected; an
 	// absent one is narrowed to the whole pin set rather than left to fall
 	// through to every project the token's owner can otherwise reach.

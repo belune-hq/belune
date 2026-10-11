@@ -40,7 +40,12 @@ DELETE FROM domains WHERE id = $1;
 -- name: GetDomainOwnerUserID :one
 -- shared rides along so canAccessDomain can grant every Member access to a
 -- shared project's domains, not only its owner.
-SELECT p.user_id, p.shared FROM domains d
+-- project_id rides along so the caller can compose a project-pinned token's
+-- pin, which is a separate axis from ownership — GetDatabaseOwnerUserID has
+-- carried it for the WebSocket authorizer since v0.1.12, and REST needed it
+-- for the same reason: without it canAccessOwned can only ask who owns the
+-- resource, never which project it belongs to.
+SELECT p.user_id, p.shared, a.project_id FROM domains d
 JOIN applications a ON a.id = d.application_id
 JOIN projects p ON p.id = a.project_id
 WHERE d.id = $1;
@@ -161,7 +166,7 @@ WHERE (sqlc.narg('user_id')::uuid IS NULL
        OR p.user_id = sqlc.narg('user_id')
        OR p.shared)
   -- project_ids is the PAT pin set, not a user-facing filter. This route has
-  -- no {projectId} param, so middleware.RequireProjectAccess never fires on
+  -- no {projectId} param, so middleware.RequirePinnedProjectMatch never fires on
   -- it and a pinned token would otherwise read every domain its owner can
   -- reach — the same hole GetGlobalDeployments closes in its own handler. A
   -- non-NULL, even empty, array matches nothing (see ListAllProjectsLimit).
@@ -175,7 +180,7 @@ ORDER BY d.hostname;
 -- largest response this server can produce. project_ids is the PAT pin set
 -- (see ListAllProjectsLimit for why a non-NULL, even empty, array must match
 -- nothing rather than everything), applied here in SQL for the same reason:
--- this route has no {projectId} param, so middleware.RequireProjectAccess
+-- this route has no {projectId} param, so middleware.RequirePinnedProjectMatch
 -- never fires on it and a pinned token would otherwise read every domain its
 -- owner can reach. Additive: REST's ListDomainTLSStatus handler keeps using
 -- the unbounded query above unchanged.

@@ -211,7 +211,7 @@
       "get": {
         "operationId": "ListAuditLogs",
         "summary": "Get Logs",
-        "description": "Requires the Admin role.",
+        "description": "A project-pinned token cannot use this endpoint at all, even for a project inside its pin set. Requires the Admin role.",
         "tags": [
           "Audit Logs (Admin)"
         ],
@@ -332,7 +332,7 @@
       "get": {
         "operationId": "ListAuditActions",
         "summary": "Get Actions",
-        "description": "Requires the Admin role.",
+        "description": "A project-pinned token cannot use this endpoint at all, even for a project inside its pin set. Requires the Admin role.",
         "tags": [
           "Audit Logs (Admin)"
         ],
@@ -379,7 +379,7 @@
       "get": {
         "operationId": "ExportAuditLogs",
         "summary": "Export Logs",
-        "description": "Requires the Admin role.",
+        "description": "A project-pinned token cannot use this endpoint at all, even for a project inside its pin set. Requires the Admin role.",
         "tags": [
           "Audit Logs (Admin)"
         ],
@@ -3920,7 +3920,7 @@
       "post": {
         "operationId": "CreateProject",
         "summary": "Create Project",
-        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
+        "description": "A project-pinned token cannot use this endpoint at all, even for a project inside its pin set.",
         "tags": [
           "Projects"
         ],
@@ -12025,7 +12025,7 @@
       "get": {
         "operationId": "StreamAllRequestLogs",
         "summary": "Stream Logs",
-        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope. Requires the Admin role.",
+        "description": "A project-pinned token cannot use this endpoint at all, even for a project inside its pin set. Requires the Admin role.",
         "tags": [
           "Requests (Admin)"
         ],

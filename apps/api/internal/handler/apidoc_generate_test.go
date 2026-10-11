@@ -168,6 +168,14 @@ type apidocRoute struct {
 	// registration shows nothing of.
 	Query         []string
 	HandlerPinned bool
+	// PinRefused is the other answer a pinned token can get: refused the
+	// endpoint outright. Two sources, both invisible to the probe — a
+	// DenyPinnedToken in the middleware chain (read structurally, since
+	// reflection cannot recover its reason string), and a handler that
+	// refuses in its own body. Mutually exclusive with HandlerPinned by
+	// construction below: a route cannot both narrow to the pin and refuse
+	// it.
+	PinRefused bool
 }
 
 // apidocRouteKey is "METHOD /path" — a stable, comparable identity for a
@@ -399,6 +407,11 @@ func TestGenerateAPIReference(t *testing.T) {
 			Handler: apidocFuncName(handler),
 			Pinned:  strings.Contains(route, "{projectId}"),
 			Session: apidocMiddlewareContains(mws, "RequireSession"),
+			// Route middleware, so the handler body reveals nothing of it and
+			// apidocExtractBehaviour cannot see it. Without this the three
+			// audit-log routes documented only "Requires the Admin role."
+			// while in fact refusing a pinned token entirely.
+			PinRefused: apidocMiddlewareContains(mws, "DenyPinnedToken"),
 		}
 		if apidocMiddlewareContains(mws, "RequireRole") {
 			row.Roles = roleSet
@@ -531,10 +544,33 @@ func TestGenerateAPIReference(t *testing.T) {
 		// Only interesting where RequirePinnedProjectMatch is blind: with a
 		// {projectId} in the path the middleware already enforces the pin and
 		// r.Pinned says so.
-		routes[i].HandlerPinned = b.Pinned && !r.Pinned
+		routes[i].HandlerPinned = b.PinNarrows && !r.Pinned
+		// A body-level refusal, e.g. StreamAllRequestLogs. Narrowing wins if
+		// the handler does both, since reaching PinAllows anywhere means some
+		// projects DO pass; and a route already refused by DenyPinnedToken
+		// keeps that, whatever its body does.
+		if b.PinRefuses && !b.PinNarrows && !r.Pinned {
+			routes[i].PinRefused = true
+		}
 	}
 
 	apidocAssertBehaviourExtracted(t, routes)
+
+	// ⚠️ Stop before WRITING if anything above failed. These are assert, not
+	// require, so the run continues after a failure by design — one report
+	// listing every wrong route beats fixing them one per run. But continuing
+	// used to reach apidocWriteSpec, so a generator that had just declared
+	// its own output wrong published it anyway, over the correct spec, and
+	// left the tree looking like an intended change.
+	//
+	// Cost me real time: mutation-testing the pin sentences overwrote
+	// openapi.json with the mutated wording, and the restore of this file did
+	// not undo it. In CI the drift gate would then compare the tree against a
+	// spec the generator itself had rejected.
+	if t.Failed() {
+		t.Fatalf("refusing to write the spec: the extraction above is wrong, " +
+			"and overwriting the committed spec with it would hide that")
+	}
 
 	doc := apidocBuildDocument(t, routes, sig, directives, reg)
 	apidocWriteSpec(t, doc)
@@ -1232,12 +1268,12 @@ func apidocAssertBehaviourExtracted(t *testing.T, routes []apidocRoute) {
 	// read, where the handler enforces the token's pin itself. Every one of
 	// these is a real gate the route registration shows nothing of.
 	for _, handler := range []string{
-		"GetGlobalDeployments", "ListProjects", "CreateProject",
+		"GetGlobalDeployments", "ListProjects",
 		"InstantiateTemplate", "ListDomainTLSStatus",
-		// The /api/requests surface: admin-gated, no {projectId}, and until
-		// v0.1.19 not pin-filtered at all. The list and summary narrow their
-		// queries; the stream refuses a pinned token outright, the same answer
-		// wsAdminChannelAllowed gives its WebSocket twin.
+		// The /api/requests list and summary: admin-gated, no {projectId},
+		// and until v0.1.19 not pin-filtered at all. Both narrow their
+		// queries. StreamAllRequestLogs is NOT here — it refuses a pinned
+		// token outright and is asserted below instead.
 		//
 		// ⚠️ This assertion says the reference DOCUMENTS the pin. It does not
 		// say the pin WORKS: the extraction reads the handler body for the
@@ -1245,7 +1281,7 @@ func apidocAssertBehaviourExtracted(t *testing.T, routes []apidocRoute) {
 		// to the query still satisfies this and still publishes "scoped to the
 		// pin set". Verified by doing exactly that. The behavioural half lives
 		// in request_logs_pin_test.go, and that is the one that would fail.
-		"ListAllRequestLogs", "GetAllRequestsSummary", "StreamAllRequestLogs",
+		"ListAllRequestLogs", "GetAllRequestsSummary",
 	} {
 		r, ok := byHandler[handler]
 		if !assert.True(t, ok, "%s should be a documented route", handler) {
@@ -1255,6 +1291,33 @@ func apidocAssertBehaviourExtracted(t *testing.T, routes []apidocRoute) {
 			"%s enforces the project pin in its body — the reference must say so", handler)
 		assert.False(t, r.Pinned,
 			"%s has no {projectId}; if it grew one this assertion is the wrong shape", handler)
+		assert.False(t, r.PinRefused,
+			"%s NARROWS to the pin set; documenting it as a flat refusal would be false", handler)
+	}
+
+	// The other answer: refused outright. A pinned token gets none of these,
+	// including for a project inside its pin, so they must NOT carry the
+	// "scoped to the pin set" sentence — that would promise a narrowing which
+	// does not exist. The stream refuses in its handler body; the three audit
+	// routes refuse via a DenyPinnedToken in their middleware chain, which the
+	// body reveals nothing of.
+	for _, handler := range []string{
+		"StreamAllRequestLogs",
+		"ListAuditLogs", "ListAuditActions", "ExportAuditLogs",
+		// Found by splitting the flag, not by review: CreateProject refuses a
+		// pinned token too, and had been documented as "scoped to the pin
+		// set" — which for a route that creates a NEW project could never
+		// mean anything. A pinned token cannot widen its own reach.
+		"CreateProject",
+	} {
+		r, ok := byHandler[handler]
+		if !assert.True(t, ok, "%s should be a documented route", handler) {
+			continue
+		}
+		assert.True(t, r.PinRefused,
+			"%s refuses a pinned token entirely — the reference must say so", handler)
+		assert.False(t, r.HandlerPinned,
+			"%s does not narrow to the pin set; saying so would imply a project inside the pin works", handler)
 	}
 
 	// Floor, not an exact count: a new route with a query parameter should not
@@ -1273,8 +1336,23 @@ func apidocAssertBehaviourExtracted(t *testing.T, routes []apidocRoute) {
 // cannot: the query parameters it reads, and whether it enforces the token's
 // project pin itself.
 type apidocBehaviour struct {
-	Query  []string // query parameter names, sorted
-	Pinned bool     // calls middleware.TokenProjectsFromContext/TokenPinnedFromContext/PinAllows
+	Query []string // query parameter names, sorted
+	// A project-pinned token meets one of two different answers, and the
+	// reference has to tell them apart. PinNarrows is "you see your own
+	// projects" — the handler resolves the pin and filters by it
+	// (TokenProjectsFromContext, PinAllows). PinRefuses is "you see nothing"
+	// — the handler only asks WHETHER the caller is pinned
+	// (TokenPinnedFromContext) and turns it away.
+	//
+	// ⚠️ Collapsing these into one flag published a false sentence on
+	// /api/requests/stream for the whole of v0.1.19's development: it said a
+	// project outside the pin is rejected, implying one inside it works,
+	// when a pinned token is refused the entire stream. Narrowing wins when
+	// both are set, which is the common case — ownedAccess reaches
+	// TokenPinnedFromContext for its unpinned fast path and PinAllows for
+	// the real check, and that is a narrowing route.
+	PinNarrows bool
+	PinRefuses bool
 }
 
 // apidocExtractBehaviour walks every function in the package — not only route
@@ -1296,9 +1374,10 @@ type apidocBehaviour struct {
 // document, and guessing one would be worse than the silence it replaces.
 func apidocExtractBehaviour(pkg *packages.Package, handlerMethods map[string]bool) map[string]apidocBehaviour {
 	type node struct {
-		query   map[string]bool
-		pinned  bool
-		callees []string
+		query      map[string]bool
+		pinNarrows bool
+		pinRefuses bool
+		callees    []string
 	}
 	nodes := map[string]*node{}
 
@@ -1329,8 +1408,10 @@ func apidocExtractBehaviour(pkg *packages.Package, handlerMethods map[string]boo
 					if lit, ok := apidocStringLit(call.Args[0]); ok {
 						n.query[lit] = true
 					}
-				case sel.Sel.Name == "TokenProjectsFromContext", sel.Sel.Name == "TokenPinnedFromContext", sel.Sel.Name == "PinAllows":
-					n.pinned = true
+				case sel.Sel.Name == "TokenProjectsFromContext", sel.Sel.Name == "PinAllows":
+					n.pinNarrows = true
+				case sel.Sel.Name == "TokenPinnedFromContext":
+					n.pinRefuses = true
 				}
 				// h.someOtherHandler(...) — the delegate edge the response
 				// extractor already relies on, reused here.
@@ -1361,8 +1442,12 @@ func apidocExtractBehaviour(pkg *packages.Package, handlerMethods map[string]boo
 						changed = true
 					}
 				}
-				if c.pinned && !n.pinned {
-					n.pinned = true
+				if c.pinNarrows && !n.pinNarrows {
+					n.pinNarrows = true
+					changed = true
+				}
+				if c.pinRefuses && !n.pinRefuses {
+					n.pinRefuses = true
 					changed = true
 				}
 			}
@@ -1374,7 +1459,7 @@ func apidocExtractBehaviour(pkg *packages.Package, handlerMethods map[string]boo
 
 	out := map[string]apidocBehaviour{}
 	for name, n := range nodes {
-		if len(n.query) == 0 && !n.pinned {
+		if len(n.query) == 0 && !n.pinNarrows && !n.pinRefuses {
 			continue
 		}
 		keys := make([]string, 0, len(n.query))
@@ -1382,7 +1467,7 @@ func apidocExtractBehaviour(pkg *packages.Package, handlerMethods map[string]boo
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
-		out[name] = apidocBehaviour{Query: keys, Pinned: n.pinned}
+		out[name] = apidocBehaviour{Query: keys, PinNarrows: n.pinNarrows, PinRefuses: n.pinRefuses}
 	}
 	return out
 }
@@ -1831,7 +1916,18 @@ func apidocOperationDescription(r apidocRoute, directive apidocDirective) string
 	// sentence can only ever be vacuous there — and it would appear on more
 	// and more routes as handlers reach PinAllows transitively, which is what
 	// adding the pin to canAccessOwned did to CreateAPIToken.
-	if (r.Pinned || r.HandlerPinned) && !r.Session {
+	switch {
+	case r.PinRefused && !r.Session:
+		// Deliberately NOT the "scoped" sentence, which would promise that a
+		// project INSIDE the pin works — the opposite of what happens here.
+		//
+		// No reason clause: the three refusal kinds have three different
+		// reasons (a cross-project firehose, install-wide audit data, and
+		// creating a project that no pin could contain), so a single sentence
+		// asserting one of them is wrong on the others. Each endpoint's own
+		// 403 body carries its reason.
+		notes = append(notes, "A project-pinned token cannot use this endpoint at all, even for a project inside its pin set.")
+	case (r.Pinned || r.HandlerPinned) && !r.Session:
 		notes = append(notes, "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.")
 	}
 	if len(r.Roles) > 0 {

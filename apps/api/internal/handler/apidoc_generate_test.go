@@ -1814,7 +1814,12 @@ func apidocOperationDescription(r apidocRoute, directive apidocDirective) string
 	var notes []string
 	// Either kind of pin: the middleware's, or the handler's own for a route
 	// with no {projectId} param for that middleware to compare against.
-	if r.Pinned || r.HandlerPinned {
+	//
+	// ⚠️ Never on a session-only route. A session is never pinned, so the
+	// sentence can only ever be vacuous there — and it would appear on more
+	// and more routes as handlers reach PinAllows transitively, which is what
+	// adding the pin to canAccessOwned did to CreateAPIToken.
+	if (r.Pinned || r.HandlerPinned) && !r.Session {
 		notes = append(notes, "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.")
 	}
 	if len(r.Roles) > 0 {

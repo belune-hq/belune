@@ -3971,7 +3971,6 @@
       "delete": {
         "operationId": "DeleteProject",
         "summary": "Delete Project",
-        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
         "tags": [
           "Projects"
         ],
@@ -4249,7 +4248,6 @@
       "delete": {
         "operationId": "DeleteApplication",
         "summary": "Delete Application",
-        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
         "tags": [
           "Applications"
         ],
@@ -4946,7 +4944,6 @@
       "get": {
         "operationId": "RevealDeployHook",
         "summary": "Reveal Deploy Hook",
-        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
         "tags": [
           "Application Deployments"
         ],
@@ -5333,7 +5330,6 @@
       "delete": {
         "operationId": "RemoveDomain",
         "summary": "Remove Domain",
-        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
         "tags": [
           "Application Domains \u0026 TLS"
         ],
@@ -5986,7 +5982,6 @@
       "get": {
         "operationId": "RevealEnvVar",
         "summary": "Reveal Env Var",
-        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
         "tags": [
           "Application Environment Variables"
         ],
@@ -6343,7 +6338,6 @@
       "get": {
         "operationId": "RevealFileMount",
         "summary": "Reveal File Mount",
-        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
         "tags": [
           "Application File Mounts"
         ],
@@ -7796,7 +7790,6 @@
       "post": {
         "operationId": "CreateTerminalSession",
         "summary": "Create Terminal Session",
-        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
         "tags": [
           "Terminal Access"
         ],
@@ -8070,7 +8063,6 @@
       "delete": {
         "operationId": "DeleteApplicationVolume",
         "summary": "Delete Application Volume",
-        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
         "tags": [
           "Application Volumes \u0026 Backups"
         ],
@@ -8626,7 +8618,6 @@
       "post": {
         "operationId": "RestoreVolumeBackup",
         "summary": "Restore Volume Backup",
-        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
         "tags": [
           "Application Volumes \u0026 Backups"
         ],
@@ -8850,7 +8841,6 @@
       "get": {
         "operationId": "RevealWebhookSecret",
         "summary": "Reveal Webhook Secret",
-        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
         "tags": [
           "Application Deployments"
         ],
@@ -9465,7 +9455,6 @@
       "delete": {
         "operationId": "DeleteDatabase",
         "summary": "Delete Database",
-        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
         "tags": [
           "Databases"
         ],
@@ -10151,7 +10140,6 @@
       "delete": {
         "operationId": "DeleteDatabaseBackup",
         "summary": "Delete Database Backup",
-        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
         "tags": [
           "Database Volumes \u0026 Backups"
         ],
@@ -10222,7 +10210,6 @@
       "get": {
         "operationId": "RevealDatabaseCredentials",
         "summary": "Reveal Database Credentials",
-        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
         "tags": [
           "Databases"
         ],
@@ -10761,7 +10748,6 @@
       "post": {
         "operationId": "RestoreDatabase",
         "summary": "Restore Database",
-        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
         "tags": [
           "Database Volumes \u0026 Backups"
         ],
@@ -11276,7 +11262,6 @@
       "get": {
         "operationId": "RevealProjectEnvVar",
         "summary": "Reveal Project Env Var",
-        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
         "tags": [
           "Project Environment Variables"
         ],
@@ -11448,7 +11433,6 @@
       "delete": {
         "operationId": "DeleteOrphanedDatabaseBackup",
         "summary": "Delete Orphaned Database Backup",
-        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
         "tags": [
           "Database Volumes \u0026 Backups"
         ],
@@ -11510,7 +11494,6 @@
       "post": {
         "operationId": "RestoreDatabaseFromTombstone",
         "summary": "Restore Database From Tombstone",
-        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
         "tags": [
           "Database Volumes \u0026 Backups"
         ],
@@ -11567,7 +11550,6 @@
       "put": {
         "operationId": "UpdateProjectSharing",
         "summary": "Update Project Sharing",
-        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
         "tags": [
           "Projects"
         ],
@@ -11625,7 +11607,7 @@
       "put": {
         "operationId": "TransferProject",
         "summary": "Transfer Project",
-        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope. Requires the Admin role.",
+        "description": "Requires the Admin role.",
         "tags": [
           "Projects"
         ],
@@ -11733,7 +11715,7 @@
       "delete": {
         "operationId": "DeleteQuota",
         "summary": "Delete Quota",
-        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope. Requires the Admin role.",
+        "description": "Requires the Admin role.",
         "tags": [
           "Quotas (Admin)"
         ],
@@ -11859,7 +11841,7 @@
       "put": {
         "operationId": "UpsertQuota",
         "summary": "Upsert Quota",
-        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope. Requires the Admin role.",
+        "description": "Requires the Admin role.",
         "tags": [
           "Quotas (Admin)"
         ],

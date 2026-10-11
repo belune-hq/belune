@@ -11912,7 +11912,7 @@
       "get": {
         "operationId": "ListAllRequestLogs",
         "summary": "Get Logs",
-        "description": "Requires the Admin role.",
+        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope. Requires the Admin role.",
         "tags": [
           "Requests (Admin)"
         ],
@@ -12025,7 +12025,7 @@
       "get": {
         "operationId": "StreamAllRequestLogs",
         "summary": "Stream Logs",
-        "description": "Requires the Admin role.",
+        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope. Requires the Admin role.",
         "tags": [
           "Requests (Admin)"
         ],
@@ -12062,7 +12062,7 @@
       "get": {
         "operationId": "GetAllRequestsSummary",
         "summary": "Get Summary",
-        "description": "Requires the Admin role.",
+        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope. Requires the Admin role.",
         "tags": [
           "Requests (Admin)"
         ],

@@ -655,10 +655,24 @@ func registerRoutes(r chi.Router, h *handler.Handler, auth *service.AuthService,
 					// makes this install reach out to belune.dev, which is the
 					// operator's call, not a script's.
 					r.With(middleware.RequireSession()).Post("/api/maintenance/update/check", h.TriggerUpdateCheck)
+					// ⚠️ Reads stay token-reachable, narrowed to a pinned
+					// token's pin (the project arrives as {scopeId}, so
+					// RequireProjectAccess cannot do it — the handlers and the
+					// list query do). Checking your own limits from a script is
+					// a legitimate use.
+					//
+					// ⛔ WRITES REQUIRE A SESSION. A quota decides whether
+					// another project can deploy at all, so capping one is an
+					// operator decision in the same family as issuing
+					// credentials or opening the host shell — not something a
+					// leaked token should be able to do. This TIGHTENS what a
+					// PAT may reach, which the versioning contract permits on a
+					// patch release and requires be listed under Breaking
+					// changes.
 					r.Get("/api/quotas", h.ListQuotas)
 					r.Get("/api/quotas/{scope}/{scopeId}", h.GetQuota)
-					r.Put("/api/quotas/{scope}/{scopeId}", h.UpsertQuota)
-					r.Delete("/api/quotas/{scope}/{scopeId}", h.DeleteQuota)
+					r.With(middleware.RequireSession()).Put("/api/quotas/{scope}/{scopeId}", h.UpsertQuota)
+					r.With(middleware.RequireSession()).Delete("/api/quotas/{scope}/{scopeId}", h.DeleteQuota)
 					// Centralised TLS certificate store (upload once, use per-domain)
 					r.Get("/api/certificates", h.ListCertificates)
 					r.Post("/api/certificates", h.UploadCertificate)

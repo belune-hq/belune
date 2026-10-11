@@ -80,11 +80,27 @@ func (q *Queries) GetQuota(ctx context.Context, arg GetQuotaParams) (Quota, erro
 }
 
 const listQuotas = `-- name: ListQuotas :many
-SELECT id, scope, scope_id, max_applications, max_cpu, max_memory_mb, created_at, updated_at FROM quotas ORDER BY scope, created_at DESC
+SELECT id, scope, scope_id, max_applications, max_cpu, max_memory_mb, created_at, updated_at FROM quotas
+WHERE ($1::uuid[] IS NULL
+       OR (scope = 'project' AND scope_id = ANY($1)))
+ORDER BY scope, created_at DESC
 `
 
-func (q *Queries) ListQuotas(ctx context.Context) ([]Quota, error) {
-	rows, err := q.db.Query(ctx, listQuotas)
+// project_ids is the PAT pin set, not a user-facing filter. This route has no
+// {projectId} param — the project arrives as {scopeId} — so
+// middleware.RequireProjectAccess never fires on it, and without this a pinned
+// token reads every project's limits and usage.
+//
+// A pinned token sees ONLY project-scoped rows inside its pin: a user-scoped
+// quota governs every project that user owns, so returning one would reach past
+// the pin by another route. The same reasoning refuses a pinned token the
+// user scope on the single-quota endpoints.
+//
+// Narrowed here rather than after the fetch so there is one enforcement point,
+// and a non-NULL even EMPTY array matches nothing — a token pinned only to
+// deleted projects sees no quotas at all.
+func (q *Queries) ListQuotas(ctx context.Context, projectIds []pgtype.UUID) ([]Quota, error) {
+	rows, err := q.db.Query(ctx, listQuotas, projectIds)
 	if err != nil {
 		return nil, err
 	}

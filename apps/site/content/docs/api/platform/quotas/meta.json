@@ -2,8 +2,6 @@
   "title": "Quotas",
   "pages": [
     "list-quotas",
-    "get-quota",
-    "upsert-quota",
-    "delete-quota"
+    "get-quota"
   ]
 }

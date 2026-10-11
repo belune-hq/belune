@@ -151,6 +151,46 @@ func TestAllRequestLogs_PinSurvivesAnExplicitApplicationFilter(t *testing.T) {
 		"naming an application outside the pin must not reach past it")
 }
 
+// TestAllRequestLogs_EmptyPinSetReadsNothing defends an invariant this change
+// newly wrote down and four endpoints now depend on: a token that IS pinned but
+// has no reachable projects left must match NOTHING, not everything.
+//
+// ⚠️ Reachable in production, not a contrived state. api_token_projects.project_id
+// is ON DELETE CASCADE, so deleting the pinned project empties the set while the
+// token stays pinned. GetAPITokenByHash says the rule outright — project_ids is
+// '{}' for an unpinned token "exactly as often as for a pinned token with no
+// reachable projects left ... the caller distinguishes those by pinned, never by
+// array length" — and pinnedProjectUUIDs is shared, so collapsing the two would
+// silently widen /api/deployments and /api/domains/tls along with these.
+//
+// Found by review as a surviving mutation: changing `ids == nil` to
+// `len(ids) == 0` passed the entire handler suite.
+func TestAllRequestLogs_EmptyPinSetReadsNothing(t *testing.T) {
+	resetDB(t)
+	adminToken := env.SetupAdmin(t, "admin@test.com", "password123")
+	adminUserID := extractID(mustAuthMe(t, adminToken)["id"])
+
+	doomed := env.CreateProject(t, adminToken, "Doomed", "doomed")
+	doomedID := extractID(doomed["id"])
+
+	other := env.CreateProject(t, adminToken, "Other", "other")
+	appWithRequests(t, adminToken, extractID(other["id"]), "Other App", "/other/secret")
+
+	pinned := createPinnedAPIToken(t, adminUserID, doomedID, service.AllScopes)
+
+	// Delete the only project the token is pinned to. The pin row cascades, so
+	// the token is now pinned to nothing while still being pinned.
+	resp := env.DoRequest(t, "DELETE", "/api/projects/"+doomedID, nil, testutil.AuthHeader(adminToken))
+	require.Equal(t, http.StatusOK, resp.StatusCode, "DELETE /api/projects/{id}")
+	resp.Body.Close()
+
+	assert.Empty(t, requestPaths(t, pinned),
+		"a token pinned to nothing must read nothing — not everything")
+	total, perMinute := requestTotal(t, pinned)
+	assert.Equal(t, float64(0), total, "nor count it")
+	assert.Equal(t, float64(0), perMinute, "nor watch it by the minute")
+}
+
 // TestStreamAllRequestLogs_DeniedForPinnedToken mirrors wsAdminChannelAllowed,
 // which has refused a pinned token the WebSocket twin of this firehose since
 // v0.1.12. Until this change REST streamed a pinned token the very data the
@@ -160,6 +200,17 @@ func TestStreamAllRequestLogs_DeniedForPinnedToken(t *testing.T) {
 	adminToken := env.SetupAdmin(t, "admin@test.com", "password123")
 	adminUserID := extractID(mustAuthMe(t, adminToken)["id"])
 	project := env.CreateProject(t, adminToken, "First", "first")
+
+	// ⚠️ The unpinned control, without which an unconditional deny ships green.
+	// Found by review: inverting the guard to `if true || ...` passed the whole
+	// handler suite, because this was the only test touching the route. It is
+	// also the one route here whose production behaviour is a flat refusal, so
+	// "it refuses" on its own says nothing.
+	unpinned := mintScoped(t, adminToken, service.AllScopes)
+	open := env.DoRequest(t, "GET", "/api/requests/stream", nil, testutil.AuthHeader(unpinned))
+	open.Body.Close()
+	require.NotEqual(t, http.StatusForbidden, open.StatusCode,
+		"an unpinned token must still reach the stream — otherwise the assertion below is vacuous")
 
 	pinned := createPinnedAPIToken(t, adminUserID, extractID(project["id"]), service.AllScopes)
 	resp := env.DoRequest(t, "GET", "/api/requests/stream", nil, testutil.AuthHeader(pinned))

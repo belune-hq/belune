@@ -506,12 +506,15 @@ func TestGenerateAPIReference(t *testing.T) {
 	// response for a route that ends with the control-plane container being
 	// replaced. This constant is deliberately edited only after watching the
 	// test fail at the old value first (confirmed each time: 38 -> 36, 36 ->
-	// 35, 35 -> 42, 42 -> 44, then 44 -> 45, before this constant did), the
-	// same way a floor assertion is meant to be moved. If this moves again, a
-	// route was added, removed, or re-gated — worth an explicit look either
-	// way, the same reasoning destroy_boundary_test.go and
-	// reveal_boundary_test.go's own sanity floors give for their sets.
-	require.Equal(t, 47, sessionRoutes, "expected exactly 47 RequireSession routes")
+	// 35, 35 -> 42, 42 -> 44, then 44 -> 45, and 47 -> 49 when PUT and DELETE
+	// /api/quotas/{scope}/{scopeId} were re-gated — a quota decides whether a
+	// project can deploy at all, so capping one is an operator decision, not
+	// something a leaked token should reach), the same way a floor assertion is
+	// meant to be moved. If this moves again, a route was added, removed, or
+	// re-gated — worth an explicit look either way, the same reasoning
+	// destroy_boundary_test.go and reveal_boundary_test.go's own sanity floors
+	// give for their sets.
+	require.Equal(t, 49, sessionRoutes, "expected exactly 49 RequireSession routes")
 
 	sig, directives, behaviour, reg := apidocExtractTypes(t)
 	apidocAssertEmbedsPromoted(t, reg)

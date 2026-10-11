@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/weiliang79/belune/internal/quota"
+	"github.com/weiliang79/belune/internal/server/middleware"
 	"github.com/weiliang79/belune/internal/store/generated"
 )
 
@@ -29,7 +30,14 @@ func (h *Handler) ListQuotas(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "quotas unavailable")
 		return
 	}
-	rows, err := h.queries.ListQuotas(r.Context())
+	// Narrowed to the pin in SQL — see the query. An unpinned caller passes
+	// NULL and sees everything.
+	pinnedIDs, err := pinnedProjectUUIDs(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "invalid pinned project")
+		return
+	}
+	rows, err := h.queries.ListQuotas(r.Context(), pinnedIDs)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list quotas")
 		return
@@ -62,6 +70,9 @@ func (h *Handler) GetQuota(w http.ResponseWriter, r *http.Request) {
 	}
 	if !isValidScope(scope) {
 		writeError(w, http.StatusBadRequest, "scope must be 'user' or 'project'")
+		return
+	}
+	if !h.quotaScopeAllowed(w, r, scope, scopeID) {
 		return
 	}
 	limits, err := h.quotaSvc.LimitsFor(r.Context(), scope, scopeID)
@@ -98,6 +109,9 @@ func (h *Handler) UpsertQuota(w http.ResponseWriter, r *http.Request) {
 	}
 	if !isValidScope(scope) {
 		writeError(w, http.StatusBadRequest, "scope must be 'user' or 'project'")
+		return
+	}
+	if !h.quotaScopeAllowed(w, r, scope, scopeID) {
 		return
 	}
 
@@ -159,6 +173,9 @@ func (h *Handler) DeleteQuota(w http.ResponseWriter, r *http.Request) {
 	}
 	if !isValidScope(scope) {
 		writeError(w, http.StatusBadRequest, "scope must be 'user' or 'project'")
+		return
+	}
+	if !h.quotaScopeAllowed(w, r, scope, scopeID) {
 		return
 	}
 	// Capture limits before deletion so the audit row preserves what was
@@ -232,6 +249,35 @@ func (h *Handler) buildQuotaView(r *http.Request, scope string, scopeID pgtype.U
 }
 
 func isValidScope(s string) bool { return s == quota.ScopeUser || s == quota.ScopeProject }
+
+// quotaScopeAllowed reports whether the caller may address this quota scope,
+// writing the refusal itself when not.
+//
+// ⚠️ These routes are admin-gated but the project arrives as {scopeId}, not
+// {projectId}, so middleware.RequireProjectAccess never fires on them and
+// nothing else narrowed them: a project-pinned token could read, and WRITE,
+// any project's limits — capping another project at one application and
+// blocking its deploys. Found in review, verified by doing it.
+//
+// A pinned token is refused the USER scope outright rather than compared to
+// the pin. The pin is expressed in projects, so it has nothing to say about a
+// user-scoped quota — and a user quota governs every project that user owns,
+// so honouring it would reach past the pin by another route.
+func (h *Handler) quotaScopeAllowed(w http.ResponseWriter, r *http.Request, scope string, scopeID pgtype.UUID) bool {
+	if !middleware.TokenPinnedFromContext(r.Context()) {
+		return true
+	}
+	if scope != quota.ScopeProject {
+		writeError(w, http.StatusForbidden,
+			"a project-pinned token cannot address user-scoped quotas")
+		return false
+	}
+	if !middleware.PinAllows(r.Context(), uuidToString(scopeID)) {
+		writeError(w, http.StatusForbidden, "token is pinned to a different project")
+		return false
+	}
+	return true
+}
 
 func parseScopeID(w http.ResponseWriter, s string) (pgtype.UUID, bool) {
 	var u pgtype.UUID

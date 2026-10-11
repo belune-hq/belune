@@ -15,7 +15,23 @@ RETURNING *;
 DELETE FROM quotas WHERE scope = $1 AND scope_id = $2;
 
 -- name: ListQuotas :many
-SELECT * FROM quotas ORDER BY scope, created_at DESC;
+-- project_ids is the PAT pin set, not a user-facing filter. This route has no
+-- {projectId} param — the project arrives as {scopeId} — so
+-- middleware.RequireProjectAccess never fires on it, and without this a pinned
+-- token reads every project's limits and usage.
+--
+-- A pinned token sees ONLY project-scoped rows inside its pin: a user-scoped
+-- quota governs every project that user owns, so returning one would reach past
+-- the pin by another route. The same reasoning refuses a pinned token the
+-- user scope on the single-quota endpoints.
+--
+-- Narrowed here rather than after the fetch so there is one enforcement point,
+-- and a non-NULL even EMPTY array matches nothing — a token pinned only to
+-- deleted projects sees no quotas at all.
+SELECT * FROM quotas
+WHERE (sqlc.narg('project_ids')::uuid[] IS NULL
+       OR (scope = 'project' AND scope_id = ANY(sqlc.narg('project_ids'))))
+ORDER BY scope, created_at DESC;
 
 -- name: CountApplicationsByProject :one
 SELECT COUNT(*) FROM applications WHERE project_id = $1;

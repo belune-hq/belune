@@ -11686,7 +11686,7 @@
       "get": {
         "operationId": "ListQuotas",
         "summary": "Get Quotas",
-        "description": "Requires the Admin role.",
+        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope. Requires the Admin role.",
         "tags": [
           "Quotas (Admin)"
         ],
@@ -11733,7 +11733,7 @@
       "delete": {
         "operationId": "DeleteQuota",
         "summary": "Delete Quota",
-        "description": "Requires the Admin role.",
+        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope. Requires the Admin role.",
         "tags": [
           "Quotas (Admin)"
         ],
@@ -11790,9 +11790,6 @@
         },
         "security": [
           {
-            "write": []
-          },
-          {
             "session": []
           }
         ]
@@ -11800,7 +11797,7 @@
       "get": {
         "operationId": "GetQuota",
         "summary": "Get Quota",
-        "description": "Requires the Admin role.",
+        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope. Requires the Admin role.",
         "tags": [
           "Quotas (Admin)"
         ],
@@ -11862,7 +11859,7 @@
       "put": {
         "operationId": "UpsertQuota",
         "summary": "Upsert Quota",
-        "description": "Requires the Admin role.",
+        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope. Requires the Admin role.",
         "tags": [
           "Quotas (Admin)"
         ],
@@ -11923,9 +11920,6 @@
           }
         },
         "security": [
-          {
-            "write": []
-          },
           {
             "session": []
           }

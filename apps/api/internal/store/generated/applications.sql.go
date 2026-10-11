@@ -629,22 +629,28 @@ func (q *Queries) GetApplicationLogAccess(ctx context.Context, id pgtype.UUID) (
 }
 
 const getApplicationOwnerUserID = `-- name: GetApplicationOwnerUserID :one
-SELECT p.user_id, p.shared FROM applications a
+SELECT p.user_id, p.shared, a.project_id FROM applications a
 JOIN projects p ON p.id = a.project_id
 WHERE a.id = $1
 `
 
 type GetApplicationOwnerUserIDRow struct {
-	UserID pgtype.UUID `json:"user_id"`
-	Shared bool        `json:"shared"`
+	UserID    pgtype.UUID `json:"user_id"`
+	Shared    bool        `json:"shared"`
+	ProjectID pgtype.UUID `json:"project_id"`
 }
 
 // shared rides along so canAccessApplication can grant every Member access to
 // a shared project's applications, not only its owner.
+// project_id rides along so the caller can compose a project-pinned token's
+// pin, which is a separate axis from ownership — GetDatabaseOwnerUserID has
+// carried it for the WebSocket authorizer since v0.1.12, and REST needed it
+// for the same reason: without it canAccessOwned can only ask who owns the
+// resource, never which project it belongs to.
 func (q *Queries) GetApplicationOwnerUserID(ctx context.Context, id pgtype.UUID) (GetApplicationOwnerUserIDRow, error) {
 	row := q.db.QueryRow(ctx, getApplicationOwnerUserID, id)
 	var i GetApplicationOwnerUserIDRow
-	err := row.Scan(&i.UserID, &i.Shared)
+	err := row.Scan(&i.UserID, &i.Shared, &i.ProjectID)
 	return i, err
 }
 

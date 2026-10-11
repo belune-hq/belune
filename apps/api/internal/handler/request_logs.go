@@ -165,7 +165,7 @@ func (h *Handler) ListAllRequestLogs(w http.ResponseWriter, r *http.Request) {
 	f := parseRequestLogFilter(r)
 
 	// ⚠️ This route is admin-gated but has no {projectId}, so
-	// middleware.RequireProjectAccess never fires and canAccessApplication is
+	// middleware.RequirePinnedProjectMatch never fires and canAccessApplication is
 	// no help either — it returns true for any admin and deliberately ignores
 	// the pin ("a separate axis, composed by each caller"). Without this a
 	// project-pinned admin token reads every project's request logs, which is
@@ -317,17 +317,16 @@ func (h *Handler) StreamAllRequestLogs(w http.ResponseWriter, r *http.Request) {
 	// which applications are in range as projects gain applications, so it
 	// would be right only to within a refresh interval.
 	//
-	// ⚠️ The per-application stream — /api/projects/{projectId}/applications/
-	// {id}/requests/stream — is the narrow route a pinned token should use
-	// instead. It is NOT currently a safe fallback, and this comment said it
-	// was until review caught it: RequireProjectAccess compares only the
-	// {projectId} param, nothing checks that {applicationId} is a child of it,
-	// and canAccessApplication returns true for any admin. So a pinned token
-	// can pass its OWN project id with ANY application id and read it. Verified
-	// by running it. That bypass is pre-existing and far wider than request
-	// logs (it reaches env, logs and deployments on every nested route), so it
-	// is tracked separately — but do not read the deny above as closing the
-	// hole on its own. It closes the firehose; the nested route is still open.
+	// Nothing legitimate is lost: a pinned token streams request logs through
+	// /api/projects/{projectId}/applications/{id}/requests/stream, which IS a
+	// safe fallback as of v0.1.19 — RequirePinnedProjectMatch checks the
+	// {projectId}, and canAccessOwned now verifies the {applicationId} really
+	// belongs to it instead of short-circuiting on admin.
+	//
+	// ⚠️ It was NOT safe when this deny was first written, and an earlier
+	// version of this comment asserted it was. Both halves had to land before
+	// the sentence became true — this one closes the firehose, the nested-route
+	// fix closes the narrow path it points at.
 	if middleware.TokenPinnedFromContext(r.Context()) {
 		writeError(w, http.StatusForbidden,
 			"a project-pinned token cannot stream requests across every project — use the per-application stream")

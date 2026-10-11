@@ -25,7 +25,7 @@ WHERE (sqlc.narg('application_id')::uuid IS NULL OR application_id = sqlc.narg('
        OR client_ip ILIKE '%' || sqlc.narg('search') || '%')
   -- project_ids is the PAT pin set, not a user-facing filter. None of the
   -- /api/requests routes has a {projectId} param, so
-  -- middleware.RequireProjectAccess never fires on them and a pinned token
+  -- middleware.RequirePinnedProjectMatch never fires on them and a pinned token
   -- would otherwise read request logs for every project its owner can reach —
   -- the same hole ListDomainsWithTLSStatus closes in its own query.
   --

@@ -24,6 +24,57 @@ Belune is pre-1.0. The versioning contract while it stays there:
 Release notes for each version are also published on the
 [Releases page](https://github.com/weiliang79/belune/releases).
 
+## [0.1.19]
+
+**A security release.** It closes a set of related flaws in how personal access
+tokens that are *pinned to specific projects* were enforced. If you have never
+created a project-pinned token, nothing here affected you. There is no
+migration and no infra restart: run `update.sh` and you are done.
+
+### ⚠️ Breaking changes
+
+**A personal access token can no longer change a quota.** `PUT` and `DELETE` on
+`/api/quotas/{scope}/{scopeId}` now require a signed-in session. Reading quotas
+from a script still works, and is narrowed to the projects a pinned token is
+allowed to see.
+
+A quota decides whether a project can deploy at all, so changing one belongs
+with issuing credentials and opening a host shell rather than with routine
+automation. If you have a script that sets quotas with a token, it will start
+receiving `403` and needs to be run by a person instead. This is the kind of
+change the versioning contract at the top of this file permits on a patch
+release, and this is it being listed.
+
+### A project-pinned token could reach projects it was not pinned to
+
+**A pin is meant to be a ceiling: a token pinned to one project should never
+reach another.** It was not enforced everywhere, and a token with the Admin
+role could read — and in two places change — data belonging to projects outside
+its pin.
+
+What was reachable: another project's HTTP request logs, its applications'
+environment variables and deployment history, its build logs (which commonly
+contain build arguments and repository URLs), the install's audit log, and
+another project's quotas. Two of the gaps allowed writes rather than reads —
+changing another project's quota, and removing a route protection such as an IP
+allowlist or basic-auth from another project's live domain.
+
+None of this was reachable without a valid token, and none of it crossed the
+boundary into another *install*. The dashboard was never affected: a signed-in
+session is not pinned, and an operator signing in has always been able to see
+their whole install by design.
+
+**What to do.** Update, and nothing else is required — the tokens themselves
+were never exposed. If you issued project-pinned tokens to someone you would
+not want reading your other projects, treat what they could reach as having
+been readable and rotate them from Account → API Tokens.
+
+**How it is fixed.** Every request that names a resource now checks which
+project that resource actually belongs to, rather than trusting the project
+named in the address. Where a surface genuinely has no project to check
+against — the install-wide audit log — a pinned token is refused it outright
+rather than shown all of it.
+
 ## [0.1.18]
 
 Two log viewer fixes, both found by using it on a real install. Nothing changes

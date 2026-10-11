@@ -75,7 +75,7 @@ func requestTotal(t *testing.T, token string) (total float64, perMinute float64)
 // closed in v0.1.12 and REST did not.
 //
 // /api/requests and /api/requests/summary are admin-gated but have no
-// {projectId}, so middleware.RequireProjectAccess never fires on them — and
+// {projectId}, so middleware.RequirePinnedProjectMatch never fires on them —
 // canAccessApplication is no help either, since it returns true for any admin
 // and deliberately ignores the pin ("a separate axis, composed by each
 // caller"). Nothing structural narrowed these, so a project-pinned admin token
@@ -217,4 +217,36 @@ func TestStreamAllRequestLogs_DeniedForPinnedToken(t *testing.T) {
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusForbidden, resp.StatusCode,
 		"a pinned token must not stream the cross-project firehose")
+}
+
+// TestAuditLogs_DeniedForPinnedToken covers the other install-wide surface a
+// pin cannot be expressed against.
+//
+// audit_logs carries a polymorphic (resource_type, resource_id) pair and no
+// project_id, so there is no predicate to narrow it with — and its rows name
+// foreign projects, applications, hostnames, token names and env-var KEYS in
+// `details`. Confirmed before the fix: a token pinned to one project read
+// another project's audit rows, and the CSV export returned them too.
+func TestAuditLogs_DeniedForPinnedToken(t *testing.T) {
+	resetDB(t)
+	adminToken := env.SetupAdmin(t, "admin@test.com", "password123")
+	adminUserID := extractID(mustAuthMe(t, adminToken)["id"])
+	project := env.CreateProject(t, adminToken, "Mine", "mine")
+
+	// ⚠️ Unpinned control, or an unconditional deny would ship green — the
+	// same gap review found in the request-stream test.
+	unpinned := mintScoped(t, adminToken, service.AllScopes)
+	pinned := createPinnedAPIToken(t, adminUserID, extractID(project["id"]), service.AllScopes)
+
+	for _, path := range []string{"/api/audit-logs?limit=50", "/api/audit-logs/actions", "/api/audit-logs/export"} {
+		open := env.DoRequest(t, "GET", path, nil, testutil.AuthHeader(unpinned))
+		open.Body.Close()
+		require.NotEqual(t, http.StatusForbidden, open.StatusCode,
+			"%s: an unpinned token must still reach it, or the refusal below proves nothing", path)
+
+		denied := env.DoRequest(t, "GET", path, nil, testutil.AuthHeader(pinned))
+		denied.Body.Close()
+		assert.Equal(t, http.StatusForbidden, denied.StatusCode,
+			"%s: a pinned token must not read the install-wide audit log", path)
+	}
 }

@@ -119,6 +119,29 @@ func PinAllows(ctx context.Context, projectID string) bool {
 	return slices.Contains(ids, projectID)
 }
 
+// DenyPinnedToken refuses a project-pinned token outright, with reason in the
+// body. For an install-wide surface that cannot be expressed in terms of a pin
+// at all — the audit log, whose rows carry a polymorphic resource reference and
+// no project — so there is nothing to narrow to and serving it whole would be a
+// cross-project disclosure.
+//
+// ⚠️ Prefer narrowing where a project can be resolved; this is the answer only
+// when it cannot. Sessions and unpinned tokens pass through untouched, so the
+// dashboard is unaffected. Must be used after Auth.
+func DenyPinnedToken(reason string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if TokenPinnedFromContext(r.Context()) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = w.Write([]byte(`{"error":"` + reason + `"}`))
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // RequirePinnedProjectMatch returns a middleware that rejects a request whose
 // {projectId} URL param does not match a project-pinned PAT's pin. A route
 // with no projectId param, or a token that isn't pinned (every existing

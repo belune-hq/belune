@@ -11,8 +11,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestEveryNestedRouteReachesTheOwnershipGate is the tripwire for the defect
-// class v0.1.19 closed, not just the instance.
+// TestEveryNestedRouteReachesTheOwnershipGate asserts that every nested
+// handler REACHES an ownership gate.
+//
+// ⛔ That is strictly weaker than "every id in the path is checked against its
+// parent", and the difference is not academic — it is where the next three
+// bugs were found. This test cannot see WHICH id a gate was called with, nor
+// whether the result was acted on, so GetDeployment, StreamBuildLogs and
+// DeleteRouteFeature all passed it while letting a caller name a parent they
+// may reach and ANY grandchild id. It passed before and after that fix.
+//
+// An earlier version of this comment called it "the tripwire for the defect
+// class, not just the instance". It is not. The behavioural half lives in
+// grandchild_parentage_test.go, and the class is only closed by both.
 //
 // A route under /api/projects/{projectId}/<kind>/{childId} is NOT protected by
 // middleware.RequirePinnedProjectMatch alone: that compares the pin to the URL

@@ -19,6 +19,7 @@ type nestedFixture struct {
 	mineID, foreignID   string
 	mineApp, foreignApp string
 	mineDB, foreignDB   string
+	mineDom, foreignDom string
 	pinned              string
 }
 
@@ -42,15 +43,30 @@ func newNestedFixture(t *testing.T) nestedFixture {
 		return extractID(testutil.ReadJSON(t, resp)["id"])
 	}
 
+	dom := func(projectID, appID, hostname string) string {
+		resp := env.DoRequest(t, "POST",
+			fmt.Sprintf("/api/projects/%s/applications/%s/domains", projectID, appID),
+			map[string]any{"hostname": hostname, "ssl_enabled": false}, testutil.AuthHeader(adminToken))
+		require.Equal(t, http.StatusCreated, resp.StatusCode)
+		defer resp.Body.Close()
+		return extractID(testutil.ReadJSON(t, resp)["id"])
+	}
+
 	mine := extractID(env.CreateProject(t, adminToken, "Mine", "mine")["id"])
 	foreign := extractID(env.CreateProject(t, adminToken, "Foreign", "foreign")["id"])
+	mineApp, foreignApp := app(mine, "Mine App"), app(foreign, "Foreign App")
 
 	return nestedFixture{
 		adminToken: adminToken,
 		mineID:     mine, foreignID: foreign,
-		mineApp: app(mine, "Mine App"), foreignApp: app(foreign, "Foreign App"),
+		mineApp: mineApp, foreignApp: foreignApp,
 		mineDB: db(mine, "minedb"), foreignDB: db(foreign, "foreigndb"),
-		pinned: createPinnedAPIToken(t, adminUserID, mine, service.AllScopes),
+		// ⚠️ Domains were named in this file's own commit message and were not
+		// actually here. domainOwner is the third lookup that gained
+		// project_id, and a mutation dropping it passed the entire suite.
+		mineDom:    dom(mine, mineApp, "mine.example.com"),
+		foreignDom: dom(foreign, foreignApp, "foreign.example.com"),
+		pinned:     createPinnedAPIToken(t, adminUserID, mine, service.AllScopes),
 	}
 }
 
@@ -84,6 +100,8 @@ func TestNestedRoutes_PinSurvivesASubstitutedProjectID(t *testing.T) {
 			f.status(t, "GET", fmt.Sprintf("/api/projects/%s/applications/%s/env", f.mineID, f.mineApp), nil, f.pinned))
 		assert.Equal(t, http.StatusOK,
 			f.status(t, "GET", fmt.Sprintf("/api/projects/%s/databases/%s", f.mineID, f.mineDB), nil, f.pinned))
+		assert.Equal(t, http.StatusOK,
+			f.status(t, "GET", fmt.Sprintf("/api/projects/%s/applications/%s/domains/%s/features", f.mineID, f.mineApp, f.mineDom), nil, f.pinned))
 	})
 
 	t.Run("the honest foreign path is refused by the middleware", func(t *testing.T) {
@@ -107,6 +125,8 @@ func TestNestedRoutes_PinSurvivesASubstitutedProjectID(t *testing.T) {
 				fmt.Sprintf("/api/projects/%s/applications/%s", f.mineID, f.foreignApp), nil},
 			{"read a database", "GET",
 				fmt.Sprintf("/api/projects/%s/databases/%s", f.mineID, f.foreignDB), nil},
+			{"read a domain's features", "GET",
+				fmt.Sprintf("/api/projects/%s/applications/%s/domains/%s/features", f.mineID, f.mineApp, f.foreignDom), nil},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				assert.Equal(t, http.StatusForbidden, f.status(t, tc.method, tc.path, tc.body, f.pinned),

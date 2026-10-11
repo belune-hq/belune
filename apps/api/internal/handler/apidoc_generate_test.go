@@ -1234,6 +1234,18 @@ func apidocAssertBehaviourExtracted(t *testing.T, routes []apidocRoute) {
 	for _, handler := range []string{
 		"GetGlobalDeployments", "ListProjects", "CreateProject",
 		"InstantiateTemplate", "ListDomainTLSStatus",
+		// The /api/requests surface: admin-gated, no {projectId}, and until
+		// v0.1.19 not pin-filtered at all. The list and summary narrow their
+		// queries; the stream refuses a pinned token outright, the same answer
+		// wsAdminChannelAllowed gives its WebSocket twin.
+		//
+		// ⚠️ This assertion says the reference DOCUMENTS the pin. It does not
+		// say the pin WORKS: the extraction reads the handler body for the
+		// call, so a handler that resolves the pin and then forgets to pass it
+		// to the query still satisfies this and still publishes "scoped to the
+		// pin set". Verified by doing exactly that. The behavioural half lives
+		// in request_logs_pin_test.go, and that is the one that would fail.
+		"ListAllRequestLogs", "GetAllRequestsSummary", "StreamAllRequestLogs",
 	} {
 		r, ok := byHandler[handler]
 		if !assert.True(t, ok, "%s should be a documented route", handler) {

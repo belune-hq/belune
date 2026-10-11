@@ -11,13 +11,30 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const deleteRouteFeature = `-- name: DeleteRouteFeature :exec
-DELETE FROM domain_route_features WHERE id = $1
+const deleteRouteFeature = `-- name: DeleteRouteFeature :execrows
+DELETE FROM domain_route_features WHERE id = $1 AND domain_id = $2
 `
 
-func (q *Queries) DeleteRouteFeature(ctx context.Context, id pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, deleteRouteFeature, id)
-	return err
+type DeleteRouteFeatureParams struct {
+	ID       pgtype.UUID `json:"id"`
+	DomainID pgtype.UUID `json:"domain_id"`
+}
+
+// ⚠️ Keyed on the DOMAIN as well as the feature, and that is the whole point.
+// Keyed on id alone this deleted any route feature on the install: the handler
+// authorizes the {domainId} in the path and nothing tied the {featureId} to
+// it, so a project-pinned token could strip an ip_allowlist or basic_auth
+// control off another project's live public route by naming its own domain.
+// Reproduced before the fix.
+//
+// :execrows so the handler can tell "deleted" from "belongs to someone else"
+// and answer 404 rather than reporting success for a row it never touched.
+func (q *Queries) DeleteRouteFeature(ctx context.Context, arg DeleteRouteFeatureParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteRouteFeature, arg.ID, arg.DomainID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deleteRouteFeaturesByDomain = `-- name: DeleteRouteFeaturesByDomain :exec

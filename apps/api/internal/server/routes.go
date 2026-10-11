@@ -612,9 +612,27 @@ func registerRoutes(r chi.Router, h *handler.Handler, auth *service.AuthService,
 					r.Get("/api/docker/images", h.ListDockerImages)
 					r.Get("/api/docker/volumes", h.ListDockerVolumes)
 					r.Get("/api/docker/networks", h.ListDockerNetworks)
-					r.Get("/api/audit-logs", h.ListAuditLogs)
-					r.Get("/api/audit-logs/actions", h.ListAuditActions)
-					r.Get("/api/audit-logs/export", h.ExportAuditLogs)
+					// ⛔ Refused to a project-pinned token, not narrowed.
+					//
+					// audit_logs has no project_id: it carries a polymorphic
+					// (resource_type, resource_id VARCHAR) pair, so narrowing
+					// would mean resolving every resource kind against its own
+					// table on every read — a design change, not a predicate.
+					// And the rows name foreign projects, applications,
+					// hostnames, token names and env-var KEYS in `details`, so
+					// serving them unnarrowed is a cross-project disclosure.
+					//
+					// Same answer, for the same reason, as the cross-project
+					// request firehose: when a surface cannot be expressed in
+					// terms of the pin, a pinned token gets none of it rather
+					// than all of it. An operator reads the audit log from the
+					// dashboard, which is a session.
+					r.With(middleware.DenyPinnedToken("the audit log is install-wide and cannot be narrowed to a pinned token's projects")).
+						Group(func(r chi.Router) {
+							r.Get("/api/audit-logs", h.ListAuditLogs)
+							r.Get("/api/audit-logs/actions", h.ListAuditActions)
+							r.Get("/api/audit-logs/export", h.ExportAuditLogs)
+						})
 					// GET the noun for status, POST noun+verb for the action —
 					// the same shape as the queue pair below. Not
 					// .../proxy/reconciler beside .../proxy/reconcile: two

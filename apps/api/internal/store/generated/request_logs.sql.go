@@ -31,6 +31,13 @@ WHERE ($1::uuid IS NULL OR application_id = $1)
   AND ($6::text IS NULL
        OR path ILIKE '%' || $6 || '%'
        OR client_ip ILIKE '%' || $6 || '%')
+  -- The PAT pin set — see ListRequestLogsFiltered above for why. The summary
+  -- and the series need it as much as the list does: without it a pinned token
+  -- cannot read another project's requests but can still count them, time them
+  -- and watch them by the minute.
+  AND ($7::uuid[] IS NULL
+       OR application_id IN (SELECT a.id FROM applications a
+                             WHERE a.project_id = ANY($7)))
 GROUP BY bucket
 ORDER BY bucket DESC
 LIMIT 60
@@ -43,6 +50,7 @@ type GetRequestPerMinuteParams struct {
 	From          pgtype.Timestamptz `json:"from"`
 	To            pgtype.Timestamptz `json:"to"`
 	Search        pgtype.Text        `json:"search"`
+	ProjectIds    []pgtype.UUID      `json:"project_ids"`
 }
 
 type GetRequestPerMinuteRow struct {
@@ -60,6 +68,7 @@ func (q *Queries) GetRequestPerMinute(ctx context.Context, arg GetRequestPerMinu
 		arg.From,
 		arg.To,
 		arg.Search,
+		arg.ProjectIds,
 	)
 	if err != nil {
 		return nil, err
@@ -97,6 +106,13 @@ WHERE ($1::uuid IS NULL OR application_id = $1)
   AND ($6::text IS NULL
        OR path ILIKE '%' || $6 || '%'
        OR client_ip ILIKE '%' || $6 || '%')
+  -- The PAT pin set — see ListRequestLogsFiltered above for why. The summary
+  -- and the series need it as much as the list does: without it a pinned token
+  -- cannot read another project's requests but can still count them, time them
+  -- and watch them by the minute.
+  AND ($7::uuid[] IS NULL
+       OR application_id IN (SELECT a.id FROM applications a
+                             WHERE a.project_id = ANY($7)))
 `
 
 type GetRequestSummaryParams struct {
@@ -106,6 +122,7 @@ type GetRequestSummaryParams struct {
 	From          pgtype.Timestamptz `json:"from"`
 	To            pgtype.Timestamptz `json:"to"`
 	Search        pgtype.Text        `json:"search"`
+	ProjectIds    []pgtype.UUID      `json:"project_ids"`
 }
 
 type GetRequestSummaryRow struct {
@@ -128,6 +145,7 @@ func (q *Queries) GetRequestSummary(ctx context.Context, arg GetRequestSummaryPa
 		arg.From,
 		arg.To,
 		arg.Search,
+		arg.ProjectIds,
 	)
 	var i GetRequestSummaryRow
 	err := row.Scan(
@@ -276,6 +294,21 @@ WHERE ($3::uuid IS NULL OR application_id = $3)
   AND ($8::text IS NULL
        OR path ILIKE '%' || $8 || '%'
        OR client_ip ILIKE '%' || $8 || '%')
+  -- project_ids is the PAT pin set, not a user-facing filter. None of the
+  -- /api/requests routes has a {projectId} param, so
+  -- middleware.RequirePinnedProjectMatch never fires on them and a pinned token
+  -- would otherwise read request logs for every project its owner can reach —
+  -- the same hole ListDomainsWithTLSStatus closes in its own query.
+  --
+  -- Via a subquery rather than a join on purpose: these are SELECT * and their
+  -- generated row type is written straight to the response, so a join would
+  -- change the wire shape and the published OpenAPI spec with it.
+  --
+  -- A non-NULL, even EMPTY, array matches nothing, which is correct: a token
+  -- pinned only to projects that have since been deleted reaches none of them.
+  AND ($9::uuid[] IS NULL
+       OR application_id IN (SELECT a.id FROM applications a
+                             WHERE a.project_id = ANY($9)))
 ORDER BY recorded_at DESC
 LIMIT $1 OFFSET $2
 `
@@ -289,6 +322,7 @@ type ListRequestLogsFilteredParams struct {
 	From          pgtype.Timestamptz `json:"from"`
 	To            pgtype.Timestamptz `json:"to"`
 	Search        pgtype.Text        `json:"search"`
+	ProjectIds    []pgtype.UUID      `json:"project_ids"`
 }
 
 func (q *Queries) ListRequestLogsFiltered(ctx context.Context, arg ListRequestLogsFilteredParams) ([]RequestLog, error) {
@@ -301,6 +335,7 @@ func (q *Queries) ListRequestLogsFiltered(ctx context.Context, arg ListRequestLo
 		arg.From,
 		arg.To,
 		arg.Search,
+		arg.ProjectIds,
 	)
 	if err != nil {
 		return nil, err

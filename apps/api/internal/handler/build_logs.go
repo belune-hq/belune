@@ -47,6 +47,14 @@ func (h *Handler) StreamBuildLogs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "deployment not found")
 		return
 	}
+	// ⚠️ Same parentage check as GetDeployment, and for the sharper reason:
+	// this streams build_logs directly. Without it a caller could name an
+	// application it may reach and ANY deployment id and read another
+	// project's build output live. Reproduced before this check existed.
+	if deployment.ApplicationID != applicationUUID {
+		writeError(w, http.StatusNotFound, "deployment not found")
+		return
+	}
 
 	writer, err := sse.NewWriter(w)
 	if err != nil {

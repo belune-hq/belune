@@ -71,6 +71,22 @@ func (h *Handler) GetDeployment(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "deployment not found")
 		return
 	}
+	// ⚠️ The deployment must belong to the application in the path. The gate
+	// above authorizes the {applicationId}; nothing tied this {deploymentId}
+	// to it, so a caller could name an application it may reach and ANY
+	// deployment id and read the row — build_logs included, which routinely
+	// carries build args and repository URLs with credentials. Reproduced
+	// across projects with a project-pinned token before this check existed.
+	//
+	// 404, not 403 or 400: a distinct answer would confirm the deployment
+	// exists, and the id is the only thing protecting it. (RollbackDeployment
+	// below answers 400 for the same condition — it predates this and is a
+	// smaller oracle on an endpoint that already needs write scope; worth
+	// aligning, not in a security fix.)
+	if deployment.ApplicationID != applicationUUID {
+		writeError(w, http.StatusNotFound, "deployment not found")
+		return
+	}
 
 	writeJSON(w, http.StatusOK, deployment)
 }

@@ -161,10 +161,10 @@ type apidocRoute struct {
 	// parsing routes.go (apidocRequireRoleSet), which is single-valued only
 	// because every call site agrees (routes_test.go enforces that).
 	Roles  []string
-	Pinned bool // path contains {projectId} — RequireProjectAccess applies
+	Pinned bool // path contains {projectId} — RequirePinnedProjectMatch applies
 	// Query and HandlerPinned come from the handler's BODY (apidocExtractBehaviour),
 	// not the router. HandlerPinned is the pin enforced in-handler on routes with
-	// no {projectId} for RequireProjectAccess to read — a real gate the route
+	// no {projectId} for RequirePinnedProjectMatch to read — a real gate the route
 	// registration shows nothing of.
 	Query         []string
 	HandlerPinned bool
@@ -528,7 +528,7 @@ func TestGenerateAPIReference(t *testing.T) {
 			continue
 		}
 		routes[i].Query = b.Query
-		// Only interesting where RequireProjectAccess is blind: with a
+		// Only interesting where RequirePinnedProjectMatch is blind: with a
 		// {projectId} in the path the middleware already enforces the pin and
 		// r.Pinned says so.
 		routes[i].HandlerPinned = b.Pinned && !r.Pinned
@@ -1228,7 +1228,7 @@ func apidocAssertBehaviourExtracted(t *testing.T, routes []apidocRoute) {
 	assert.True(t, has("ListUsableCertificates", "hostname"),
 		"a required query parameter must be named even though required-ness is not derived")
 
-	// In-handler pins: routes with no {projectId} for RequireProjectAccess to
+	// In-handler pins: routes with no {projectId} for RequirePinnedProjectMatch to
 	// read, where the handler enforces the token's pin itself. Every one of
 	// these is a real gate the route registration shows nothing of.
 	for _, handler := range []string{

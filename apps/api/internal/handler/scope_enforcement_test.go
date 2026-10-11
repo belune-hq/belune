@@ -502,7 +502,7 @@ func TestUserManagement_RequiresSession(t *testing.T) {
 	listResp.Body.Close()
 }
 
-// TestProjectPin_CannotCreateProject pins a review finding: RequireProjectAccess
+// TestProjectPin_CannotCreateProject pins a review finding: RequirePinnedProjectMatch
 // only ever compares against a {projectId} URL param, so project creation
 // (which has no existing id to compare against) needed its own explicit
 // check — a pinned token creating a new, unrelated project would otherwise
@@ -524,7 +524,7 @@ func TestProjectPin_CannotCreateProject(t *testing.T) {
 
 // TestProjectPin_TemplateInstantiate_CannotTargetDifferentProject pins the
 // same review finding for template instantiation: the target project arrives
-// in the request BODY, not a {projectId} URL param, so RequireProjectAccess
+// in the request BODY, not a {projectId} URL param, so RequirePinnedProjectMatch
 // never sees it — resolveTemplateProject has to check the pin itself.
 func TestProjectPin_TemplateInstantiate_CannotTargetDifferentProject(t *testing.T) {
 	resetDB(t)

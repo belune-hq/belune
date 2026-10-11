@@ -285,7 +285,7 @@ func TestCreateAPIToken_PinsToReachableProject(t *testing.T) {
 // TestCreateAPIToken_PinsToMultipleReachableProjects pins the actual point of
 // this rework: a token can narrow to MORE than one project, each checked
 // independently, and every one of them is enforced afterward (a third,
-// unlisted project is rejected by RequireProjectAccess).
+// unlisted project is rejected by RequirePinnedProjectMatch).
 func TestCreateAPIToken_PinsToMultipleReachableProjects(t *testing.T) {
 	resetDB(t)
 	adminToken := env.SetupAdmin(t, "admin@test.com", "password123")
@@ -483,7 +483,7 @@ func TestCreateAPIToken_MemberNonexistentProjectStaysForbidden(t *testing.T) {
 
 // TestCreateAPIToken_PinnedTokenEnforcesItsPin creates a pinned token
 // through the real endpoint (not a direct DB insert) and proves
-// middleware.RequireProjectAccess actually enforces the pin it stored — the
+// middleware.RequirePinnedProjectMatch actually enforces the pin it stored — the
 // end-to-end path that a direct-insert test helper would never exercise,
 // which is exactly why this gap survived undetected.
 func TestCreateAPIToken_PinnedTokenEnforcesItsPin(t *testing.T) {

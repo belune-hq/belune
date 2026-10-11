@@ -60,7 +60,7 @@ func (h *Handler) ListDomainTLSStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// This route has no {projectId} param, so middleware.RequireProjectAccess
+	// This route has no {projectId} param, so middleware.RequirePinnedProjectMatch
 	// never sees one — enforce the token's pin here or a pinned token would read
 	// every domain its owner can reach, which is the escape the pin exists to
 	// prevent. Same treatment GetGlobalDeployments gives its own query filter.

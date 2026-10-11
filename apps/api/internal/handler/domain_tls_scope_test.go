@@ -88,7 +88,7 @@ func TestDomainTLSStatus_ScopedByRole(t *testing.T) {
 }
 
 // TestDomainTLSStatus_RespectsTokenPin covers the hole this route's placement
-// opens. It lives in the RequireProjectAccess group, but that middleware only
+// opens. It lives in the RequirePinnedProjectMatch group, but that middleware only
 // ever compares a {projectId} URL param and this route has none — so the pin is
 // enforced in the handler, and nothing structural would catch it regressing.
 // Without it a project-pinned token reads every domain its owner can reach,

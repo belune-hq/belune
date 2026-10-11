@@ -288,7 +288,7 @@ func registerRoutes(r chi.Router, h *handler.Handler, auth *service.AuthService,
 			// in place with an extra .With(...) on that one line.
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.RequireScopeByMethod())
-				r.Use(middleware.RequireProjectAccess())
+				r.Use(middleware.RequirePinnedProjectMatch())
 
 				// A PAT manages infrastructure, not the account itself: every
 				// route below through the TOTP block now requires a live
@@ -502,7 +502,7 @@ func registerRoutes(r chi.Router, h *handler.Handler, auth *service.AuthService,
 			// can still reach it — "read" or "write" also satisfy it (see
 			// middleware.scopeGrants), so this changes nothing for a general
 			// token, only adds a narrower option.
-			r.With(middleware.RequireScope("metrics"), middleware.RequireProjectAccess()).
+			r.With(middleware.RequireScope("metrics"), middleware.RequirePinnedProjectMatch()).
 				Get("/api/projects/{projectId}/metrics", h.GetProjectMetrics)
 
 			// Deploy actions: a runtime operation on an already-stored
@@ -514,7 +514,7 @@ func registerRoutes(r chi.Router, h *handler.Handler, auth *service.AuthService,
 			// with a general-purpose token changes.
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.RequireScope("deploy"))
-				r.Use(middleware.RequireProjectAccess())
+				r.Use(middleware.RequirePinnedProjectMatch())
 
 				r.Post("/api/projects/{projectId}/applications/{applicationId}/deploy", h.DeployApplication)
 				r.Post("/api/projects/{projectId}/applications/{applicationId}/stop", h.StopApplication)
@@ -657,7 +657,7 @@ func registerRoutes(r chi.Router, h *handler.Handler, auth *service.AuthService,
 					r.With(middleware.RequireSession()).Post("/api/maintenance/update/check", h.TriggerUpdateCheck)
 					// ⚠️ Reads stay token-reachable, narrowed to a pinned
 					// token's pin (the project arrives as {scopeId}, so
-					// RequireProjectAccess cannot do it — the handlers and the
+					// RequirePinnedProjectMatch cannot do it — the handlers and the
 					// list query do). Checking your own limits from a script is
 					// a legitimate use.
 					//
@@ -707,7 +707,7 @@ func registerRoutes(r chi.Router, h *handler.Handler, auth *service.AuthService,
 			r.Use(middleware.BodyLimit(envBodyLimit))
 			r.Use(withTimeout(handlerTimeout))
 			r.Use(middleware.RequireScopeByMethod())
-			r.Use(middleware.RequireProjectAccess())
+			r.Use(middleware.RequirePinnedProjectMatch())
 			r.Get("/api/projects/{projectId}/env", h.ListProjectEnvVars)
 			r.Put("/api/projects/{projectId}/env", h.UpdateProjectEnvVars)
 			// See the reveal-endpoint comment above webhook/reveal: same reasoning.
@@ -722,7 +722,7 @@ func registerRoutes(r chi.Router, h *handler.Handler, auth *service.AuthService,
 			r.Use(middleware.BodyLimit(defaultBodyLimit))
 			r.Use(withTimeout(handlerTimeout))
 			r.Use(middleware.RequireScopeByMethod())
-			r.Use(middleware.RequireProjectAccess())
+			r.Use(middleware.RequirePinnedProjectMatch())
 			r.Get("/api/projects/{projectId}/databases", h.ListDatabases)
 			r.Post("/api/projects/{projectId}/databases", h.CreateDatabase)
 			r.Get("/api/projects/{projectId}/databases/{databaseId}", h.GetDatabase)
@@ -773,7 +773,7 @@ func registerRoutes(r chi.Router, h *handler.Handler, auth *service.AuthService,
 		// Streaming routes: SSE / long-poll — no timeout, no body limit.
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireScopeByMethod())
-			r.Use(middleware.RequireProjectAccess())
+			r.Use(middleware.RequirePinnedProjectMatch())
 			r.Get("/api/projects/{projectId}/applications/{applicationId}/deployments/{deploymentId}/build-logs", h.StreamBuildLogs)
 			r.Get("/api/projects/{projectId}/applications/{applicationId}/logs", h.StreamLogs)
 			r.Get("/api/projects/{projectId}/applications/{applicationId}/requests/stream", h.StreamRequestLogs)
@@ -782,7 +782,7 @@ func registerRoutes(r chi.Router, h *handler.Handler, auth *service.AuthService,
 		// Application metrics stream: same "metrics" carve-out as the
 		// snapshot endpoint above, kept outside the group above because it
 		// needs a different scope than the blanket read/write default.
-		r.With(middleware.RequireScope("metrics"), middleware.RequireProjectAccess()).
+		r.With(middleware.RequireScope("metrics"), middleware.RequirePinnedProjectMatch()).
 			Get("/api/projects/{projectId}/applications/{applicationId}/metrics/stream", h.StreamApplicationMetrics)
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireRole("admin"))

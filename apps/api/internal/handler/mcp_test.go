@@ -371,7 +371,7 @@ func TestMCP_ListProjectBackups(t *testing.T) {
 // TestMCP_ProjectPinBlocksOtherProjects is the pin-enforcement counterpart
 // of TestScope_ReadTokenCannotWrite: a token pinned to project A must not
 // reach project B through any tool argument, even though nothing about the
-// call's HTTP path carries a {projectId} for middleware.RequireProjectAccess
+// call's HTTP path carries a {projectId} for middleware.RequirePinnedProjectMatch
 // to check — each tool must enforce this itself.
 func TestMCP_ProjectPinBlocksOtherProjects(t *testing.T) {
 	resetDB(t)

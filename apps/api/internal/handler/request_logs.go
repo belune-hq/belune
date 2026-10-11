@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/weiliang79/belune/internal/pkg/sse"
+	"github.com/weiliang79/belune/internal/server/middleware"
 	"github.com/weiliang79/belune/internal/store/generated"
 )
 
@@ -163,6 +164,18 @@ func (h *Handler) ListAllRequestLogs(w http.ResponseWriter, r *http.Request) {
 	limit, offset := parsePagination(r)
 	f := parseRequestLogFilter(r)
 
+	// ⚠️ This route is admin-gated but has no {projectId}, so
+	// middleware.RequireProjectAccess never fires and canAccessApplication is
+	// no help either — it returns true for any admin and deliberately ignores
+	// the pin ("a separate axis, composed by each caller"). Without this a
+	// project-pinned admin token reads every project's request logs, which is
+	// what the WebSocket has refused since v0.1.12.
+	pinnedIDs, err := pinnedProjectUUIDs(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "invalid pinned project")
+		return
+	}
+
 	logs, err := h.queries.ListRequestLogsFiltered(r.Context(), generated.ListRequestLogsFilteredParams{
 		Limit:         limit,
 		Offset:        offset,
@@ -172,6 +185,7 @@ func (h *Handler) ListAllRequestLogs(w http.ResponseWriter, r *http.Request) {
 		From:          f.From,
 		To:            f.To,
 		Search:        f.Search,
+		ProjectIds:    pinnedIDs,
 	})
 	if err != nil {
 		slog.Error("failed to list all request logs", "error", err)
@@ -215,6 +229,15 @@ func (h *Handler) GetAllRequestsSummary(w http.ResponseWriter, r *http.Request) 
 	f := parseRequestLogFilter(r)
 	ctx := r.Context()
 
+	// Same pin as the list — see ListAllRequestLogs. Aggregates need it just as
+	// much: without it a pinned token cannot read another project's requests
+	// but can still count them, time them and watch them by the minute.
+	pinnedIDs, err := pinnedProjectUUIDs(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "invalid pinned project")
+		return
+	}
+
 	sum, err := h.queries.GetRequestSummary(ctx, generated.GetRequestSummaryParams{
 		ApplicationID: f.ApplicationID,
 		StatusMin:     f.StatusMin,
@@ -222,6 +245,7 @@ func (h *Handler) GetAllRequestsSummary(w http.ResponseWriter, r *http.Request) 
 		From:          f.From,
 		To:            f.To,
 		Search:        f.Search,
+		ProjectIds:    pinnedIDs,
 	})
 	if err != nil {
 		slog.Error("failed to summarize request logs", "error", err)
@@ -236,6 +260,7 @@ func (h *Handler) GetAllRequestsSummary(w http.ResponseWriter, r *http.Request) 
 		From:          f.From,
 		To:            f.To,
 		Search:        f.Search,
+		ProjectIds:    pinnedIDs,
 	})
 	if err != nil {
 		slog.Error("failed to bucket request logs", "error", err)
@@ -279,6 +304,28 @@ func (h *Handler) GetAllRequestsSummary(w http.ResponseWriter, r *http.Request) 
 //apidoc:title Stream Logs
 //apidoc:order 3
 func (h *Handler) StreamAllRequestLogs(w http.ResponseWriter, r *http.Request) {
+	// ⚠️ Refused outright for a project-pinned token, which is the same answer
+	// wsAdminChannelAllowed already gives the WebSocket twin of this exact
+	// firehose ("requests:all is one firehose across every project ... it
+	// cannot be narrowed to a pin, so a pinned token gets none of it"). Until
+	// now REST served a pinned token the very data the socket refused it.
+	//
+	// ⛔ Deliberately DENY rather than filter, even though this handler — unlike
+	// the hub — owns a per-connection subscription and could narrow it. Two
+	// reasons. The two transports of one firehose agreeing is worth more than a
+	// partially-filtered stream, and a filtered one would have to re-resolve
+	// which applications are in range as projects gain applications, so it
+	// would be right only to within a refresh interval.
+	//
+	// Nothing legitimate is lost: a pinned token streams request logs through
+	// /api/projects/{projectId}/applications/{id}/requests/stream, which has a
+	// {projectId} for middleware.RequireProjectAccess to enforce the pin on.
+	if middleware.TokenPinnedFromContext(r.Context()) {
+		writeError(w, http.StatusForbidden,
+			"a project-pinned token cannot stream requests across every project — use the per-application stream")
+		return
+	}
+
 	writer, err := sse.NewWriter(w)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "streaming not supported")

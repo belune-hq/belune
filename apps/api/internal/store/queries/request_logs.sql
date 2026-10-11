@@ -23,6 +23,21 @@ WHERE (sqlc.narg('application_id')::uuid IS NULL OR application_id = sqlc.narg('
   AND (sqlc.narg('search')::text IS NULL
        OR path ILIKE '%' || sqlc.narg('search') || '%'
        OR client_ip ILIKE '%' || sqlc.narg('search') || '%')
+  -- project_ids is the PAT pin set, not a user-facing filter. None of the
+  -- /api/requests routes has a {projectId} param, so
+  -- middleware.RequireProjectAccess never fires on them and a pinned token
+  -- would otherwise read request logs for every project its owner can reach —
+  -- the same hole ListDomainsWithTLSStatus closes in its own query.
+  --
+  -- Via a subquery rather than a join on purpose: these are SELECT * and their
+  -- generated row type is written straight to the response, so a join would
+  -- change the wire shape and the published OpenAPI spec with it.
+  --
+  -- A non-NULL, even EMPTY, array matches nothing, which is correct: a token
+  -- pinned only to projects that have since been deleted reaches none of them.
+  AND (sqlc.narg('project_ids')::uuid[] IS NULL
+       OR application_id IN (SELECT a.id FROM applications a
+                             WHERE a.project_id = ANY(sqlc.narg('project_ids'))))
 ORDER BY recorded_at DESC
 LIMIT $1 OFFSET $2;
 
@@ -45,7 +60,14 @@ WHERE (sqlc.narg('application_id')::uuid IS NULL OR application_id = sqlc.narg('
   AND (sqlc.narg('to')::timestamptz IS NULL OR recorded_at <= sqlc.narg('to'))
   AND (sqlc.narg('search')::text IS NULL
        OR path ILIKE '%' || sqlc.narg('search') || '%'
-       OR client_ip ILIKE '%' || sqlc.narg('search') || '%');
+       OR client_ip ILIKE '%' || sqlc.narg('search') || '%')
+  -- The PAT pin set — see ListRequestLogsFiltered above for why. The summary
+  -- and the series need it as much as the list does: without it a pinned token
+  -- cannot read another project's requests but can still count them, time them
+  -- and watch them by the minute.
+  AND (sqlc.narg('project_ids')::uuid[] IS NULL
+       OR application_id IN (SELECT a.id FROM applications a
+                             WHERE a.project_id = ANY(sqlc.narg('project_ids'))));
 
 -- name: GetRequestPerMinute :many
 -- Per-minute request counts for the requests/min sparkline, most-recent first
@@ -60,6 +82,13 @@ WHERE (sqlc.narg('application_id')::uuid IS NULL OR application_id = sqlc.narg('
   AND (sqlc.narg('search')::text IS NULL
        OR path ILIKE '%' || sqlc.narg('search') || '%'
        OR client_ip ILIKE '%' || sqlc.narg('search') || '%')
+  -- The PAT pin set — see ListRequestLogsFiltered above for why. The summary
+  -- and the series need it as much as the list does: without it a pinned token
+  -- cannot read another project's requests but can still count them, time them
+  -- and watch them by the minute.
+  AND (sqlc.narg('project_ids')::uuid[] IS NULL
+       OR application_id IN (SELECT a.id FROM applications a
+                             WHERE a.project_id = ANY(sqlc.narg('project_ids'))))
 GROUP BY bucket
 ORDER BY bucket DESC
 LIMIT 60;

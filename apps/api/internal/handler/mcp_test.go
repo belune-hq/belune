@@ -480,6 +480,8 @@ func TestMCP_ToolsListing_NoDestructiveTools(t *testing.T) {
 		"list_domain_tls_status", "list_project_backups",
 		"trigger_deployment", "update_application", "start_application", "stop_application",
 		"set_application_env_vars",
+		"set_application_resources", "set_application_health_check", "set_application_runtime",
+		"set_database_resources",
 	}, names)
 
 	for _, name := range names {

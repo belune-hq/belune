@@ -17,7 +17,12 @@ claude mcp add --transport http belune https://belune.example.com/mcp \
 A `read` token is enough to inspect, and it is the safe default. To let the assistant make changes, mint a token with the scope the tools you want need — see [Tools That Make Changes](#tools-that-make-changes) — from **Account → Personal Access Tokens**, and connect with that instead.
 
 <Callout type="warn">
-Both log tools strip terminal colour codes, as the dashboard does, and otherwise return output verbatim. Tools that read logs send them to whichever client you connect. Logs often contain connection strings and API keys — only connect a client you trust with that. This is the same warning the dialog shows, at the moment you actually connect something, rather than on every token you ever create.
+  Both log tools strip terminal colour codes, as the dashboard does, and
+  otherwise return output verbatim. Tools that read logs send them to whichever
+  client you connect. Logs often contain connection strings and API keys — only
+  connect a client you trust with that. This is the same warning the dialog
+  shows, at the moment you actually connect something, rather than on every
+  token you ever create.
 </Callout>
 
 To connect a different client, or build the command by hand, mint a token from **Account → Personal Access Tokens** and point your client at `https://belune.example.com/mcp` with `Authorization: Bearer <token>`.
@@ -37,44 +42,54 @@ Reach is identical to what the same token could do through the REST API: an admi
 
 ## The Tools
 
-| Tool | Returns |
-| --- | --- |
-| `list_projects` | Every project the token can reach |
-| `get_project` | One project by id |
-| `list_applications` | Every application in a project |
-| `get_application` | One application by id, including a pending source/config change |
-| `list_databases` | Every managed database in a project (never credentials) |
-| `get_database` | One database by id (never credentials) |
-| `list_deployments` | An application's deployments, newest first — status, build outcome, commit info, health-check result |
-| `get_application_logs` | The last N lines of an application's live container output |
-| `get_deployment_logs` | The last N lines of a deployment's build log — the first place to look when a deployment failed |
-| `list_domain_tls_status` | Every domain's observed TLS state, **with why a pending or failed certificate hasn't issued** |
-| `list_project_backups` | Recent backup runs across a project's databases and application volumes |
+| Tool                     | Returns                                                                                              |
+| ------------------------ | ---------------------------------------------------------------------------------------------------- |
+| `list_projects`          | Every project the token can reach                                                                    |
+| `get_project`            | One project by id                                                                                    |
+| `list_applications`      | Every application in a project                                                                       |
+| `get_application`        | One application by id, including a pending source/config change                                      |
+| `list_databases`         | Every managed database in a project (never credentials)                                              |
+| `get_database`           | One database by id (never credentials)                                                               |
+| `list_deployments`       | An application's deployments, newest first — status, build outcome, commit info, health-check result |
+| `get_application_logs`   | The last N lines of an application's live container output                                           |
+| `get_deployment_logs`    | The last N lines of a deployment's build log — the first place to look when a deployment failed      |
+| `list_domain_tls_status` | Every domain's observed TLS state, **with why a pending or failed certificate hasn't issued**        |
+| `list_project_backups`   | Recent backup runs across a project's databases and application volumes                              |
 
 Every list and log tool is bounded — a default and a hard maximum, never "everything." `get_application_logs` and `get_deployment_logs` default to 200 lines (capped at 1000); `list_deployments` and `list_project_backups` default to 20 (capped at 100).
 
 ## Tools That Make Changes
 
-| Tool | Scope | What it does |
-| --- | --- | --- |
-| `trigger_deployment` | `deploy` | Starts a deployment of an application now. Returns a `pending` deployment immediately; follow it with `list_deployments` and `get_deployment_logs`. Refused, with an explanation, while another deploy, build, reload, rebuild, or rollback is running for that application. |
-| `update_application` | `write` | Changes an application's name, source repository or image, branch, root directory, Dockerfile path, build type override, or builder image. |
-| `start_application` | `write` | Starts an application's existing stopped container. Does not build or deploy anything. |
-| `stop_application` | `write` | Stops an application's running container. The application goes offline; nothing is deleted. |
-| `set_application_env_vars` | `write` | Sets environment variables on an application. See [below](#environment-variables-and-secrets). |
+| Tool                           | Scope    | What it does                                                                                                                                                                                                                                                                 |
+| ------------------------------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `trigger_deployment`           | `deploy` | Starts a deployment of an application now. Returns a `pending` deployment immediately; follow it with `list_deployments` and `get_deployment_logs`. Refused, with an explanation, while another deploy, build, reload, rebuild, or rollback is running for that application. |
+| `update_application`           | `write`  | Changes an application's name, source repository or image, branch, root directory, Dockerfile path, build type override, or builder image.                                                                                                                                   |
+| `start_application`            | `write`  | Starts an application's existing stopped container. Does not build or deploy anything.                                                                                                                                                                                       |
+| `stop_application`             | `write`  | Stops an application's running container. The application goes offline; nothing is deleted.                                                                                                                                                                                  |
+| `set_application_env_vars`     | `write`  | Sets environment variables on an application. See [below](#environment-variables-and-secrets).                                                                                                                                                                               |
+| `set_application_resources`    | `write`  | Replaces an application's CPU and memory limits. Both are replaced together, and `memory_limit` is in bytes.                                                                                                                                                                 |
+| `set_application_health_check` | `write`  | Replaces an application's whole health-check configuration — `http`, `command`, or `none`.                                                                                                                                                                                   |
+| `set_application_runtime`      | `write`  | Replaces an application's container hardening profile: read-only root filesystem, and `minimal` or `standard` capabilities.                                                                                                                                                  |
+| `set_database_resources`       | `write`  | Replaces a managed database's CPU and memory limits. **The only tool that takes effect on a running container immediately.**                                                                                                                                                 |
 
 `start_application` and `stop_application` need `write`, not `deploy`: `deploy` means "cause a deployment" and nothing more, so a token you hand to CI cannot take an application offline.
 
-Three things hold for all of them:
+Four things hold for all of them:
 
 - **There is no confirmation step.** A dashboard button has a person behind it; a tool call does not. Each tool takes effect the moment it is called, which is why this set is deliberately limited to changes that are reversible or additive.
-- **Saving is not deploying.** `update_application` and `set_application_env_vars` save a change; the running container is untouched until a deployment applies it. The application's `pending_change` shows that a change is waiting, and `trigger_deployment` applies it.
-- **Only what you name changes.** `update_application` changes only the fields passed — every field left out keeps its current value, and an empty string clears one that can be cleared. An assistant mentioning one field cannot wipe the others. It cannot change an application's environment variables, domains, resource limits, health check, git credentials, or type.
+- **Saving is not deploying — with one exception.** `update_application`, `set_application_env_vars`, `set_application_resources`, `set_application_health_check` and `set_application_runtime` save a change; the running container is untouched until a deployment applies it, and the application's `pending_change` shows one is waiting. `set_database_resources` is the exception: a database's limits are applied to the running container straight away.
+- **Only what you name changes — within one tool.** `update_application` changes only the fields passed; every field left out keeps its current value, and an empty string clears one that can be cleared. An assistant mentioning one field cannot wipe the others, and `update_application` cannot reach an application's environment variables, domains, resource limits, health check, hardening profile, git credentials, or type — those have their own tools, or none at all.
+- **The `set_*` settings tools replace, they do not merge.** `set_application_resources`, `set_application_health_check`, `set_application_runtime` and `set_database_resources` each write their whole area: a field you leave out goes back to its default rather than keeping its current value. Read the current state first — with `get_application` or `get_database` — and pass every field you want to keep. `set_application_env_vars` is the one that merges, and it says so.
 
 ## Environment Variables and Secrets
 
 <Callout type="warn">
-Connecting an MCP client with a `write` token lets an LLM **set** your environment variables, including secrets. It can never read a secret back — revealing a secret value is available only to a dashboard session, never to a token. The non-secret values it sets are readable by anyone with read access to the application, as they are in the dashboard. Only connect a client you trust to write to your applications' configuration.
+  Connecting an MCP client with a `write` token lets an LLM **set** your
+  environment variables, including secrets. It can never read a secret back —
+  revealing a secret value is available only to a dashboard session, never to a
+  token. The non-secret values it sets are readable by anyone with read access
+  to the application, as they are in the dashboard. Only connect a client you
+  trust to write to your applications' configuration.
 </Callout>
 
 `set_application_env_vars` **adds or updates only the variables you list**. Every other variable on the application is left exactly as it is, and the tool never removes one — to remove a variable, use the dashboard. Passing one variable changes one variable. Values are stored encrypted, and the tool's reply names the keys it set but never repeats a value.
@@ -84,6 +99,8 @@ A variable the tool creates is a **secret** unless it is passed with `is_secret:
 ## What It Cannot Do
 
 A token has never been able to destroy anything, and going through MCP does not change that: **there is no delete tool and no restore tool, and there never will be.** No MCP tool deletes an application, a database, a project, a domain, an environment variable, a backup, or a volume, or restores any of them. The same goes for the install itself: tokens, users, settings, quotas, and backup destinations are not reachable through MCP at all, because install-wide configuration is not something a project-scoped token holds.
+
+One change in that list deserves naming on its own. `set_application_runtime` can **relax** an application's container hardening — turn off the read-only root filesystem, or move it from `minimal` capabilities to Docker's default set. That is a real reduction in defence in depth, it survives until someone changes it back, and nothing about the running application looks different afterwards. It stays `write` rather than session-only because a `write` token can already do it through the REST API, and because a token that can repoint an application at a different image is already trusted with far more; but if you connect an assistant you would not trust with that decision, issue it a `read` token. `no-new-privileges` is always on either way, and no tool can grant privileged mode, host mounts, host networking, or device access — none of those is reachable from any token.
 
 What MCP can change is the short list in [Tools That Make Changes](#tools-that-make-changes), each gated by the scope in that table. A `read` token cannot change anything, and a `write` token gains nothing by going through MCP that it could not already do through the REST API — MCP is narrower than the REST API, never wider. It also goes further than the REST API's own [token boundaries](/docs/api#what-a-token-can-never-do) in one respect: it exposes only these tools, not every endpoint a `write` token could otherwise reach.
 

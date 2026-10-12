@@ -41,6 +41,14 @@ var toolScopes = map[string]string{
 	"start_application":        "write",
 	"stop_application":         "write",
 	"set_application_env_vars": "write",
+	// Settings. "write" rather than a scope of their own: they change an
+	// application's configuration exactly as update_application does, and a
+	// token trusted to repoint an application at a different image is already
+	// trusted with its limits and hardening profile.
+	"set_application_resources":    "write",
+	"set_application_health_check": "write",
+	"set_application_runtime":      "write",
+	"set_database_resources":       "write",
 }
 
 var errScopeDenied = errors.New("token lacks required scope")

@@ -182,6 +182,7 @@ func New(
 			Deploys:  deployQueue,
 			Apps:     appSvc,
 			Env:      service.NewEnvVarService(db, queries, cfg.Keyring, appSvc),
+			DBs:      dbSvc,
 		}),
 	}
 }

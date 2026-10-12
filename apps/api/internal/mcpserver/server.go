@@ -37,6 +37,10 @@ type Deps struct {
 	Deploys  *service.DeployQueue
 	Apps     *service.ApplicationService
 	Env      *service.EnvVarService
+	// DBs is needed only by set_database_resources, which applies a limit to
+	// the running container as well as persisting it — the live half lives in
+	// the service so REST and MCP cannot drift on it.
+	DBs *service.DatabaseService
 }
 
 // New builds the MCP server and wraps it in a stateless streamable-HTTP
@@ -76,6 +80,8 @@ func newServer(d Deps) *mcp.Server {
 	registerApplicationActionTools(srv, d)
 	registerApplicationLifecycleTools(srv, d)
 	registerEnvVarTools(srv, d)
+	registerApplicationSettingsTools(srv, d)
+	registerDatabaseSettingsTools(srv, d)
 
 	return srv
 }

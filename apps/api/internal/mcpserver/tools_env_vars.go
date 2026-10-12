@@ -75,7 +75,7 @@ func registerEnvVarTools(srv *mcp.Server, d Deps) {
 				updated = append(updated, r.Key)
 			}
 		}
-		auditTool(ctx, d.Audit, "update_env_vars", "env_var", in.ApplicationID,
+		auditTool(ctx, d.Audit, "update_env_vars", "env_var", uuidToString(app.ID),
 			map[string]any{"created": created, "updated": updated, "removed": []string{}})
 
 		return textResult(setEnvVarsResult{

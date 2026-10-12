@@ -189,7 +189,7 @@ func registerApplicationActionTools(srv *mcp.Server, d Deps) {
 		d.Apps.MarkUpdate(ctx, current, updated)
 
 		changed := changedFields(current, updated)
-		auditTool(ctx, d.Audit, "update_application", "application", in.ApplicationID,
+		auditTool(ctx, d.Audit, "update_application", "application", uuidToString(current.ID),
 			changedFieldDetails(current, updated))
 
 		out := updatedApplication{Application: toApplication(updated), ChangedFields: changed}
@@ -243,7 +243,7 @@ func registerApplicationLifecycleTools(srv *mcp.Server, d Deps) {
 				}
 			}
 
-			auditTool(ctx, d.Audit, verb+"_application", "application", in.ApplicationID, nil)
+			auditTool(ctx, d.Audit, verb+"_application", "application", uuidToString(app.ID), nil)
 			return textResult(lifecycleResult{ApplicationID: uuidToString(updated.ID), Status: updated.Status})
 		}
 	}

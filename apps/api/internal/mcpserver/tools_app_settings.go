@@ -111,7 +111,7 @@ func registerApplicationSettingsTools(srv *mcp.Server, d Deps) {
 
 		// Same action, resource type and details shape as the REST endpoint, so
 		// one filter finds a resource change however it was made.
-		auditTool(ctx, d.Audit, "set_resources", "application", in.ApplicationID,
+		auditTool(ctx, d.Audit, "set_resources", "application", uuidToString(app.ID),
 			map[string]any{"cpu_limit": in.CPULimit, "memory_limit": in.MemoryLimit})
 
 		return textResult(settingsResult{
@@ -156,7 +156,7 @@ func registerApplicationSettingsTools(srv *mcp.Server, d Deps) {
 		}
 		d.Apps.MarkConfigChanged(ctx, app.ID)
 
-		auditTool(ctx, d.Audit, "set_health_check", "application", in.ApplicationID,
+		auditTool(ctx, d.Audit, "set_health_check", "application", uuidToString(app.ID),
 			map[string]any{"type": in.Type})
 
 		return textResult(settingsResult{
@@ -192,7 +192,7 @@ func registerApplicationSettingsTools(srv *mcp.Server, d Deps) {
 		}
 		d.Apps.MarkConfigChanged(ctx, app.ID)
 
-		auditTool(ctx, d.Audit, "update_application_runtime", "application", in.ApplicationID,
+		auditTool(ctx, d.Audit, "update_application_runtime", "application", uuidToString(app.ID),
 			map[string]any{"readonly_rootfs": in.ReadonlyRootfs, "container_caps": in.ContainerCaps})
 
 		// Re-read rather than trusting the input: the query is :exec, and the

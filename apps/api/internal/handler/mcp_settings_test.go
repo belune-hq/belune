@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -350,4 +351,35 @@ func TestMCP_Settings_AreAuditedAgainstTheToken(t *testing.T) {
 			require.NoError(t, json.Unmarshal([]byte(details), &parsed))
 		})
 	}
+}
+
+// TestMCP_Settings_AuditUsesTheCanonicalID: the audit row must key on the
+// resource's own id, not the spelling the caller happened to send.
+//
+// ⚠️ pgtype.UUID parses an uppercased id just as happily, so echoing the
+// argument wrote "1F82A18D-..." and a query for the canonical lowercase form
+// missed the row — the audit log's whole job is being findable. The caller
+// here is an LLM, which varies spelling far more readily than a dashboard
+// does. Same class as the deploy task id canonicalisation on this branch.
+func TestMCP_Settings_AuditUsesTheCanonicalID(t *testing.T) {
+	resetDB(t)
+	adminToken := env.SetupAdmin(t, "mcp-audit-canon@test.com", "password123")
+	_, appID := settingsApp(t, adminToken)
+	token := mintScoped(t, adminToken, []string{"write"})
+	base := newAuditedMCP(t)
+
+	shouted := strings.ToUpper(appID)
+	require.NotEqual(t, appID, shouted, "the fixture id must contain hex letters for this to mean anything")
+
+	decodeToolResult(t, callToolAt(t, base, token, "set_application_resources", map[string]any{
+		"application_id": shouted, "cpu_limit": 1, "memory_limit": 268435456,
+	}), &struct{}{})
+
+	var found int
+	require.Eventually(t, func() bool {
+		env.Pool.QueryRow(context.Background(),
+			"SELECT count(*) FROM audit_logs WHERE action = 'set_resources' AND resource_id = $1", appID).Scan(&found)
+		return found == 1
+	}, 2*time.Second, 10*time.Millisecond,
+		"the row must be findable by the canonical id, whatever spelling the caller used")
 }

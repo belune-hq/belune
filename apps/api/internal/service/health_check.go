@@ -77,11 +77,21 @@ func ValidateHealthCheck(id pgtype.UUID, in HealthCheckInput) (generated.SetAppl
 	}
 }
 
-// Zero means "unset" for every health-check tuning field — a 0s interval or 0
-// retries is meaningless, so it maps to NULL and the deploy path falls back to
-// its own defaults.
+// Zero or less means "unset" for every health-check tuning field — a 0s
+// interval, 0 retries or a negative timeout is meaningless, so it maps to NULL
+// and the deploy path falls back to its own defaults.
+//
+// ⚠️ The condition is v > 0, not v != 0. An earlier version of this used
+// v != 0 and so persisted a negative value where the handler's own helper had
+// turned it into NULL — behaviour drift inside a commit that was presented as
+// a pure move. Nothing downstream breaks (every consumer in the deploy path
+// guards > 0), but the API response and the dashboard form then showed the
+// negative back.
 func nullHealthInt4(v int) pgtype.Int4 {
-	return pgtype.Int4{Int32: int32(v), Valid: v != 0}
+	if v <= 0 {
+		return pgtype.Int4{}
+	}
+	return pgtype.Int4{Int32: int32(v), Valid: true}
 }
 
 func nullHealthText(v string) pgtype.Text {

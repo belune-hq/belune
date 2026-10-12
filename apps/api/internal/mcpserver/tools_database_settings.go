@@ -64,7 +64,7 @@ func registerDatabaseSettingsTools(srv *mcp.Server, d Deps) {
 			return nil, nil, internalError("failed to update database resources", err)
 		}
 
-		auditTool(ctx, d.Audit, "set_database_resources", "database", in.DatabaseID,
+		auditTool(ctx, d.Audit, "set_database_resources", "database", uuidToString(db.ID),
 			map[string]any{"cpu_limit": in.CPULimit, "memory_limit": in.MemoryLimit})
 
 		return textResult(setDatabaseResourcesResult{

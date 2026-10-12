@@ -42,7 +42,7 @@ import {
   useDatabaseCredentials,
   useDatabaseDeletionImpact,
   useDeleteDatabase,
-  useUpdateDatabase,
+  useSetDatabaseResources,
   useSetDatabaseExternalAccess,
   useDatabaseBackups,
   useBackupDatabase,
@@ -929,7 +929,7 @@ const MB = 1024 * 1024;
  * here — a major version bump is a separate guarded flow.
  */
 function AdvancedCard({ db }: { db: Database }) {
-  const update = useUpdateDatabase(db.project_id, db.id);
+  const update = useSetDatabaseResources(db.project_id, db.id);
   const upgrade = useUpgradeDatabase(db.project_id, db.id);
   const { data: volume, isLoading: volumeLoading } = useDatabaseVolume(
     db.project_id,

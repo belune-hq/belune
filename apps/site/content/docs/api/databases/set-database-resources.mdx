@@ -1,5 +1,5 @@
 ---
-title: Update Database
+title: Set Resources
 description: Scoped to a project-pinned token's pin set — a project outside it
   is rejected, regardless of scope.
 full: true
@@ -25,7 +25,7 @@ export default function Layout(props) {
   return (
     <>
       {props.children}
-      <Comp document="./public/openapi.json" operations={[{"path":"/api/projects/{projectId}/databases/{databaseId}","method":"put"}]} />
+      <Comp document="./public/openapi.json" operations={[{"path":"/api/projects/{projectId}/databases/{databaseId}/resources","method":"put"}]} />
     </>
   );
 }

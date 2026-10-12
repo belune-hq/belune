@@ -83,6 +83,7 @@ type Handler struct {
 	backupDestSvc     *service.BackupDestinationService
 	hub               *ws.Hub
 	auditSvc          *service.AuditService
+	deployQueue       *service.DeployQueue
 	notifySvc         *service.NotificationService
 	termManager       *terminal.Manager
 	// docker system df is far too slow to run inside a request (33s on a small
@@ -141,7 +142,10 @@ func New(
 	emailSvc *email.Service,
 	tokenSvc *service.TokenService,
 ) *Handler {
-	return &Handler{
+	// Shared with the MCP tools so a deploy started by either takes the same
+	// TaskID guard, retry policy and stale-task reclaim.
+	deployQueue := service.NewDeployQueue(queries, asynqClient, inspector, cfg.TaskTimeoutMinutes)
+	h := &Handler{
 		cfg:               cfg,
 		db:                db,
 		queries:           queries,
@@ -160,6 +164,7 @@ func New(
 		backupDestSvc:     backupDestSvc,
 		hub:               hub,
 		auditSvc:          auditSvc,
+		deployQueue:       deployQueue,
 		notifySvc:         notifySvc,
 		termManager:       termMgr,
 		quotaSvc:          quotaSvc,
@@ -170,8 +175,23 @@ func New(
 		serverSvc:         service.NewServerService(queries),
 		totpSvc:           service.NewTOTPService(db, queries, cfg.Keyring),
 		tokenSvc:          tokenSvc,
-		mcpHandler:        mcpserver.New(queries, rts),
 	}
+
+	// ⚠️ Built after h, not inside the literal above: create_database needs
+	// h itself as its DatabaseProvisioner, so the Deps cannot be assembled
+	// until h exists.
+	h.mcpHandler = mcpserver.New(mcpserver.Deps{
+		Queries:   queries,
+		Runtimes:  rts,
+		Audit:     mcpAuditor(auditSvc),
+		Deploys:   deployQueue,
+		Apps:      appSvc,
+		Env:       service.NewEnvVarService(db, queries, cfg.Keyring, appSvc),
+		Quotas:    quotaSvc,
+		DBs:       dbSvc,
+		Databases: h,
+	})
+	return h
 }
 
 // runtimeForApplication and runtimeForDatabase resolve the host a resource is
@@ -187,6 +207,16 @@ func (h *Handler) runtimeForDatabase(ctx context.Context, dbID pgtype.UUID) (run
 
 func (h *Handler) runtimeForProject(ctx context.Context, projectID pgtype.UUID) (runtime.ContainerRuntime, error) {
 	return service.RuntimeForProject(ctx, h.queries, h.runtimes, projectID)
+}
+
+// mcpAuditor avoids handing mcpserver a non-nil interface wrapping a nil
+// *AuditService, which would panic on first use rather than skip like
+// Handler.audit does.
+func mcpAuditor(s *service.AuditService) mcpserver.Auditor {
+	if s == nil {
+		return nil
+	}
+	return s
 }
 
 // audit is a nil-safe wrapper for audit logging. Extracts user ID, the

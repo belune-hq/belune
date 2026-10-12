@@ -24,6 +24,142 @@ Belune is pre-1.0. The versioning contract while it stays there:
 Release notes for each version are also published on the
 [Releases page](https://github.com/weiliang79/belune/releases).
 
+## [Unreleased]
+
+### ⚠️ Breaking changes
+
+**Changing a database's CPU and memory limits moved to its own path.**
+
+```
+old   PUT /api/projects/{projectId}/databases/{databaseId}
+new   PUT /api/projects/{projectId}/databases/{databaseId}/resources
+```
+
+The old path no longer accepts a `PUT` and answers `404`. `GET` and `DELETE` on
+it are unchanged.
+
+Nothing else moved, and the request and response bodies are identical. If you
+have a script that sets database limits, add `/resources` to the URL. The
+dashboard already uses the new path, so an install needs no action.
+
+Why move a published path, which this file's contract says will not happen
+lightly: that endpoint only ever set those two fields, so "update the database"
+promised more than it did, and its application equivalent has always been
+`.../applications/{applicationId}/resources`. The two now match. We judged a
+short, loudly-documented break better than carrying a misleading path and an
+asymmetry into 1.0 — but it is a break, and this is it being listed.
+
+### An AI assistant can now change an application's settings
+
+The MCP server gained four tools, all requiring a `write` token:
+
+- `set_application_resources` — CPU and memory limits
+- `set_application_health_check` — the whole health-check configuration
+- `set_application_runtime` — read-only root filesystem and capability profile
+- `set_database_resources` — a managed database's CPU and memory limits
+
+These are endpoints a `write` token could already reach over the REST API, so
+no token gains authority it did not have; what changes is that an assistant can
+now do them directly instead of being able to redeploy an application but not
+resize it.
+
+Each replaces its whole area rather than merging, so read the current values
+first and pass everything you want to keep — the tool descriptions say so, and
+`set_application_env_vars` remains the one tool that merges. Every one writes an
+audit entry attributed to the token.
+
+**The audit entry for `update_application` now records what each field was
+changed to**, not just which fields changed. Repointing an application at a
+different repository or image is the most consequential thing an assistant can
+do through MCP, and a record saying "source_image changed" did not answer the
+question it existed to answer — you had to find the next deployment and read
+its image tag. Environment variable values are still never recorded; those are
+secrets, and the entry names the keys only.
+
+Two deliberate differences from the REST endpoints:
+
+- **A memory limit below 6 MiB is refused.** Docker cannot create a container
+  with one, so the REST endpoint accepting it produces an application that
+  cannot start. A person typing into a form with the current value in front of
+  them does not make that mistake; an assistant filling a number from
+  conversation does. The REST endpoints are unchanged.
+- **`set_database_resources` applies immediately** to the running container,
+  which the application tools do not — they wait for the next deployment. The
+  tool says so in its description and in its reply.
+
+`set_application_runtime` can relax an application's container hardening. That
+is a real reduction in defence in depth and it is called out in the
+[MCP documentation](https://belune.dev/docs/api/overview/mcp#what-it-cannot-do):
+if you connect an assistant you would not trust with that decision, give it a
+`read` token. No tool can grant privileged mode, host mounts, host networking or
+device access — those remain unreachable from any token.
+
+### An AI assistant can now create an application or a database
+
+`create_application`, `create_database` and `create_domain`, all requiring a
+`write` token.
+
+An application is created **not deployed** — follow with `trigger_deployment`.
+A database is provisioned asynchronously, so poll `get_database` until it is
+running.
+
+**A name that already exists in the project is refused rather than reused.**
+Returning the existing resource would leave an assistant unable to tell "I
+created this" from "this was already here", so it would report success for work
+it did not do. The refusal names the conflicting resource and its id, because
+the mirror case — a create that succeeded but whose reply was lost — reports a
+conflict on retry, and the caller needs to be able to resolve that with
+`get_application` or `get_database`.
+
+Neither tool takes a credential: `create_application` has no field for a
+connected git account or a repository token, so only public repositories and
+images work through it. Choosing which credential an application uses stays a
+dashboard decision. Database credentials are generated, stored encrypted, and
+returned by no tool.
+
+`create_domain` points a hostname at an application with TLS **off** and
+**cannot enable HTTPS** — there is no field for it, so passing one is rejected.
+Turn TLS on in the dashboard once the hostname's DNS points at the server.
+That order is the point: asking Let's Encrypt for a certificate before DNS
+resolves spends that hostname's limited validation attempts and delays the
+certificate that would otherwise have worked, and a tool call — unlike a person
+in the dashboard — has not just decided where DNS points. There is deliberately
+no tool to edit or remove a domain: changing a hostname, path, port or TLS mode
+on a domain already serving traffic takes a working site down.
+
+`create_application` sets no resource limits — `set_application_resources`
+does, so there is one way to set them — and `create_database` cannot create the
+`other` engine, whose image, port, data directory and backup commands are
+assembled from an image's own documentation. Project quotas apply exactly as
+they do over REST, so this is not a way around an application limit.
+
+### Fixes
+
+**A domain's TLS mode could be silently downgraded.** `PUT` on a domain
+defaulted an omitted `ssl_mode` to *automatic* instead of keeping the stored
+value, so a request that only meant to change something else took TLS with it:
+a domain set to *off* began requesting a certificate it could never validate,
+and a domain on *custom* stopped serving its uploaded certificate and started
+requesting one for a hostname that does not resolve here. Both are documented
+setups — a certificate terminated in front of Belune, and a Cloudflare Origin
+CA certificate. The dashboard was unaffected, since its form always sends the
+field; this reached scripts, for which it is optional.
+
+**Changing a running database's memory limit never actually took effect.** The
+new limit was saved, and the dashboard reported success, but the running
+container kept its old one until it was next recreated. Docker refuses a memory
+update that does not also set the swap limit, and the failure was only logged —
+so there was nothing to see. Setting CPU alone was unaffected.
+
+This is also why the new `set_database_resources` tool reports whether the
+change reached the running container rather than assuming it did: the bug was
+found by driving that tool against a real database and noticing the reply said
+the limits were not in force.
+
+- Health-check validation and the database resource write now live in the
+  service layer, so the REST endpoint and the MCP tool cannot drift on what a
+  valid configuration is or on applying a limit to a running container.
+
 ## [0.1.19]
 
 **A security release.** It closes a set of related flaws in how personal access

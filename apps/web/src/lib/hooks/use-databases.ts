@@ -168,11 +168,11 @@ export function useReloadDatabase(projectId: string, databaseId: string) {
   );
 }
 
-export function useUpdateDatabase(projectId: string, databaseId: string) {
+export function useSetDatabaseResources(projectId: string, databaseId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: { cpu_limit: number; memory_limit: number }) =>
-      databasesApi.updateDatabase(projectId, databaseId, data),
+      databasesApi.setDatabaseResources(projectId, databaseId, data),
     onSuccess: () => {
       qc.invalidateQueries({
         queryKey: queryKeys.databases.detail(projectId, databaseId),

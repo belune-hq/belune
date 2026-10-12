@@ -9577,75 +9577,6 @@
             "session": []
           }
         ]
-      },
-      "put": {
-        "operationId": "UpdateDatabase",
-        "summary": "Update Database",
-        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
-        "tags": [
-          "Databases"
-        ],
-        "x-belune-order": 4,
-        "parameters": [
-          {
-            "name": "projectId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "databaseId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/updateDatabaseRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Database"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "write": []
-          },
-          {
-            "session": []
-          }
-        ]
       }
     },
     "/api/projects/{projectId}/databases/{databaseId}/backup-configs": {
@@ -10676,6 +10607,76 @@
         "security": [
           {
             "deploy": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/projects/{projectId}/databases/{databaseId}/resources": {
+      "put": {
+        "operationId": "SetDatabaseResources",
+        "summary": "Set Resources",
+        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
+        "tags": [
+          "Databases"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/updateDatabaseRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Database"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "write": []
           },
           {
             "session": []

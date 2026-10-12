@@ -55,13 +55,13 @@ export function createDatabase(
   return api.post<Database>(`/projects/${projectId}/databases`, data);
 }
 
-export function updateDatabase(
+export function setDatabaseResources(
   projectId: string,
   databaseId: string,
   data: { cpu_limit: number; memory_limit: number },
 ) {
   return api.put<Database>(
-    `/projects/${projectId}/databases/${databaseId}`,
+    `/projects/${projectId}/databases/${databaseId}/resources`,
     data,
   );
 }

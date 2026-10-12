@@ -4,10 +4,10 @@
     "list-databases",
     "get-database",
     "create-database",
-    "update-database",
     "get-database-deletion-impact",
     "upgrade-database",
     "set-database-external-access",
+    "set-database-resources",
     "actions",
     "logs",
     "volumes-backups"

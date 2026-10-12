@@ -749,7 +749,12 @@ func registerRoutes(r chi.Router, h *handler.Handler, auth *service.AuthService,
 			// session, not just read scope.
 			r.With(middleware.RequireSession()).Get("/api/projects/{projectId}/databases/{databaseId}/credentials/reveal", h.RevealDatabaseCredentials)
 			r.Get("/api/projects/{projectId}/databases/{databaseId}/volume", h.GetDatabaseVolume)
-			r.Put("/api/projects/{projectId}/databases/{databaseId}", h.UpdateDatabase)
+			// ⚠️ BREAKING (v0.1.20): moved from PUT .../databases/{databaseId},
+			// which is a published path. It only ever set cpu_limit and
+			// memory_limit, so it now says so and matches the application
+			// endpoint (.../applications/{applicationId}/resources). No alias
+			// is kept — a deliberate clean break, listed in the changelog.
+			r.Put("/api/projects/{projectId}/databases/{databaseId}/resources", h.SetDatabaseResources)
 			r.Post("/api/projects/{projectId}/databases/{databaseId}/external-access", h.SetDatabaseExternalAccess)
 			r.Get("/api/projects/{projectId}/databases/{databaseId}/backups", h.ListDatabaseBackups)
 			r.Post("/api/projects/{projectId}/databases/{databaseId}/backups", h.BackupDatabase)

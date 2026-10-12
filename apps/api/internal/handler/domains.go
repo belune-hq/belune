@@ -444,21 +444,42 @@ func (h *Handler) UpdateDomain(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if req.SSLMode == "" {
-		req.SSLMode = "automatic"
-	}
-
-	certUUID, err := parseCertificateID(req.SSLMode, req.CertificateID)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	// Fetch existing domain to detect hostname changes
+	// Fetch existing domain to detect hostname changes, and to fall back for
+	// every field the request omits.
 	oldDomain, err := h.queries.GetDomain(r.Context(), domainUUID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "domain not found")
 		return
+	}
+
+	// ⚠️ An omitted ssl_mode falls back to the STORED mode, not to
+	// "automatic". Defaulting it here used to silently downgrade TLS on a PUT
+	// that only meant to change something else: a domain on "off" (TLS
+	// terminated in front of Belune) started an ACME request that could not
+	// validate, and a domain on "custom" (a Cloudflare Origin CA cert) had its
+	// certificate_id cleared, stopped serving the uploaded certificate, and
+	// began requesting one for a hostname that resolves to Cloudflare. Both
+	// are documented, supported configurations.
+	//
+	// parseCertificateID is below the fallback for the same reason: with the
+	// mode resolved from storage, "custom with no certificate_id passed" means
+	// "keep the certificate it already has", not "reject the request".
+	sslMode := oldDomain.SslMode
+	if req.SSLMode != "" {
+		sslMode = req.SSLMode
+	}
+	certUUID := oldDomain.CertificateID
+	if req.CertificateID != "" || req.SSLMode != "" {
+		certUUID, err = parseCertificateID(sslMode, req.CertificateID)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	if sslMode != proxy.SSLModeCustom {
+		// Leaving a stale id behind would make a later switch back to custom
+		// silently serve a certificate the caller never re-specified.
+		certUUID = pgtype.UUID{}
 	}
 
 	path, stripPath := oldDomain.Path, oldDomain.StripPath
@@ -491,7 +512,7 @@ func (h *Handler) UpdateDomain(w http.ResponseWriter, r *http.Request) {
 		Hostname:       req.Hostname,
 		SslEnabled:     req.SSLEnabled,
 		ForceHttps:     req.ForceHTTPS,
-		SslMode:        req.SSLMode,
+		SslMode:        sslMode,
 		SslProvider:    pgtype.Text{String: req.SSLProvider, Valid: req.SSLProvider != ""},
 		CertificateID:  certUUID,
 		AdvancedConfig: req.AdvancedConfig,

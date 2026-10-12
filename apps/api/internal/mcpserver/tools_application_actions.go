@@ -38,13 +38,13 @@ type updatedApplication struct {
 	Note          string      `json:"note,omitempty"`
 }
 
-// changedFields reports which of the editable fields actually moved, by
-// diffing before against after rather than echoing the request: the service
-// can override what was asked for (a preview child keeps its own branch), and
-// the caller should be told what happened, not what it hoped for.
-func changedFields(before, after generated.Application) []string {
-	out := []string{}
-	for _, f := range []struct {
+// editableFields is the one list the result and the audit row both read, so
+// they can never disagree about what update_application is able to change.
+func editableFields(before, after generated.Application) []struct {
+	name          string
+	before, after string
+} {
+	return []struct {
 		name          string
 		before, after string
 	}{
@@ -56,10 +56,49 @@ func changedFields(before, after generated.Application) []string {
 		{"dockerfile_path", before.DockerfilePath.String, after.DockerfilePath.String},
 		{"build_type_override", before.BuildTypeOverride.String, after.BuildTypeOverride.String},
 		{"builder_image", before.BuilderImage.String, after.BuilderImage.String},
-	} {
+	}
+}
+
+// changedFields reports which of the editable fields actually moved, by
+// diffing before against after rather than echoing the request: the service
+// can override what was asked for (a preview child keeps its own branch), and
+// the caller should be told what happened, not what it hoped for.
+func changedFields(before, after generated.Application) []string {
+	out := []string{}
+	for _, f := range editableFields(before, after) {
 		if f.before != f.after {
 			out = append(out, f.name)
 		}
+	}
+	return out
+}
+
+// changedFieldDetails is what the audit row records: for each field that
+// moved, the value before and after.
+//
+// ⚠️ Names alone are not enough here, which is what this used to record. The
+// most consequential thing this tool can do is repoint an application at a
+// different repository or image, and "source_image changed" does not say what
+// it was changed TO — an operator reviewing what an assistant did had to find
+// the next deployment row and read its image_tag. Meanwhile the settings tools
+// beside it record their actual values, so the log was more informative about
+// a memory limit than about a repository swap.
+//
+// These are not secrets, unlike an environment variable's value, which is why
+// recording them is safe. A source_repo CAN carry a credential in its userinfo
+// if someone pasted one in — but nothing is done about it here on purpose:
+// service.redactDetails already runs every audit detail string through
+// redact.Error at write time, recursing into nested maps, so the credential is
+// gone before the row is stored and the audit_logs table is safe to dump.
+// Redacting here as well produced a double redaction that ate the URL's
+// scheme, leaving a worse record than doing nothing.
+func changedFieldDetails(before, after generated.Application) map[string]any {
+	out := map[string]any{}
+	for _, f := range editableFields(before, after) {
+		if f.before == f.after {
+			continue
+		}
+		out[f.name] = map[string]any{"from": f.before, "to": f.after}
 	}
 	return out
 }
@@ -150,7 +189,8 @@ func registerApplicationActionTools(srv *mcp.Server, d Deps) {
 		d.Apps.MarkUpdate(ctx, current, updated)
 
 		changed := changedFields(current, updated)
-		auditTool(ctx, d.Audit, "update_application", "application", in.ApplicationID, map[string]any{"fields": changed})
+		auditTool(ctx, d.Audit, "update_application", "application", in.ApplicationID,
+			changedFieldDetails(current, updated))
 
 		out := updatedApplication{Application: toApplication(updated), ChangedFields: changed}
 		if len(changed) == 0 {

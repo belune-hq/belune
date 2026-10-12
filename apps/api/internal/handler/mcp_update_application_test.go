@@ -2,6 +2,7 @@ package handler_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -210,6 +211,16 @@ func TestMCP_UpdateApplication_ScopeAndPin(t *testing.T) {
 		updateArgs(otherApp, map[string]any{"branch": "develop"}))))
 }
 
+// TestMCP_UpdateApplication_IsAuditedAgainstTheToken checks the row exists,
+// is attributed to the token, and — the part that matters — says what the
+// fields were changed TO.
+//
+// ⚠️ This used to assert only that details contained "branch", which passed
+// when the row recorded nothing but a list of field names. The audit log is
+// the operator's only record of what an assistant did, and the most
+// consequential thing this tool can do is repoint an application at another
+// repository or image; a record saying "source_image changed" without the new
+// value does not answer the one question being asked of it.
 func TestMCP_UpdateApplication_IsAuditedAgainstTheToken(t *testing.T) {
 	resetDB(t)
 	adminToken := env.SetupAdmin(t, "mcp-update-audit@test.com", "password123")
@@ -220,7 +231,7 @@ func TestMCP_UpdateApplication_IsAuditedAgainstTheToken(t *testing.T) {
 
 	var got map[string]any
 	decodeToolResult(t, callToolAt(t, base, token, "update_application",
-		updateArgs(appID, map[string]any{"branch": "develop"})), &got)
+		updateArgs(appID, map[string]any{"branch": "develop", "root_directory": "apps/api"})), &got)
 
 	var tokenID *string
 	var details string
@@ -229,6 +240,55 @@ func TestMCP_UpdateApplication_IsAuditedAgainstTheToken(t *testing.T) {
 			"SELECT token_id::text, details::text FROM audit_logs WHERE action = 'update_application' AND resource_id = $1", appID,
 		).Scan(&tokenID, &details) == nil
 	}, 2*time.Second, 10*time.Millisecond, "the tool must write an audit row")
-	require.NotNil(t, tokenID)
-	assert.Contains(t, details, "branch")
+	require.NotNil(t, tokenID, "attributed to the token, not read as a human action")
+
+	var d map[string]map[string]string
+	require.NoError(t, json.Unmarshal([]byte(details), &d))
+
+	assert.Equal(t, map[string]string{"from": "main", "to": "develop"}, d["branch"])
+	assert.Equal(t, map[string]string{"from": "apps/web", "to": "apps/api"}, d["root_directory"])
+	// Only what moved is recorded — an unchanged field is not noise in the log.
+	assert.NotContains(t, d, "name")
+	assert.NotContains(t, d, "source_repo")
+}
+
+// TestMCP_UpdateApplication_AuditRedactsACredentialInARepoURL: the audit row
+// records source_repo so an operator can see what an assistant repointed an
+// application at, and a repository URL can carry a credential in its userinfo
+// if someone pasted one in. The log must not become where that comes to rest.
+//
+// Nothing in the tool does this — service.redactDetails scrubs every audit
+// detail string at write time, recursing into the nested from/to maps. This
+// test exists because that is a property of a DIFFERENT package that this
+// record now depends on: the row only started carrying URLs when it began
+// recording values instead of field names, so if the scrubbing is ever
+// narrowed, this is what should fail.
+func TestMCP_UpdateApplication_AuditRedactsACredentialInARepoURL(t *testing.T) {
+	resetDB(t)
+	adminToken := env.SetupAdmin(t, "mcp-update-redact@test.com", "password123")
+	project := env.CreateProject(t, adminToken, "P", "p")
+	appID, _ := richGitApp(t, adminToken, extractID(project["id"]))
+	token := mintScoped(t, adminToken, []string{"write"})
+	base := newAuditedMCP(t)
+
+	const secret = "ghp_SUPERSECRETTOKENVALUE"
+	var got map[string]any
+	decodeToolResult(t, callToolAt(t, base, token, "update_application",
+		updateArgs(appID, map[string]any{
+			"source_repo": "https://" + secret + "@github.com/other/repo.git",
+		})), &got)
+
+	var details string
+	require.Eventually(t, func() bool {
+		return env.Pool.QueryRow(context.Background(),
+			"SELECT details::text FROM audit_logs WHERE action = 'update_application' AND resource_id = $1", appID,
+		).Scan(&details) == nil
+	}, 2*time.Second, 10*time.Millisecond, "the tool must write an audit row")
+
+	assert.NotContains(t, details, secret, "the audit row must not contain the credential")
+	// The host and path survive, which is what makes the row useful — the
+	// scheme is eaten by redact.Error's URL-credential pattern, and that is an
+	// acceptable trade for a record that cannot leak a token.
+	assert.Contains(t, details, "github.com/other/repo.git",
+		"the repository must still be identifiable, or the record cannot answer what it was repointed at")
 }

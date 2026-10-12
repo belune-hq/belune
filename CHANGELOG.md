@@ -68,6 +68,14 @@ first and pass everything you want to keep — the tool descriptions say so, and
 `set_application_env_vars` remains the one tool that merges. Every one writes an
 audit entry attributed to the token.
 
+**The audit entry for `update_application` now records what each field was
+changed to**, not just which fields changed. Repointing an application at a
+different repository or image is the most consequential thing an assistant can
+do through MCP, and a record saying "source_image changed" did not answer the
+question it existed to answer — you had to find the next deployment and read
+its image tag. Environment variable values are still never recorded; those are
+secrets, and the entry names the keys only.
+
 Two deliberate differences from the REST endpoints:
 
 - **A memory limit below 6 MiB is refused.** Docker cannot create a container

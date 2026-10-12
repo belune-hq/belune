@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -409,4 +410,57 @@ func (s *DatabaseService) RestoreFromTombstone(ctx context.Context, tombstoneID,
 		return generated.Database{}, err
 	}
 	return created, nil
+}
+
+// ErrNegativeLimit is returned when a caller supplies a negative CPU or memory
+// limit. Zero is legitimate and means "unlimited", so only a negative value is
+// an error.
+var ErrNegativeLimit = errors.New("cpu_limit and memory_limit must be non-negative")
+
+// SetResources persists a managed database's CPU and memory limits and applies
+// them to the running container.
+//
+// Shared by the REST endpoint and the MCP tool so the live-apply cannot drift
+// between them — it is the half that is easy to omit, and omitting it looks
+// like nothing happened until the container is next recreated.
+//
+// ⚠️ A live-apply failure is deliberately NOT fatal: the limit is already
+// persisted and will be honoured the next time the container is created, so
+// failing the call would report "nothing happened" when something did. It is
+// logged instead.
+//
+// cpu is cores (0 = unlimited), memory is bytes (0 = unlimited). The bool
+// reports whether the live apply actually SUCCEEDED, so a caller can say what
+// happened instead of assuming — the MCP tool's reply does exactly that, and
+// without this it claimed the limits were in force whenever the database
+// happened to be running.
+func (s *DatabaseService) SetResources(ctx context.Context, dbID pgtype.UUID, cpu float64, memory int64) (generated.Database, bool, error) {
+	if cpu < 0 || memory < 0 {
+		return generated.Database{}, false, ErrNegativeLimit
+	}
+
+	db, err := s.queries.UpdateDatabaseResources(ctx, generated.UpdateDatabaseResourcesParams{
+		ID:          dbID,
+		CpuLimit:    cpu,
+		MemoryLimit: memory,
+	})
+	if err != nil {
+		return generated.Database{}, false, fmt.Errorf("persist database resources: %w", err)
+	}
+
+	appliedLive := false
+	if db.Status == status.DatabaseRunning && db.InternalHost.Valid {
+		rt, err := RuntimeForDatabase(ctx, s.queries, s.runtimes, dbID)
+		if err != nil {
+			slog.Warn("failed to resolve server to apply database resource limits live",
+				"database_id", uuidString(dbID), "error", err)
+		} else if err := rt.UpdateContainerResources(ctx, db.InternalHost.String, cpu, memory); err != nil {
+			slog.Warn("failed to apply database resource limits live",
+				"database_id", uuidString(dbID), "error", err)
+		} else {
+			appliedLive = true
+		}
+	}
+
+	return db, appliedLive, nil
 }

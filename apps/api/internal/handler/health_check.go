@@ -2,12 +2,12 @@ package handler
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/weiliang79/belune/internal/service"
 	"github.com/weiliang79/belune/internal/store/generated"
 )
 
@@ -37,60 +37,21 @@ type healthCheckRequest struct {
 	TimeoutSeconds int `json:"timeout_seconds"`
 }
 
-func nullInt4(v int) pgtype.Int4 {
-	if v <= 0 {
-		return pgtype.Int4{}
-	}
-	return pgtype.Int4{Int32: int32(v), Valid: true}
-}
-
-func nullText(v string) pgtype.Text {
-	if v == "" {
-		return pgtype.Text{}
-	}
-	return pgtype.Text{String: v, Valid: true}
-}
-
-// validateHealthCheck rejects a request whose fields do not match its type, and
-// returns the params with the unselected mechanism's fields nulled so the
-// stored row is coherent.
+// validateHealthCheck converts the REST wire shape into the shared input and
+// delegates. The wire struct stays here, with its own json tags, so the
+// published request schema is unaffected by the validation moving — the
+// generator resolves the handler's type, not the service's.
 func validateHealthCheck(id pgtype.UUID, req healthCheckRequest) (generated.SetApplicationHealthCheckParams, error) {
-	p := generated.SetApplicationHealthCheckParams{ID: id, HealthCheckType: req.Type}
-
-	switch req.Type {
-	case "none":
-		// Everything stays null.
-		return p, nil
-
-	case "http":
-		if req.Path == "" {
-			return p, errors.New("an HTTP health check needs a path")
-		}
-		if req.Path[0] != '/' {
-			return p, errors.New("the health check path must start with /")
-		}
-		if req.ExpectStatus != 0 && (req.ExpectStatus < 100 || req.ExpectStatus > 599) {
-			return p, errors.New("expected status must be a valid HTTP status code")
-		}
-		p.HealthCheckPath = nullText(req.Path)
-		p.HealthCheckExpectStatus = nullInt4(req.ExpectStatus)
-		p.HealthCheckTimeoutSeconds = nullInt4(req.TimeoutSeconds)
-		return p, nil
-
-	case "command":
-		if req.Command == "" {
-			return p, errors.New("a command health check needs a command")
-		}
-		p.HealthCheckCommand = nullText(req.Command)
-		p.HealthCheckIntervalSeconds = nullInt4(req.IntervalSeconds)
-		p.HealthCheckRetries = nullInt4(req.RetriesCount)
-		p.HealthCheckStartPeriodSeconds = nullInt4(req.StartPeriodSeconds)
-		p.HealthCheckTimeoutSeconds = nullInt4(req.TimeoutSeconds)
-		return p, nil
-
-	default:
-		return p, errors.New("type must be one of: none, http, command")
-	}
+	return service.ValidateHealthCheck(id, service.HealthCheckInput{
+		Type:               req.Type,
+		Path:               req.Path,
+		ExpectStatus:       req.ExpectStatus,
+		Command:            req.Command,
+		IntervalSeconds:    req.IntervalSeconds,
+		RetriesCount:       req.RetriesCount,
+		StartPeriodSeconds: req.StartPeriodSeconds,
+		TimeoutSeconds:     req.TimeoutSeconds,
+	})
 }
 
 // SetHealthCheck configures how an application's health is checked. A change

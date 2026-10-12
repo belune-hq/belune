@@ -24,6 +24,85 @@ Belune is pre-1.0. The versioning contract while it stays there:
 Release notes for each version are also published on the
 [Releases page](https://github.com/weiliang79/belune/releases).
 
+## [Unreleased]
+
+### ⚠️ Breaking changes
+
+**Changing a database's CPU and memory limits moved to its own path.**
+
+```
+old   PUT /api/projects/{projectId}/databases/{databaseId}
+new   PUT /api/projects/{projectId}/databases/{databaseId}/resources
+```
+
+The old path no longer accepts a `PUT` and answers `404`. `GET` and `DELETE` on
+it are unchanged.
+
+Nothing else moved, and the request and response bodies are identical. If you
+have a script that sets database limits, add `/resources` to the URL. The
+dashboard already uses the new path, so an install needs no action.
+
+Why move a published path, which this file's contract says will not happen
+lightly: that endpoint only ever set those two fields, so "update the database"
+promised more than it did, and its application equivalent has always been
+`.../applications/{applicationId}/resources`. The two now match. We judged a
+short, loudly-documented break better than carrying a misleading path and an
+asymmetry into 1.0 — but it is a break, and this is it being listed.
+
+### An AI assistant can now change an application's settings
+
+The MCP server gained four tools, all requiring a `write` token:
+
+- `set_application_resources` — CPU and memory limits
+- `set_application_health_check` — the whole health-check configuration
+- `set_application_runtime` — read-only root filesystem and capability profile
+- `set_database_resources` — a managed database's CPU and memory limits
+
+These are endpoints a `write` token could already reach over the REST API, so
+no token gains authority it did not have; what changes is that an assistant can
+now do them directly instead of being able to redeploy an application but not
+resize it.
+
+Each replaces its whole area rather than merging, so read the current values
+first and pass everything you want to keep — the tool descriptions say so, and
+`set_application_env_vars` remains the one tool that merges. Every one writes an
+audit entry attributed to the token.
+
+Two deliberate differences from the REST endpoints:
+
+- **A memory limit below 6 MiB is refused.** Docker cannot create a container
+  with one, so the REST endpoint accepting it produces an application that
+  cannot start. A person typing into a form with the current value in front of
+  them does not make that mistake; an assistant filling a number from
+  conversation does. The REST endpoints are unchanged.
+- **`set_database_resources` applies immediately** to the running container,
+  which the application tools do not — they wait for the next deployment. The
+  tool says so in its description and in its reply.
+
+`set_application_runtime` can relax an application's container hardening. That
+is a real reduction in defence in depth and it is called out in the
+[MCP documentation](https://belune.dev/docs/api/overview/mcp#what-it-cannot-do):
+if you connect an assistant you would not trust with that decision, give it a
+`read` token. No tool can grant privileged mode, host mounts, host networking or
+device access — those remain unreachable from any token.
+
+### Fixes
+
+**Changing a running database's memory limit never actually took effect.** The
+new limit was saved, and the dashboard reported success, but the running
+container kept its old one until it was next recreated. Docker refuses a memory
+update that does not also set the swap limit, and the failure was only logged —
+so there was nothing to see. Setting CPU alone was unaffected.
+
+This is also why the new `set_database_resources` tool reports whether the
+change reached the running container rather than assuming it did: the bug was
+found by driving that tool against a real database and noticing the reply said
+the limits were not in force.
+
+- Health-check validation and the database resource write now live in the
+  service layer, so the REST endpoint and the MCP tool cannot drift on what a
+  valid configuration is or on applying a limit to a running container.
+
 ## [0.1.19]
 
 **A security release.** It closes a set of related flaws in how personal access

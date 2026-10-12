@@ -49,6 +49,13 @@ var toolScopes = map[string]string{
 	"set_application_health_check": "write",
 	"set_application_runtime":      "write",
 	"set_database_resources":       "write",
+	// Creation. "write" for the same reason the settings tools are: a token
+	// that can repoint an application at a different image is already trusted
+	// with making one. ⛔ There is no delete counterpart and there will not be
+	// — a tool's blast radius has to be acceptable without a confirmation
+	// step, which creating is and destroying is not.
+	"create_application": "write",
+	"create_database":    "write",
 }
 
 var errScopeDenied = errors.New("token lacks required scope")

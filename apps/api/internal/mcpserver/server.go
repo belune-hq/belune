@@ -17,10 +17,12 @@
 package mcpserver
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/weiliang79/belune/internal/quota"
 	"github.com/weiliang79/belune/internal/runtime"
 	"github.com/weiliang79/belune/internal/service"
 	"github.com/weiliang79/belune/internal/store/generated"
@@ -37,6 +39,17 @@ type Deps struct {
 	Deploys  *service.DeployQueue
 	Apps     *service.ApplicationService
 	Env      *service.EnvVarService
+	// Quotas gates create_application on the same limit the REST endpoint
+	// applies, so MCP cannot be used to get around a project's application
+	// quota. nil disables the check, matching the handler.
+	Quotas *quota.Service
+	// Databases is the narrow slice of database provisioning create_database
+	// needs — satisfied by *handler.Handler. An interface rather than a
+	// service call because createDatabaseRecord's 156 lines of credential and
+	// provisioning code have two existing callers and one of them
+	// (InstantiateTemplate) has no integration test; injecting leaves that
+	// body untouched. nil omits the tool.
+	Databases DatabaseProvisioner
 	// DBs is needed only by set_database_resources, which applies a limit to
 	// the running container as well as persisting it — the live half lives in
 	// the service so REST and MCP cannot drift on it.
@@ -61,6 +74,12 @@ func New(d Deps) http.Handler {
 
 // newServer is split out of New so a test can enumerate the REAL registered
 // tools rather than a hand-written list.
+// DatabaseProvisioner provisions a managed database. Implemented by
+// *handler.Handler; see its ProvisionDatabase for why it lives there.
+type DatabaseProvisioner interface {
+	ProvisionDatabase(ctx context.Context, project generated.Project, in service.NewDatabase) (generated.Database, error)
+}
+
 func newServer(d Deps) *mcp.Server {
 	srv := mcp.NewServer(&mcp.Implementation{
 		Name:    "belune",
@@ -82,6 +101,8 @@ func newServer(d Deps) *mcp.Server {
 	registerEnvVarTools(srv, d)
 	registerApplicationSettingsTools(srv, d)
 	registerDatabaseSettingsTools(srv, d)
+	registerCreateTools(srv, d)
+	registerCreateDatabaseTool(srv, d)
 
 	return srv
 }

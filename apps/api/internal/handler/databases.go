@@ -1631,3 +1631,38 @@ func (h *Handler) DeleteOrphanedDatabaseBackup(w http.ResponseWriter, r *http.Re
 	})
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
+
+// ProvisionDatabase provisions a managed database for a caller outside this
+// package, currently the MCP create_database tool.
+//
+// ⚠️ A thin adapter on purpose. createDatabaseRecord is 156 lines of
+// credential generation, encryption and provisioning enqueue with two existing
+// callers (this file's REST endpoint and template instantiation), and one of
+// those two — InstantiateTemplate — has no integration test. Lifting that body
+// into the service would be the tidier shape, but it is the wrong trade
+// without a net under both callers: nothing here changes it, so nothing here
+// can regress it.
+//
+// The type assertion back to a request struct stays inside this package, which
+// is what keeps internal/mcpserver from needing to know the REST wire shape.
+func (h *Handler) ProvisionDatabase(ctx context.Context, project generated.Project, in service.NewDatabase) (generated.Database, error) {
+	version := in.Version
+	if version == "" {
+		version = defaultVersions[in.Type]
+	}
+	db, _, err := h.createDatabaseRecord(ctx, project, createDatabaseRequest{
+		Name:    in.Name,
+		Type:    in.Type,
+		Version: version,
+	})
+	return db, err
+}
+
+// DatabaseTypeHasDefaultVersion reports whether a type is one of the managed
+// engines, which is also what decides whether a version default exists for it.
+// Exported for the same reason as ProvisionDatabase: the check belongs beside
+// the map it reads.
+func DatabaseTypeHasDefaultVersion(dbType string) bool {
+	_, ok := defaultVersions[dbType]
+	return ok
+}

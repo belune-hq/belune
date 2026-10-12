@@ -145,7 +145,7 @@ func New(
 	// Shared with the MCP tools so a deploy started by either takes the same
 	// TaskID guard, retry policy and stale-task reclaim.
 	deployQueue := service.NewDeployQueue(queries, asynqClient, inspector, cfg.TaskTimeoutMinutes)
-	return &Handler{
+	h := &Handler{
 		cfg:               cfg,
 		db:                db,
 		queries:           queries,
@@ -175,16 +175,23 @@ func New(
 		serverSvc:         service.NewServerService(queries),
 		totpSvc:           service.NewTOTPService(db, queries, cfg.Keyring),
 		tokenSvc:          tokenSvc,
-		mcpHandler: mcpserver.New(mcpserver.Deps{
-			Queries:  queries,
-			Runtimes: rts,
-			Audit:    mcpAuditor(auditSvc),
-			Deploys:  deployQueue,
-			Apps:     appSvc,
-			Env:      service.NewEnvVarService(db, queries, cfg.Keyring, appSvc),
-			DBs:      dbSvc,
-		}),
 	}
+
+	// ⚠️ Built after h, not inside the literal above: create_database needs
+	// h itself as its DatabaseProvisioner, so the Deps cannot be assembled
+	// until h exists.
+	h.mcpHandler = mcpserver.New(mcpserver.Deps{
+		Queries:   queries,
+		Runtimes:  rts,
+		Audit:     mcpAuditor(auditSvc),
+		Deploys:   deployQueue,
+		Apps:      appSvc,
+		Env:       service.NewEnvVarService(db, queries, cfg.Keyring, appSvc),
+		Quotas:    quotaSvc,
+		DBs:       dbSvc,
+		Databases: h,
+	})
+	return h
 }
 
 // runtimeForApplication and runtimeForDatabase resolve the host a resource is

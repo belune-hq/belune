@@ -464,3 +464,18 @@ func (s *DatabaseService) SetResources(ctx context.Context, dbID pgtype.UUID, cp
 
 	return db, appliedLive, nil
 }
+
+// NewDatabase is the transport-independent shape for provisioning a managed
+// database, so a caller outside internal/handler can ask for one without that
+// package's json-tagged request type.
+//
+// ⚠️ Deliberately narrower than the REST request. It carries no "other"-engine
+// fields (image, container_port, data_dir, env, backup commands): those
+// describe an arbitrary container run as a database, which is a configuration
+// a person assembles from an image's documentation, not something to be
+// assembled from a conversation. A caller needing one uses the dashboard.
+type NewDatabase struct {
+	Name    string
+	Type    string // postgres | mysql | redis | mongo
+	Version string // empty = the engine's default
+}

@@ -2,6 +2,8 @@ package mcpserver
 
 import (
 	"context"
+	"github.com/weiliang79/belune/internal/service"
+	"github.com/weiliang79/belune/internal/store/generated"
 	"sort"
 	"strings"
 	"testing"
@@ -18,7 +20,10 @@ import (
 func registeredTools(t *testing.T) []string {
 	t.Helper()
 	ctx := context.Background()
-	srv := newServer(Deps{})
+	// ⚠️ Databases must be non-nil or create_database is not registered and
+	// this test reports a phantom mismatch instead of a real one. A stub is
+	// enough: the test enumerates REGISTERED tools, it never calls one.
+	srv := newServer(Deps{Databases: stubProvisioner{}})
 	st, ct := mcp.NewInMemoryTransports()
 	ss, err := srv.Connect(ctx, st, nil)
 	require.NoError(t, err)
@@ -113,4 +118,12 @@ func TestRequireToolScopePassesOtherMethods(t *testing.T) {
 	_, err := h(context.Background(), "tools/list", nil)
 	require.NoError(t, err)
 	assert.True(t, reached)
+}
+
+// stubProvisioner satisfies DatabaseProvisioner so create_database registers.
+// Never called — see above.
+type stubProvisioner struct{}
+
+func (stubProvisioner) ProvisionDatabase(context.Context, generated.Project, service.NewDatabase) (generated.Database, error) {
+	return generated.Database{}, nil
 }

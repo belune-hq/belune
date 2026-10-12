@@ -81,6 +81,18 @@ Four things hold for all of them:
 - **Only what you name changes — within one tool.** `update_application` changes only the fields passed; every field left out keeps its current value, and an empty string clears one that can be cleared. An assistant mentioning one field cannot wipe the others, and `update_application` cannot reach an application's environment variables, domains, resource limits, health check, hardening profile, git credentials, or type — those have their own tools, or none at all.
 - **The `set_*` settings tools replace, they do not merge.** `set_application_resources`, `set_application_health_check`, `set_application_runtime` and `set_database_resources` each write their whole area: a field you leave out goes back to its default rather than keeping its current value. Read the current state first — with `get_application` or `get_database` — and pass every field you want to keep. `set_application_env_vars` is the one that merges, and it says so.
 
+## Creating Things
+
+`create_application` and `create_database` make the resource and stop there. An application is created **not deployed** — call `trigger_deployment` when you want it built and started — and a database is **provisioned asynchronously**, so it comes back as `creating` and becomes `running` shortly after. Poll `get_database`.
+
+**A name that already exists in the project is refused, not reused.** The alternative — returning the existing resource — would leave an assistant unable to tell "I created this" from "this was already here", so it would report success for work it did not do. The trade is the mirror case: if a create succeeds but its reply is lost, the retry reports a conflict for something that did in fact get made. That is why the refusal names the conflicting resource and its id, so the next step is `get_application` or `get_database` rather than guesswork. Names are compared ignoring case and surrounding spaces.
+
+**Neither tool takes a credential.** `create_application` has no field for a connected git account or a repository token, so only public repositories and public images work through it — choosing which credential an application uses is a decision for the dashboard, not for a tool call with no confirmation step. Database credentials are generated and stored encrypted, and no tool returns them.
+
+Two further deliberate gaps: `create_application` sets no resource limits (use `set_application_resources`, so there is one way to set them), and `create_database` cannot create the `other` engine — an arbitrary container image run as a database, whose image, port, data directory and backup commands are assembled from that image's documentation.
+
+Quotas still apply. `create_application` is refused when a project is at its application limit, exactly as the REST endpoint is, so MCP is not a way around one.
+
 ## Environment Variables and Secrets
 
 <Callout type="warn">

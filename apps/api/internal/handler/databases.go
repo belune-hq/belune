@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/weiliang79/belune/internal/naming"
 	"github.com/weiliang79/belune/internal/runtime"
+	"github.com/weiliang79/belune/internal/service"
 	"github.com/weiliang79/belune/internal/status"
 	"github.com/weiliang79/belune/internal/store"
 	"github.com/weiliang79/belune/internal/store/generated"
@@ -660,14 +662,21 @@ type updateDatabaseRequest struct {
 	MemoryLimit int64   `json:"memory_limit"`
 }
 
-// UpdateDatabase edits a managed database's resource limits (CPU cores / memory
-// bytes) and applies them live to the running container. The limit is persisted
-// regardless, so it also takes effect if the container is later recreated.
+// SetDatabaseResources edits a managed database's resource limits (CPU cores /
+// memory bytes) and applies them live to the running container. The limit is
+// persisted regardless, so it also takes effect if the container is later
+// recreated.
+//
+// ⚠️ Renamed from UpdateDatabase and MOVED from PUT .../databases/{databaseId}
+// to .../databases/{databaseId}/resources in v0.1.20, to match the
+// application endpoint (SetResources). The old path only ever set these two
+// fields, so "update the database" overstated it and the asymmetry was a
+// standing papercut. This is a breaking change to a published path and is
+// listed as one.
 //
 //apidoc:tag databases
-//apidoc:title Update Database
-//apidoc:order 4
-func (h *Handler) UpdateDatabase(w http.ResponseWriter, r *http.Request) {
+//apidoc:title Set Resources
+func (h *Handler) SetDatabaseResources(w http.ResponseWriter, r *http.Request) {
 	databaseID := chi.URLParam(r, "databaseId")
 	var dbUUID pgtype.UUID
 	if err := dbUUID.Scan(databaseID); err != nil {
@@ -685,33 +694,21 @@ func (h *Handler) UpdateDatabase(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if req.CPULimit < 0 || req.MemoryLimit < 0 {
-		writeError(w, http.StatusBadRequest, "cpu_limit and memory_limit must be non-negative")
-		return
-	}
 
-	db, err := h.queries.UpdateDatabaseResources(r.Context(), generated.UpdateDatabaseResourcesParams{
-		ID:          dbUUID,
-		CpuLimit:    req.CPULimit,
-		MemoryLimit: req.MemoryLimit,
-	})
+	// The REST response has never said whether the live apply landed, and
+	// changing that would change a published response shape; the MCP tool is
+	// the caller that needs to know.
+	db, _, err := h.dbService.SetResources(r.Context(), dbUUID, req.CPULimit, req.MemoryLimit)
 	if err != nil {
+		if errors.Is(err, service.ErrNegativeLimit) {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "failed to update database")
 		return
 	}
 
-	// Apply live; a failure here is non-fatal because the persisted limit will
-	// be honoured the next time the container is (re)created.
-	if db.Status == status.DatabaseRunning && db.InternalHost.Valid {
-		rt, err := h.runtimeForDatabase(r.Context(), dbUUID)
-		if err != nil {
-			slog.Warn("failed to resolve server to apply database resource limits live", "database_id", databaseID, "error", err)
-		} else if err := rt.UpdateContainerResources(r.Context(), db.InternalHost.String, req.CPULimit, req.MemoryLimit); err != nil {
-			slog.Warn("failed to apply database resource limits live", "database_id", databaseID, "error", err)
-		}
-	}
-
-	h.audit(r, "update_database", "database", databaseID, map[string]any{
+	h.audit(r, "set_database_resources", "database", databaseID, map[string]any{
 		"cpu_limit":    req.CPULimit,
 		"memory_limit": req.MemoryLimit,
 	})

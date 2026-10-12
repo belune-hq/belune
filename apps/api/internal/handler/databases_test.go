@@ -129,7 +129,7 @@ func TestUpdateDatabaseResources(t *testing.T) {
 	dbID := extractID(db["id"])
 
 	// Update resource limits.
-	resp = env.DoRequest(t, "PUT", fmt.Sprintf("/api/projects/%s/databases/%s", projectID, dbID), map[string]any{
+	resp = env.DoRequest(t, "PUT", fmt.Sprintf("/api/projects/%s/databases/%s/resources", projectID, dbID), map[string]any{
 		"cpu_limit":    0.5,
 		"memory_limit": 536870912,
 	}, testutil.AuthHeader(token))
@@ -139,7 +139,7 @@ func TestUpdateDatabaseResources(t *testing.T) {
 	assert.Equal(t, float64(536870912), updated["memory_limit"])
 
 	// Negative values are rejected.
-	resp = env.DoRequest(t, "PUT", fmt.Sprintf("/api/projects/%s/databases/%s", projectID, dbID), map[string]any{
+	resp = env.DoRequest(t, "PUT", fmt.Sprintf("/api/projects/%s/databases/%s/resources", projectID, dbID), map[string]any{
 		"cpu_limit":    -1,
 		"memory_limit": 0,
 	}, testutil.AuthHeader(token))
@@ -455,4 +455,29 @@ func TestRestoreFromTombstone_RefusesALiveBackup(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode,
 		"a backup whose database is still running is not an orphan")
 	resp.Body.Close()
+}
+
+// TestUpdateDatabase_OldPathIsGone pins the v0.1.20 break deliberately rather
+// than leaving it to be rediscovered. PUT .../databases/{databaseId} was a
+// published path that only ever set cpu_limit and memory_limit; it moved to
+// .../resources to match the application endpoint.
+//
+// The answer is 404, not the 405 chi would give for a known pattern with an
+// unregistered method: server.apiAwareCatchAll answers every unmatched /api/
+// path itself, so an API caller gets a JSON body rather than the SPA. If this
+// ever returns 200 again, an alias has been reintroduced and the changelog's
+// breaking-change entry is wrong.
+func TestUpdateDatabase_OldPathIsGone(t *testing.T) {
+	resetDB(t)
+	token := env.SetupAdmin(t, "db-oldpath@test.com", "password123")
+	projectID := extractID(env.CreateProject(t, token, "P", "p")["id"])
+	dbID := seedDatabaseRow(t, projectID, "oldpath-db")
+
+	resp := env.DoRequest(t, "PUT", fmt.Sprintf("/api/projects/%s/databases/%s", projectID, dbID),
+		map[string]any{"cpu_limit": 0.5, "memory_limit": 536870912}, testutil.AuthHeader(token))
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode,
+		"the old database update path must no longer accept a PUT")
+	assert.Equal(t, "no such endpoint", testutil.ReadJSON(t, resp)["error"],
+		"an API caller must get the API's own 404, not the SPA")
 }

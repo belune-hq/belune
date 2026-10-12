@@ -3,11 +3,14 @@ package handler_test
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/weiliang79/belune/internal/testutil"
 )
 
 func createAppArgs(projectID, name string, extra map[string]any) map[string]any {
@@ -237,7 +240,7 @@ func TestMCP_Create_AreAuditedAgainstTheToken(t *testing.T) {
 	}
 }
 
-// TestMCP_CreateDomain_ServesHTTPAndNeverRequestsACertificate is the point of
+// TestMCP_CreateDomain_StoresTLSOffAndCannotTurnItOn is the point of
 // the tool's shape: TLS is off and not a parameter.
 //
 // ⚠️ Requesting a certificate is the one thing a domain write does that leaves
@@ -246,7 +249,7 @@ func TestMCP_Create_AreAuditedAgainstTheToken(t *testing.T) {
 // hostname's failed-validation budget, delaying the certificate that would
 // otherwise have worked. A person adding a domain has just decided where DNS
 // points; a tool call has not.
-func TestMCP_CreateDomain_ServesHTTPAndNeverRequestsACertificate(t *testing.T) {
+func TestMCP_CreateDomain_StoresTLSOffAndCannotTurnItOn(t *testing.T) {
 	resetDB(t)
 	adminToken := env.SetupAdmin(t, "mcp-domain@test.com", "password123")
 	projectID := extractID(env.CreateProject(t, adminToken, "P", "p")["id"])
@@ -271,7 +274,7 @@ func TestMCP_CreateDomain_ServesHTTPAndNeverRequestsACertificate(t *testing.T) {
 		`SELECT ssl_mode, ssl_enabled, force_https FROM domains WHERE application_id = $1`, appID).
 		Scan(&sslMode, &sslEnabled, &forceHTTPS))
 	assert.Equal(t, "off", sslMode)
-	assert.False(t, sslEnabled, "no certificate may be requested")
+	assert.False(t, sslEnabled, "the domain must be stored with TLS off")
 	assert.False(t, forceHTTPS, "force_https is meaningless with TLS off")
 
 	// ⚠️ The schema is closed, so a caller cannot turn TLS on by passing the
@@ -345,4 +348,58 @@ func TestMCP_CreateDomain_ScopeAndPin(t *testing.T) {
 	require.NoError(t, env.Pool.QueryRow(context.Background(),
 		`SELECT count(*) FROM domains WHERE application_id = $1`, otherApp).Scan(&count))
 	assert.Equal(t, 0, count, "a refused call added a hostname to another project's application")
+}
+
+// TestMCP_CreateDomain_RefusesAHostnameAlreadyServedWithTLS is the blocker a
+// review found: create_domain wrote a state the REST endpoint refuses.
+//
+// Every path on one hostname shares a certificate, so checkHostTLSAgreement
+// rejects mixing modes. That check lives in AddDomain, OUTSIDE the extracted
+// createDomainRecord, so the tool path had no equivalent — and an assistant
+// reached it in one call with no confirmation step and no tool to undo it.
+//
+// Reproduced before the fix: REST refused `shop/` as "off" beside an
+// "automatic" `shop/api` with 400, while create_domain succeeded and left
+// {"/": "off", "/api": "automatic"} in the database.
+func TestMCP_CreateDomain_RefusesAHostnameAlreadyServedWithTLS(t *testing.T) {
+	resetDB(t)
+	adminToken := env.SetupAdmin(t, "mcp-domain-tls@test.com", "password123")
+	projectID := extractID(env.CreateProject(t, adminToken, "P", "p")["id"])
+	appID := extractID(minimalApp(t, adminToken, projectID)["id"])
+	token := mintScoped(t, adminToken, []string{"write"})
+
+	// A TLS-enabled path on the hostname, added the way an operator would.
+	resp := env.DoRequest(t, "POST",
+		fmt.Sprintf("/api/projects/%s/applications/%s/domains", projectID, appID),
+		map[string]any{"hostname": "shop.example.com", "path": "/api", "ssl_mode": "automatic"},
+		testutil.AuthHeader(adminToken))
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.Body.Close()
+
+	msg := toolErrorText(t, callToolArgs(t, token, "create_domain", map[string]any{
+		"application_id": appID, "hostname": "shop.example.com",
+	}))
+	assert.Contains(t, msg, "every path on one hostname shares a certificate",
+		"the refusal must explain the rule")
+	assert.Contains(t, msg, "dashboard", "and say where it can be done")
+
+	// ⚠️ The state check, not just the message: the tool must not have written
+	// an "off" row beside the TLS one.
+	var modes []string
+	rows, err := env.Pool.Query(context.Background(),
+		`SELECT ssl_mode FROM domains WHERE hostname = 'shop.example.com' ORDER BY path`)
+	require.NoError(t, err)
+	defer rows.Close()
+	for rows.Next() {
+		var m string
+		require.NoError(t, rows.Scan(&m))
+		modes = append(modes, m)
+	}
+	assert.Equal(t, []string{"automatic"}, modes,
+		"create_domain wrote a mixed-TLS hostname the REST endpoint refuses")
+
+	// The control: a hostname with no TLS sibling is still addable.
+	decodeToolResult(t, callToolArgs(t, token, "create_domain", map[string]any{
+		"application_id": appID, "hostname": "fresh.example.com",
+	}), &struct{}{})
 }

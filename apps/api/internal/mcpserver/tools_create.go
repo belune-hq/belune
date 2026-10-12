@@ -321,6 +321,15 @@ func registerCreateDomainTool(srv *mcp.Server, d Deps) {
 				return nil, nil, fmt.Errorf("%s is already configured — nothing was created. "+
 					"Read the application's domains with get_application", hostname)
 			}
+			// Every path on one hostname shares a certificate, so a hostname
+			// already served over TLS cannot gain an HTTP-only row beside it.
+			// The reason reads well as a tool error already.
+			if d.Databases.DomainTLSDisagreement(err) {
+				return nil, nil, fmt.Errorf("%s — nothing was created. %s is already configured with TLS on "+
+					"another path, and every path on one hostname shares a certificate, so this tool cannot "+
+					"add it. Add it in the dashboard with a matching TLS mode",
+					strings.TrimPrefix(err.Error(), "tls mode disagreement: "), hostname)
+			}
 			if strings.Contains(err.Error(), "invalid hostname") {
 				return nil, nil, errors.New("invalid hostname format — expected a domain name like app.example.com")
 			}

@@ -344,6 +344,10 @@ func (h *Handler) AddDomain(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "failed to configure proxy for domain")
 			return
 		}
+		if errors.Is(err, errDomainResolveFailed) {
+			writeError(w, http.StatusInternalServerError, "failed to resolve project")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "failed to add domain")
 		return
 	}
@@ -464,7 +468,10 @@ func (h *Handler) UpdateDomain(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	// Excludes this row: a domain must not be found to contradict itself.
-	if reason := h.checkHostTLSAgreement(r.Context(), req.Hostname, req.SSLMode, certUUID, domainUUID); reason != "" {
+	// ⚠️ sslMode, not req.SSLMode: the resolved mode is what will be written,
+	// and an omitted field is "" — which every sibling row mismatches, so the
+	// request got refused for disagreeing with the mode it was about to keep.
+	if reason := h.checkHostTLSAgreement(r.Context(), req.Hostname, sslMode, certUUID, domainUUID); reason != "" {
 		writeError(w, http.StatusBadRequest, reason)
 		return
 	}
@@ -811,11 +818,19 @@ func (h *Handler) RemoveDomain(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
-// errDomainConflict and errDomainProxyFailed let createDomainRecord report the
-// two failures its callers must distinguish without knowing about HTTP.
+// These let createDomainRecord and ProvisionDomain report the failures their
+// callers must distinguish without knowing anything about HTTP.
 var (
-	errDomainConflict    = errors.New("domain conflict")
-	errDomainProxyFailed = errors.New("proxy configuration failed")
+	errDomainConflict = errors.New("domain conflict")
+	// errDomainResolveFailed keeps "failed to resolve project" distinguishable
+	// from "failed to add domain", which the extraction had collapsed into one
+	// message.
+	errDomainResolveFailed = errors.New("resolve project failed")
+	// errDomainTLSDisagreement carries checkHostTLSAgreement's reason out to a
+	// non-HTTP caller, which needs to report it as a refusal rather than a
+	// failure.
+	errDomainTLSDisagreement = errors.New("tls mode disagreement")
+	errDomainProxyFailed     = errors.New("proxy configuration failed")
 )
 
 // createDomainRecord inserts a domain and adds its proxy route, rolling the
@@ -834,15 +849,22 @@ func (h *Handler) createDomainRecord(ctx context.Context, applicationID string, 
 		// something that reads as "the server is broken".
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return generated.Domain{}, fmt.Errorf("%w: %s%s is already configured",
-				errDomainConflict, params.Hostname, strings.TrimSuffix(params.Path, "/"))
+			// ⚠️ A typed error, not fmt.Errorf("%w: ...", errDomainConflict).
+			// The wrapped form puts the sentinel's own text in Error(), and
+			// AddDomain writes that straight to the client — which changed a
+			// published 409 body to "domain conflict: shop.com is already
+			// configured". This keeps errors.Is working and the message clean.
+			return generated.Domain{}, &domainConflictError{
+				msg: fmt.Sprintf("%s%s is already configured",
+					params.Hostname, strings.TrimSuffix(params.Path, "/")),
+			}
 		}
 		return generated.Domain{}, fmt.Errorf("insert domain: %w", err)
 	}
 
 	row, err := h.queries.GetApplicationWithProjectSlug(ctx, applicationUUID)
 	if err != nil {
-		return generated.Domain{}, fmt.Errorf("resolve project: %w", err)
+		return generated.Domain{}, fmt.Errorf("%w: %v", errDomainResolveFailed, err)
 	}
 
 	port := proxy.ResolveUpstreamPort(params.ContainerPort, row.ContainerPort)
@@ -905,6 +927,14 @@ func (h *Handler) ProvisionDomain(ctx context.Context, applicationID pgtype.UUID
 	if !hostnameRegex.MatchString(hostname) {
 		return generated.Domain{}, errors.New("invalid hostname format")
 	}
+	// ⚠️ The same agreement check AddDomain applies, and it has to be here
+	// because it sits outside createDomainRecord. Every path on one hostname
+	// shares a certificate, so a hostname already served with TLS cannot gain
+	// an "off" row beside it — a state REST refuses and this path would
+	// otherwise have written in one tool call, with no tool to undo it.
+	if reason := h.checkHostTLSAgreement(ctx, hostname, proxy.SSLModeOff, pgtype.UUID{}, pgtype.UUID{}); reason != "" {
+		return generated.Domain{}, fmt.Errorf("%w: %s", errDomainTLSDisagreement, reason)
+	}
 	return h.createDomainRecord(ctx, uuidToString(applicationID), applicationID, generated.CreateDomainParams{
 		ApplicationID: applicationID,
 		Hostname:      hostname,
@@ -922,3 +952,19 @@ func (h *Handler) ProvisionDomain(ctx context.Context, applicationID pgtype.UUID
 // so a caller can turn it into its own kind of refusal without importing the
 // sentinel.
 func (h *Handler) DomainConflict(err error) bool { return errors.Is(err, errDomainConflict) }
+
+// DomainTLSDisagreement reports whether a ProvisionDomain error is the
+// shared-certificate rule rather than a real failure, so a caller can pass the
+// reason through as its own refusal.
+func (h *Handler) DomainTLSDisagreement(err error) bool {
+	return errors.Is(err, errDomainTLSDisagreement)
+}
+
+// domainConflictError carries the (hostname, path) uniqueness message as its
+// own text while still matching errDomainConflict, so a caller can both
+// recognise the kind and show the reason without the sentinel's words leaking
+// into a published response body.
+type domainConflictError struct{ msg string }
+
+func (e *domainConflictError) Error() string        { return e.msg }
+func (e *domainConflictError) Is(target error) bool { return target == errDomainConflict }

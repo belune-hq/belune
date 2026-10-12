@@ -134,3 +134,5 @@ func (stubProvisioner) ProvisionDomain(context.Context, pgtype.UUID, string) (ge
 }
 
 func (stubProvisioner) DomainConflict(error) bool { return false }
+
+func (stubProvisioner) DomainTLSDisagreement(error) bool { return false }

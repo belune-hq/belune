@@ -83,9 +83,11 @@ func New(d Deps) http.Handler {
 type Provisioner interface {
 	ProvisionDatabase(ctx context.Context, project generated.Project, in service.NewDatabase) (generated.Database, error)
 	ProvisionDomain(ctx context.Context, applicationID pgtype.UUID, hostname string) (generated.Domain, error)
-	// DomainConflict distinguishes a duplicate hostname from a real failure
-	// without exporting the sentinel error.
+	// DomainConflict and DomainTLSDisagreement distinguish the two refusals a
+	// domain write can produce from a real failure, without exporting the
+	// sentinel errors.
 	DomainConflict(err error) bool
+	DomainTLSDisagreement(err error) bool
 }
 
 func newServer(d Deps) *mcp.Server {

@@ -24,7 +24,16 @@ Belune is pre-1.0. The versioning contract while it stays there:
 Release notes for each version are also published on the
 [Releases page](https://github.com/weiliang79/belune/releases).
 
-## [Unreleased]
+## [0.1.20]
+
+**An AI assistant can now operate, configure and create through MCP**, where
+before it could only read and redeploy. Nothing in this release changes your
+install's topology or asks anything of your host: run `update.sh` and you are
+done. There is no migration and no infra restart.
+
+One published API path moved, listed below. It reaches scripts only — never the
+dashboard, never your data — and the dashboard already uses the new path, so an
+install needs no action.
 
 ### ⚠️ Breaking changes
 

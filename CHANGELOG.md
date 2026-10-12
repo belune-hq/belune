@@ -94,7 +94,45 @@ if you connect an assistant you would not trust with that decision, give it a
 `read` token. No tool can grant privileged mode, host mounts, host networking or
 device access — those remain unreachable from any token.
 
+### An AI assistant can now create an application or a database
+
+`create_application` and `create_database`, both requiring a `write` token.
+
+An application is created **not deployed** — follow with `trigger_deployment`.
+A database is provisioned asynchronously, so poll `get_database` until it is
+running.
+
+**A name that already exists in the project is refused rather than reused.**
+Returning the existing resource would leave an assistant unable to tell "I
+created this" from "this was already here", so it would report success for work
+it did not do. The refusal names the conflicting resource and its id, because
+the mirror case — a create that succeeded but whose reply was lost — reports a
+conflict on retry, and the caller needs to be able to resolve that with
+`get_application` or `get_database`.
+
+Neither tool takes a credential: `create_application` has no field for a
+connected git account or a repository token, so only public repositories and
+images work through it. Choosing which credential an application uses stays a
+dashboard decision. Database credentials are generated, stored encrypted, and
+returned by no tool.
+
+`create_application` sets no resource limits — `set_application_resources`
+does, so there is one way to set them — and `create_database` cannot create the
+`other` engine, whose image, port, data directory and backup commands are
+assembled from an image's own documentation. Project quotas apply exactly as
+they do over REST, so this is not a way around an application limit.
+
 ### Fixes
+
+**A domain's TLS mode could be silently downgraded.** `PUT` on a domain
+defaulted an omitted `ssl_mode` to *automatic* instead of keeping the stored
+value, so a request that only meant to change something else took TLS with it:
+a domain set to *off* began requesting a certificate it could never validate,
+and a domain on *custom* stopped serving its uploaded certificate and started
+requesting one for a hostname that does not resolve here. Both are documented
+setups — a certificate terminated in front of Belune, and a Cloudflare Origin
+CA certificate. The dashboard was unaffected, since its form always sends the
+field; this reached scripts, for which it is optional.
 
 **Changing a running database's memory limit never actually took effect.** The
 new limit was saved, and the dashboard reported success, but the running

@@ -96,7 +96,8 @@ device access — those remain unreachable from any token.
 
 ### An AI assistant can now create an application or a database
 
-`create_application` and `create_database`, both requiring a `write` token.
+`create_application`, `create_database` and `create_domain`, all requiring a
+`write` token.
 
 An application is created **not deployed** — follow with `trigger_deployment`.
 A database is provisioned asynchronously, so poll `get_database` until it is
@@ -115,6 +116,16 @@ connected git account or a repository token, so only public repositories and
 images work through it. Choosing which credential an application uses stays a
 dashboard decision. Database credentials are generated, stored encrypted, and
 returned by no tool.
+
+`create_domain` points a hostname at an application with TLS **off** and
+**cannot enable HTTPS** — there is no field for it, so passing one is rejected.
+Turn TLS on in the dashboard once the hostname's DNS points at the server.
+That order is the point: asking Let's Encrypt for a certificate before DNS
+resolves spends that hostname's limited validation attempts and delays the
+certificate that would otherwise have worked, and a tool call — unlike a person
+in the dashboard — has not just decided where DNS points. There is deliberately
+no tool to edit or remove a domain: changing a hostname, path, port or TLS mode
+on a domain already serving traffic takes a working site down.
 
 `create_application` sets no resource limits — `set_application_resources`
 does, so there is one way to set them — and `create_database` cannot create the

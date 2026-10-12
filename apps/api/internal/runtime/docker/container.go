@@ -179,15 +179,46 @@ func (c *Client) RestartContainer(ctx context.Context, id string, timeout int) (
 // means unlimited for that dimension.
 func (c *Client) UpdateContainerResources(ctx context.Context, id string, cpuCores float64, memoryBytes int64) (err error) {
 	defer func() { metrics.RecordDockerOp("update_container", err) }()
+	_, err = c.cli.ContainerUpdate(ctx, id, container.UpdateConfig{
+		Resources: updateResources(cpuCores, memoryBytes),
+	})
+	return err
+}
+
+// updateResources builds the resource block for a live container update.
+// Separated from the call so the swap rule below has a test that does not need
+// a daemon — it is the part that was wrong and is invisible in a passing
+// integration run, because the only caller logs the failure and carries on.
+//
+// Zero means "leave this limit alone", matching Docker's own treatment of 0 in
+// an update: it is how an unlimited container stays unlimited here. ⚠️ It also
+// means a limit cannot be REMOVED live — persisting 0 takes effect when the
+// container is next created, which is the existing behaviour and is why the
+// caller's reply distinguishes "applied" from "saved".
+func updateResources(cpuCores float64, memoryBytes int64) container.Resources {
 	resources := container.Resources{}
 	if cpuCores > 0 {
 		resources.NanoCPUs = int64(cpuCores * 1e9)
 	}
 	if memoryBytes > 0 {
 		resources.Memory = memoryBytes
+		// ⚠️ MemorySwap must be sent WITH Memory or the daemon refuses the
+		// whole update: "Memory limit should be smaller than already set
+		// memoryswap limit, update the memoryswap at the same time". A running
+		// container always has a memoryswap value, so a memory-only update
+		// never succeeded — and because the caller logs the failure and
+		// carries on (the limit is persisted either way), it looked like
+		// nothing had happened rather than like an error. Found by driving the
+		// new MCP tool against a real database.
+		//
+		// 2x is not a choice so much as a match: creating a container with
+		// only Memory set makes Docker default MemorySwap to twice it, so a
+		// container whose limit arrived by live update ends up in the same
+		// state as one recreated with it. Verified both ways against a real
+		// daemon.
+		resources.MemorySwap = memoryBytes * 2
 	}
-	_, err = c.cli.ContainerUpdate(ctx, id, container.UpdateConfig{Resources: resources})
-	return err
+	return resources
 }
 
 func (c *Client) ContainerLogs(ctx context.Context, id string, follow bool) (io.ReadCloser, error) {

@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/weiliang79/belune/internal/service"
 	"github.com/weiliang79/belune/internal/store/generated"
 	"sort"
@@ -127,3 +128,9 @@ type stubProvisioner struct{}
 func (stubProvisioner) ProvisionDatabase(context.Context, generated.Project, service.NewDatabase) (generated.Database, error) {
 	return generated.Database{}, nil
 }
+
+func (stubProvisioner) ProvisionDomain(context.Context, pgtype.UUID, string) (generated.Domain, error) {
+	return generated.Domain{}, nil
+}
+
+func (stubProvisioner) DomainConflict(error) bool { return false }

@@ -91,6 +91,12 @@ Four things hold for all of them:
 
 Two further deliberate gaps: `create_application` sets no resource limits (use `set_application_resources`, so there is one way to set them), and `create_database` cannot create the `other` engine — an arbitrary container image run as a database, whose image, port, data directory and backup commands are assembled from that image's documentation.
 
+`create_domain` adds a route and stores the domain with TLS **off**, and it cannot turn HTTPS on — not as a default, but at all: there is no field for it, so the request is rejected if one is passed. Enable TLS in the dashboard once the hostname's DNS points at this server.
+
+That order is deliberate, and a certificate request is the one thing a domain write does that reaches outside your install. Let's Encrypt limits failed validations **per hostname, per hour**, so asking for a certificate before DNS resolves here spends that budget and delays the certificate that would otherwise have worked. A person adding a domain in the dashboard has just decided where DNS points; a tool call has not. `list_domain_tls_status` reports why a certificate is pending or failed.
+
+DNS is not checked, so a typo produces a route that serves nothing — and since there is no tool to remove or edit a domain, clearing that up is a dashboard job. Editing a live domain is deliberately absent for the same reason: changing a hostname, path, port or TLS mode on a domain that is already serving traffic takes a working site down, which is not a blast radius that is acceptable without a confirmation step.
+
 Quotas still apply. `create_application` is refused when a project is at its application limit, exactly as the REST endpoint is, so MCP is not a way around one.
 
 ## Environment Variables and Secrets

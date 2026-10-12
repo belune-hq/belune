@@ -252,3 +252,94 @@ func registerCreateDatabaseTool(srv *mcp.Server, d Deps) {
 		})
 	})
 }
+
+type createDomainInput struct {
+	ApplicationID string `json:"application_id" jsonschema:"the application to serve this hostname"`
+	Hostname      string `json:"hostname" jsonschema:"the domain name, e.g. app.example.com"`
+}
+
+// createdDomainRow is the shape a newly added domain is reported in. Narrow
+// on purpose: enough to confirm what was made and that TLS is off, without
+// echoing routing internals the tool cannot set anyway.
+type createdDomainRow struct {
+	ID            string `json:"id"`
+	ApplicationID string `json:"application_id"`
+	Hostname      string `json:"hostname"`
+	SSLMode       string `json:"ssl_mode"`
+	Path          string `json:"path"`
+}
+
+type createdDomain struct {
+	Domain createdDomainRow `json:"domain"`
+	Note   string           `json:"note"`
+}
+
+func registerCreateDomainTool(srv *mcp.Server, d Deps) {
+	if d.Databases == nil {
+		return
+	}
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "create_domain",
+		Description: "Point a hostname at an application. The route is created immediately and the " +
+			"domain is stored with TLS off, so Belune does not serve it over HTTPS. " +
+			"⚠️ HTTPS is NOT configured and cannot be configured by this tool — turn it on in the " +
+			"dashboard once the hostname's DNS points at this server. Do it in that order: a " +
+			"certificate requested for a hostname that does not resolve here yet spends that " +
+			"hostname's limited validation attempts, which delays the certificate that would " +
+			"otherwise have worked. " +
+			"Check with list_domain_tls_status, which reports why a certificate is pending or failed. " +
+			"The hostname must already be a valid domain name; DNS is not checked, so a typo produces a " +
+			"route that serves nothing. There is no tool to remove or edit a domain — a wrong one is " +
+			"cleaned up in the dashboard, so get it right rather than retrying.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in createDomainInput) (*mcp.CallToolResult, any, error) {
+		id, err := parseUUID(in.ApplicationID)
+		if err != nil {
+			return nil, nil, err
+		}
+		// Resolve the application by its own id, then authorize against the
+		// project that row actually belongs to.
+		app, err := d.Queries.GetApplication(ctx, id)
+		if err != nil {
+			return nil, nil, notFoundOr(ctx, "application not found")
+		}
+		if err := authorizeApplication(ctx, d.Queries, app.ID, app.ProjectID); err != nil {
+			return nil, nil, err
+		}
+
+		hostname := strings.ToLower(strings.TrimSpace(in.Hostname))
+		if hostname == "" {
+			return nil, nil, errors.New("hostname is required")
+		}
+
+		dom, err := d.Databases.ProvisionDomain(ctx, app.ID, hostname)
+		if err != nil {
+			// A duplicate hostname is the caller's mistake to fix, and it is
+			// reported the same way a duplicate name is on the other create
+			// tools: say what collided rather than returning a bare failure.
+			if d.Databases.DomainConflict(err) {
+				return nil, nil, fmt.Errorf("%s is already configured — nothing was created. "+
+					"Read the application's domains with get_application", hostname)
+			}
+			if strings.Contains(err.Error(), "invalid hostname") {
+				return nil, nil, errors.New("invalid hostname format — expected a domain name like app.example.com")
+			}
+			return nil, nil, internalError("failed to add the domain", err)
+		}
+
+		auditTool(ctx, d.Audit, "add_domain", "domain", uuidToString(dom.ID),
+			map[string]any{"hostname": hostname})
+
+		return textResult(createdDomain{
+			Domain: createdDomainRow{
+				ID:            uuidToString(dom.ID),
+				ApplicationID: uuidToString(dom.ApplicationID),
+				Hostname:      dom.Hostname,
+				SSLMode:       dom.SslMode,
+				Path:          dom.Path,
+			},
+			Note: "serving over HTTP — enable HTTPS in the dashboard once DNS for this hostname " +
+				"points at this server",
+		})
+	})
+}

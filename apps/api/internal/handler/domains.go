@@ -334,57 +334,19 @@ func (h *Handler) AddDomain(w http.ResponseWriter, r *http.Request) {
 		params.ContainerPort = pgtype.Int4{Int32: *req.ContainerPort, Valid: true}
 	}
 
-	domain, err := h.queries.CreateDomain(r.Context(), params)
+	domain, err := h.createDomainRecord(r.Context(), applicationID, applicationUUID, params)
 	if err != nil {
-		// (hostname, path) is unique. Adding shop.com/api twice is a mistake the
-		// operator can fix, so say what happened rather than returning a 500 that
-		// reads as "the server is broken".
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			writeError(w, http.StatusConflict, fmt.Sprintf("%s%s is already configured", req.Hostname, strings.TrimSuffix(path, "/")))
+		if errors.Is(err, errDomainConflict) {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
+		if errors.Is(err, errDomainProxyFailed) {
+			writeError(w, http.StatusInternalServerError, "failed to configure proxy for domain")
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "failed to add domain")
 		return
 	}
-
-	// Add Caddy proxy route for this domain
-	row, err := h.queries.GetApplicationWithProjectSlug(r.Context(), applicationUUID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to resolve project")
-		return
-	}
-
-	reqPort := pgtype.Int4{}
-	if req.ContainerPort != nil {
-		reqPort = pgtype.Int4{Int32: *req.ContainerPort, Valid: true}
-	}
-	port := proxy.ResolveUpstreamPort(reqPort, row.ContainerPort)
-
-	cert := h.domainCertificate(r.Context(), domain)
-
-	containerName := naming.ContainerName(row.ProjectSlug, row.Slug, applicationID)
-	if err := h.proxy.AddRoute(r.Context(), proxy.RouteConfig{
-		Hostname:       req.Hostname,
-		TargetURL:      fmt.Sprintf("http://%s:%d", containerName, port),
-		TLS:            req.SSLEnabled,
-		ForceHTTPS:     forceHTTPS,
-		SSLMode:        sslMode,
-		CertPEM:        cert.CertPEM,
-		KeyPEM:         cert.KeyPEM,
-		AdvancedConfig: req.AdvancedConfig,
-	}); err != nil {
-		slog.Error("failed to add proxy route for domain", "hostname", req.Hostname, "container", containerName, "error", err)
-		if delErr := h.queries.DeleteDomain(r.Context(), domain.ID); delErr != nil {
-			slog.Error("failed to rollback domain insert after proxy failure", "domain_id", domain.ID, "error", delErr)
-		}
-		writeError(w, http.StatusInternalServerError, "failed to configure proxy for domain")
-		return
-	}
-
-	// Probe immediately so the TLS badge settles within seconds instead of
-	// showing "unknown" until the next sweep.
-	h.enqueueTLSProbe(uuidToString(domain.ID))
 
 	h.audit(r, "add_domain", "domain", uuidToString(domain.ID), map[string]any{"hostname": req.Hostname})
 
@@ -848,3 +810,115 @@ func (h *Handler) RemoveDomain(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
+
+// errDomainConflict and errDomainProxyFailed let createDomainRecord report the
+// two failures its callers must distinguish without knowing about HTTP.
+var (
+	errDomainConflict    = errors.New("domain conflict")
+	errDomainProxyFailed = errors.New("proxy configuration failed")
+)
+
+// createDomainRecord inserts a domain and adds its proxy route, rolling the
+// insert back if the route cannot be configured — a row with no route is a
+// domain the dashboard shows and nothing serves.
+//
+// Shared by the REST endpoint and the MCP create_domain tool so the route and
+// the row cannot disagree about a domain's existence. Extracted rather than
+// duplicated because 19 domain tests across five files cover this path, so a
+// mistake here surfaces immediately.
+func (h *Handler) createDomainRecord(ctx context.Context, applicationID string, applicationUUID pgtype.UUID, params generated.CreateDomainParams) (generated.Domain, error) {
+	domain, err := h.queries.CreateDomain(ctx, params)
+	if err != nil {
+		// (hostname, path) is unique. Adding shop.com/api twice is a mistake
+		// the caller can fix, so say what happened rather than returning
+		// something that reads as "the server is broken".
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return generated.Domain{}, fmt.Errorf("%w: %s%s is already configured",
+				errDomainConflict, params.Hostname, strings.TrimSuffix(params.Path, "/"))
+		}
+		return generated.Domain{}, fmt.Errorf("insert domain: %w", err)
+	}
+
+	row, err := h.queries.GetApplicationWithProjectSlug(ctx, applicationUUID)
+	if err != nil {
+		return generated.Domain{}, fmt.Errorf("resolve project: %w", err)
+	}
+
+	port := proxy.ResolveUpstreamPort(params.ContainerPort, row.ContainerPort)
+	cert := h.domainCertificate(ctx, domain)
+	containerName := naming.ContainerName(row.ProjectSlug, row.Slug, applicationID)
+
+	if err := h.proxy.AddRoute(ctx, proxy.RouteConfig{
+		Hostname:       params.Hostname,
+		TargetURL:      fmt.Sprintf("http://%s:%d", containerName, port),
+		TLS:            params.SslEnabled,
+		ForceHTTPS:     params.ForceHttps,
+		SSLMode:        params.SslMode,
+		CertPEM:        cert.CertPEM,
+		KeyPEM:         cert.KeyPEM,
+		AdvancedConfig: params.AdvancedConfig,
+	}); err != nil {
+		slog.Error("failed to add proxy route for domain", "hostname", params.Hostname, "container", containerName, "error", err)
+		if delErr := h.queries.DeleteDomain(ctx, domain.ID); delErr != nil {
+			slog.Error("failed to rollback domain insert after proxy failure", "domain_id", domain.ID, "error", delErr)
+		}
+		return generated.Domain{}, errDomainProxyFailed
+	}
+
+	// Probe immediately so the TLS badge settles within seconds instead of
+	// showing "unknown" until the next sweep.
+	h.enqueueTLSProbe(uuidToString(domain.ID))
+
+	return domain, nil
+}
+
+// ProvisionDomain adds a hostname to an application for a caller outside this
+// package, currently the MCP create_domain tool.
+//
+// ⚠️ TLS is deliberately OFF, and not a parameter. Requesting a certificate is
+// the one thing a domain write does that leaves the install: it makes the
+// server talk to Let's Encrypt, which keeps per-account state, and a hostname
+// that does not resolve here yet burns that hostname's failed-validation
+// budget (5 per hour) — so the certificate that *should* work cannot retry for
+// up to an hour. A person adding a domain in the dashboard has just decided
+// where DNS points; a tool call has not. Off keeps Belune from serving the
+// hostname over HTTPS, and turning TLS on stays a deliberate second step.
+//
+// ⚠️⚠️ It does NOT currently guarantee that no certificate is requested, and
+// this comment used to claim it did. proxy.AddRoute does not set Caddy's
+// automatic-HTTPS skip list; only the reconciler does, and it considers
+// domains of RUNNING applications only (reconciler.go, `app.Status !=
+// ApplicationRunning` -> continue). So a domain added to an application that
+// has not been deployed yet has automatic TLS armed in Caddy with nothing to
+// turn it off until that application first runs. Observed on a dev stack: the
+// route was added, Caddy logged "enabling automatic TLS certificate
+// management" for the hostname, and an explicit reconcile did not add it to
+// the skip list. Pre-existing and identical through the REST endpoint — this
+// tool only makes it easy to reach. Recorded in the backlog.
+//
+// Everything else is left at its default too: root path, no strip, the
+// application's own container port. A path-prefixed route, a custom
+// certificate or an advanced Caddy config are deliberate configurations, not
+// things to assemble from a conversation.
+func (h *Handler) ProvisionDomain(ctx context.Context, applicationID pgtype.UUID, hostname string) (generated.Domain, error) {
+	if !hostnameRegex.MatchString(hostname) {
+		return generated.Domain{}, errors.New("invalid hostname format")
+	}
+	return h.createDomainRecord(ctx, uuidToString(applicationID), applicationID, generated.CreateDomainParams{
+		ApplicationID: applicationID,
+		Hostname:      hostname,
+		SslEnabled:    false,
+		ForceHttps:    false,
+		SslMode:       proxy.SSLModeOff,
+		Path:          normalizeDomainPath(""),
+		StripPath:     false,
+		InternalPath:  normalizeInternalPath(""),
+	})
+}
+
+// DomainConflict reports whether an error from ProvisionDomain is the
+// (hostname, path) uniqueness violation rather than a real failure. Exported
+// so a caller can turn it into its own kind of refusal without importing the
+// sentinel.
+func (h *Handler) DomainConflict(err error) bool { return errors.Is(err, errDomainConflict) }

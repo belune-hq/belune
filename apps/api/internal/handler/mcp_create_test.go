@@ -236,3 +236,113 @@ func TestMCP_Create_AreAuditedAgainstTheToken(t *testing.T) {
 		})
 	}
 }
+
+// TestMCP_CreateDomain_ServesHTTPAndNeverRequestsACertificate is the point of
+// the tool's shape: TLS is off and not a parameter.
+//
+// ⚠️ Requesting a certificate is the one thing a domain write does that leaves
+// the install — it makes the server talk to Let's Encrypt, which keeps
+// per-account state, and a hostname that does not resolve here yet spends that
+// hostname's failed-validation budget, delaying the certificate that would
+// otherwise have worked. A person adding a domain has just decided where DNS
+// points; a tool call has not.
+func TestMCP_CreateDomain_ServesHTTPAndNeverRequestsACertificate(t *testing.T) {
+	resetDB(t)
+	adminToken := env.SetupAdmin(t, "mcp-domain@test.com", "password123")
+	projectID := extractID(env.CreateProject(t, adminToken, "P", "p")["id"])
+	appID := extractID(minimalApp(t, adminToken, projectID)["id"])
+	token := mintScoped(t, adminToken, []string{"write"})
+
+	var got struct {
+		Domain map[string]any `json:"domain"`
+		Note   string         `json:"note"`
+	}
+	decodeToolResult(t, callToolArgs(t, token, "create_domain", map[string]any{
+		"application_id": appID, "hostname": "App.Example.COM",
+	}), &got)
+
+	assert.Equal(t, "app.example.com", got.Domain["hostname"], "the hostname is lowercased")
+	assert.Equal(t, "off", got.Domain["ssl_mode"], "TLS must be off")
+	assert.Contains(t, got.Note, "HTTPS", "the reply must say HTTPS is not on")
+
+	var sslMode string
+	var sslEnabled, forceHTTPS bool
+	require.NoError(t, env.Pool.QueryRow(context.Background(),
+		`SELECT ssl_mode, ssl_enabled, force_https FROM domains WHERE application_id = $1`, appID).
+		Scan(&sslMode, &sslEnabled, &forceHTTPS))
+	assert.Equal(t, "off", sslMode)
+	assert.False(t, sslEnabled, "no certificate may be requested")
+	assert.False(t, forceHTTPS, "force_https is meaningless with TLS off")
+
+	// ⚠️ The schema is closed, so a caller cannot turn TLS on by passing the
+	// field anyway — which is what makes "not a parameter" true rather than
+	// merely default.
+	for _, field := range []string{"ssl_mode", "ssl_enabled", "certificate_id", "advanced_config"} {
+		assert.Contains(t, toolErrorText(t, callToolArgs(t, token, "create_domain", map[string]any{
+			"application_id": appID, "hostname": "other.example.com", field: "x",
+		})), "unexpected additional properties", "%s must not be accepted", field)
+	}
+}
+
+// TestMCP_CreateDomain_RefusesDuplicatesAndBadHostnames: a duplicate names the
+// collision, and an invalid hostname is refused before anything is written.
+func TestMCP_CreateDomain_RefusesDuplicatesAndBadHostnames(t *testing.T) {
+	resetDB(t)
+	adminToken := env.SetupAdmin(t, "mcp-domain-dup@test.com", "password123")
+	projectID := extractID(env.CreateProject(t, adminToken, "P", "p")["id"])
+	appID := extractID(minimalApp(t, adminToken, projectID)["id"])
+	token := mintScoped(t, adminToken, []string{"write"})
+
+	decodeToolResult(t, callToolArgs(t, token, "create_domain", map[string]any{
+		"application_id": appID, "hostname": "dup.example.com",
+	}), &struct{}{})
+
+	assert.Contains(t, toolErrorText(t, callToolArgs(t, token, "create_domain", map[string]any{
+		"application_id": appID, "hostname": "dup.example.com",
+	})), "already configured")
+
+	for _, bad := range []string{"not a hostname", "no-tld", "http://example.com", "exa mple.com"} {
+		assert.Contains(t, toolErrorText(t, callToolArgs(t, token, "create_domain", map[string]any{
+			"application_id": appID, "hostname": bad,
+		})), "invalid hostname", "%q must be refused", bad)
+	}
+
+	var count int
+	require.NoError(t, env.Pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM domains WHERE application_id = $1`, appID).Scan(&count))
+	assert.Equal(t, 1, count, "only the one valid hostname may have been written")
+}
+
+// TestMCP_CreateDomain_ScopeAndPin: write-only, and a pinned token cannot add a
+// hostname to another project's application — with the positive control.
+func TestMCP_CreateDomain_ScopeAndPin(t *testing.T) {
+	resetDB(t)
+	adminToken := env.SetupAdmin(t, "mcp-domain-scope@test.com", "password123")
+	adminUserID := extractID(mustAuthMe(t, adminToken)["id"])
+	mine := extractID(env.CreateProject(t, adminToken, "Mine", "mine")["id"])
+	mineApp := extractID(minimalApp(t, adminToken, mine)["id"])
+	other := extractID(env.CreateProject(t, adminToken, "Other", "other")["id"])
+	otherApp := extractID(minimalApp(t, adminToken, other)["id"])
+
+	for _, scope := range []string{"read", "deploy"} {
+		tok := mintScoped(t, adminToken, []string{scope})
+		assert.Equal(t, fmt.Sprintf("the create_domain tool requires the %q scope; this token has: %s", "write", scope),
+			rpcError(t, callToolArgs(t, tok, "create_domain", map[string]any{
+				"application_id": mineApp, "hostname": "scope.example.com",
+			})))
+	}
+
+	pinned := createPinnedAPIToken(t, adminUserID, mine, []string{"write"})
+	decodeToolResult(t, callToolArgs(t, pinned, "create_domain", map[string]any{
+		"application_id": mineApp, "hostname": "own.example.com",
+	}), &struct{}{})
+
+	assert.Equal(t, "access denied", toolErrorText(t, callToolArgs(t, pinned, "create_domain", map[string]any{
+		"application_id": otherApp, "hostname": "foreign.example.com",
+	})))
+
+	var count int
+	require.NoError(t, env.Pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM domains WHERE application_id = $1`, otherApp).Scan(&count))
+	assert.Equal(t, 0, count, "a refused call added a hostname to another project's application")
+}

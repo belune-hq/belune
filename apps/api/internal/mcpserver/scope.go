@@ -56,6 +56,7 @@ var toolScopes = map[string]string{
 	// step, which creating is and destroying is not.
 	"create_application": "write",
 	"create_database":    "write",
+	"create_domain":      "write",
 }
 
 var errScopeDenied = errors.New("token lacks required scope")

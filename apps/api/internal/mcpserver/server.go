@@ -22,6 +22,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/weiliang79/belune/internal/quota"
 	"github.com/weiliang79/belune/internal/runtime"
 	"github.com/weiliang79/belune/internal/service"
@@ -49,7 +51,7 @@ type Deps struct {
 	// provisioning code have two existing callers and one of them
 	// (InstantiateTemplate) has no integration test; injecting leaves that
 	// body untouched. nil omits the tool.
-	Databases DatabaseProvisioner
+	Databases Provisioner
 	// DBs is needed only by set_database_resources, which applies a limit to
 	// the running container as well as persisting it — the live half lives in
 	// the service so REST and MCP cannot drift on it.
@@ -74,10 +76,16 @@ func New(d Deps) http.Handler {
 
 // newServer is split out of New so a test can enumerate the REAL registered
 // tools rather than a hand-written list.
-// DatabaseProvisioner provisions a managed database. Implemented by
-// *handler.Handler; see its ProvisionDatabase for why it lives there.
-type DatabaseProvisioner interface {
+// Provisioner is the narrow slice of provisioning the create tools need —
+// the two paths too coupled to internal/handler to call as services. Both are
+// implemented by *handler.Handler; see ProvisionDatabase and ProvisionDomain
+// there for why each stayed put.
+type Provisioner interface {
 	ProvisionDatabase(ctx context.Context, project generated.Project, in service.NewDatabase) (generated.Database, error)
+	ProvisionDomain(ctx context.Context, applicationID pgtype.UUID, hostname string) (generated.Domain, error)
+	// DomainConflict distinguishes a duplicate hostname from a real failure
+	// without exporting the sentinel error.
+	DomainConflict(err error) bool
 }
 
 func newServer(d Deps) *mcp.Server {
@@ -103,6 +111,7 @@ func newServer(d Deps) *mcp.Server {
 	registerDatabaseSettingsTools(srv, d)
 	registerCreateTools(srv, d)
 	registerCreateDatabaseTool(srv, d)
+	registerCreateDomainTool(srv, d)
 
 	return srv
 }

@@ -482,7 +482,7 @@ func TestMCP_ToolsListing_NoDestructiveTools(t *testing.T) {
 		"set_application_env_vars",
 		"set_application_resources", "set_application_health_check", "set_application_runtime",
 		"set_database_resources",
-		"create_application", "create_database",
+		"create_application", "create_database", "create_domain",
 	}, names)
 
 	for _, name := range names {

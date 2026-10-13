@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { Application, DomainExpanded } from "@/lib/types";
 
 const mutateAsync = vi.fn();
@@ -76,5 +76,28 @@ describe("HealthCheckSection", () => {
     expect(
       screen.getByRole("button", { name: "Save" }).hasAttribute("disabled"),
     ).toBe(false);
+  });
+
+  // A blank port clears it, and the endpoint spells a clear as 0 (absent means
+  // "leave the stored port alone"), so blank must not be sent as undefined.
+  it("sends a blank container port as 0 and a set one as a number", async () => {
+    renderIt(app({ health_check_path: "/up", container_port: 3000 }));
+    const port = screen.getByLabelText("Container Port");
+
+    fireEvent.change(port, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(mutateAsync).toHaveBeenLastCalledWith(
+        expect.objectContaining({ container_port: 0 }),
+      ),
+    );
+
+    fireEvent.change(port, { target: { value: "4000" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(mutateAsync).toHaveBeenLastCalledWith(
+        expect.objectContaining({ container_port: 4000 }),
+      ),
+    );
   });
 });

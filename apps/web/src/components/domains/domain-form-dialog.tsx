@@ -451,7 +451,7 @@ function DomainForm({
                     type="number"
                     min="1"
                     max="65535"
-                    placeholder="8080"
+                    placeholder="App's port"
                     value={field.state.value}
                     onBlur={field.handleBlur}
                     onChange={(e) => field.handleChange(e.target.value)}
@@ -462,7 +462,8 @@ function DomainForm({
                   ) : (
                     <p className="text-muted-foreground text-xs">
                       The port this domain routes to inside the container. Leave
-                      blank to use the app's default port (8080).
+                      blank to use the application's configured port, or 8080 if
+                      it has none.
                     </p>
                   )}
                 </Field>

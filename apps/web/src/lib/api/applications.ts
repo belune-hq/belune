@@ -6,7 +6,9 @@ export function listApplications(projectId: string) {
 }
 
 export function getApplication(projectId: string, applicationId: string) {
-  return api.get<Application>(`/projects/${projectId}/applications/${applicationId}`);
+  return api.get<Application>(
+    `/projects/${projectId}/applications/${applicationId}`,
+  );
 }
 
 export function createApplication(
@@ -52,7 +54,10 @@ export function updateApplication(
     // accepted here — sending them would be silently ignored.
   },
 ) {
-  return api.put<Application>(`/projects/${projectId}/applications/${applicationId}`, data);
+  return api.put<Application>(
+    `/projects/${projectId}/applications/${applicationId}`,
+    data,
+  );
 }
 
 export function updateApplicationRuntime(
@@ -67,7 +72,9 @@ export function updateApplicationRuntime(
 }
 
 export function deleteApplication(projectId: string, applicationId: string) {
-  return api.delete<void>(`/projects/${projectId}/applications/${applicationId}`);
+  return api.delete<void>(
+    `/projects/${projectId}/applications/${applicationId}`,
+  );
 }
 
 export function deployApplication(projectId: string, applicationId: string) {
@@ -237,6 +244,20 @@ export function setResources(
 ) {
   return api.put<Application>(
     `/projects/${projectId}/applications/${applicationId}/resources`,
+    data,
+  );
+}
+
+// Sets the port the container listens on; 0 clears it. Its own endpoint, not a
+// field on the general update: that one rewrites every column, and a nullable
+// port there could not tell "left out" from "clear it".
+export function setContainerPort(
+  projectId: string,
+  applicationId: string,
+  data: { container_port: number },
+) {
+  return api.put<Application>(
+    `/projects/${projectId}/applications/${applicationId}/port`,
     data,
   );
 }

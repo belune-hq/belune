@@ -414,6 +414,7 @@ func registerRoutes(r chi.Router, h *handler.Handler, auth *service.AuthService,
 				r.Post("/api/projects/{projectId}/applications/{applicationId}/change-source", h.ChangeApplicationSource)
 				r.Put("/api/projects/{projectId}/applications/{applicationId}/health-check", h.SetHealthCheck)
 				r.Put("/api/projects/{projectId}/applications/{applicationId}/resources", h.SetResources)
+				r.Put("/api/projects/{projectId}/applications/{applicationId}/port", h.SetContainerPort)
 				r.Get("/api/projects/{projectId}/applications/{applicationId}/cache", h.GetBuildCache)
 				r.Delete("/api/projects/{projectId}/applications/{applicationId}/cache", h.ClearBuildCache)
 

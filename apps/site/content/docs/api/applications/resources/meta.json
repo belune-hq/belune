@@ -4,6 +4,7 @@
     "set-resources",
     "get-application-health",
     "set-health-check",
+    "set-container-port",
     "update-application-runtime",
     "get-build-cache",
     "clear-build-cache"

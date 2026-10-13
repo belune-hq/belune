@@ -6833,6 +6833,77 @@
         ]
       }
     },
+    "/api/projects/{projectId}/applications/{applicationId}/port": {
+      "put": {
+        "operationId": "SetContainerPort",
+        "summary": "Set Container Port",
+        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
+        "tags": [
+          "Application Resources"
+        ],
+        "x-belune-order": 4,
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/setContainerPortRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/applicationResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "write": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/projects/{projectId}/applications/{applicationId}/previews": {
       "get": {
         "operationId": "ListPreviews",
@@ -17891,6 +17962,17 @@
         "properties": {
           "enabled": {
             "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "setContainerPortRequest": {
+        "properties": {
+          "container_port": {
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         },
         "type": "object"

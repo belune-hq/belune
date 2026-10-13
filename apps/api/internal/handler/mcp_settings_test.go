@@ -199,7 +199,7 @@ func TestMCP_SetRuntime_AppliesAndValidates(t *testing.T) {
 	assert.Equal(t, "standard", readAppRuntime(t, appID).caps, "a refused profile must not be written")
 }
 
-// TestMCP_Settings_ScopeAndPin is the security half for all four tools: the
+// TestMCP_Settings_ScopeAndPin is the security half for every settings tool: the
 // read/deploy scopes cannot reach them, and a project-pinned token cannot
 // touch another project's application or database.
 func TestMCP_Settings_ScopeAndPin(t *testing.T) {
@@ -215,6 +215,7 @@ func TestMCP_Settings_ScopeAndPin(t *testing.T) {
 		"set_application_resources":    {"cpu_limit": 1, "memory_limit": 268435456},
 		"set_application_health_check": {"type": "none"},
 		"set_application_runtime":      {"readonly_rootfs": false, "container_caps": "standard"},
+		"set_application_port":         {"container_port": 3000},
 	}
 
 	// ⚠️ Scope first. Each tool requires "write"; read and deploy must not do.
@@ -330,6 +331,7 @@ func TestMCP_Settings_AreAuditedAgainstTheToken(t *testing.T) {
 		{"set_application_resources", "set_resources", map[string]any{"cpu_limit": 2, "memory_limit": 536870912}},
 		{"set_application_health_check", "set_health_check", map[string]any{"type": "none"}},
 		{"set_application_runtime", "update_application_runtime", map[string]any{"readonly_rootfs": false, "container_caps": "standard"}},
+		{"set_application_port", "set_container_port", map[string]any{"container_port": 3000}},
 	} {
 		t.Run(tc.tool, func(t *testing.T) {
 			a := map[string]any{"application_id": appID}

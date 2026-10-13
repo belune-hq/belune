@@ -49,7 +49,12 @@ type setHealthCheckInput struct {
 	TimeoutSeconds int `json:"timeout_seconds,omitempty" jsonschema:"seconds before a single check is considered failed; omit for the default"`
 }
 
-// settingsResult is the shared shape for the three application settings tools:
+type setPortInput struct {
+	ApplicationID string `json:"application_id" jsonschema:"the application's id"`
+	ContainerPort int    `json:"container_port" jsonschema:"the port the application listens on inside its container, 1-65535; 0 clears it"`
+}
+
+// settingsResult is the shared shape for the application settings tools:
 // the updated application plus a note saying when the change takes effect,
 // which differs per tool and is the thing an assistant most often gets wrong.
 type settingsResult struct {
@@ -58,7 +63,7 @@ type settingsResult struct {
 }
 
 func registerApplicationSettingsTools(srv *mcp.Server, d Deps) {
-	// authorizedApp is the preamble all three share: resolve the application by
+	// authorizedApp is the preamble all of them share: resolve the application by
 	// its OWN id, then authorize against the project that row actually belongs
 	// to. Never a project id from the caller — there is no such argument on
 	// these tools, which is what makes them immune to naming a parent you may
@@ -204,6 +209,48 @@ func registerApplicationSettingsTools(srv *mcp.Server, d Deps) {
 		return textResult(settingsResult{
 			Application: toApplication(updated),
 			Note:        "saved, not applied — the running container keeps its current profile until trigger_deployment",
+		})
+	})
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "set_application_port",
+		Description: "Set the port an application's container listens on. The deploy health check probes this port and " +
+			"the proxy forwards to it, so an app that listens on anything but 8080 and has no domain with a port set " +
+			"will fail its health check until this is set. Pass 0 to clear it, after which the port is taken from " +
+			"the application's first domain and then defaults to 8080. container_port is required: it is REPLACED by " +
+			"what you pass, so read the current value with get_application first. The change is saved immediately " +
+			"but does not affect the running container or the proxy route until the application is redeployed — " +
+			"call trigger_deployment to apply it.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in setPortInput) (*mcp.CallToolResult, any, error) {
+		app, err := authorizedApp(ctx, in.ApplicationID)
+		if err != nil {
+			return nil, nil, err
+		}
+		// The same validator the REST endpoint uses.
+		port, err := service.ValidateContainerPort(in.ContainerPort)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		if err := d.Queries.SetApplicationContainerPort(ctx, generated.SetApplicationContainerPortParams{
+			ID:            app.ID,
+			ContainerPort: port,
+		}); err != nil {
+			return nil, nil, internalError("failed to update container port", err)
+		}
+		d.Apps.MarkConfigChanged(ctx, app.ID)
+
+		// Same action, resource type and details shape as the REST endpoint.
+		auditTool(ctx, d.Audit, "set_container_port", "application", uuidToString(app.ID),
+			map[string]any{"container_port": in.ContainerPort})
+
+		updated, err := d.Queries.GetApplication(ctx, app.ID)
+		if err != nil {
+			return nil, nil, internalError("failed to read the updated application", err)
+		}
+		return textResult(settingsResult{
+			Application: toApplication(updated),
+			Note:        "saved, not applied — the health check and proxy route keep the old port until trigger_deployment",
 		})
 	})
 }

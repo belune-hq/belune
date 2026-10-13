@@ -53,6 +53,18 @@ needs to be run by a person instead. This is the kind of change the versioning
 contract at the top of this file permits on a patch release, and this is it being
 listed.
 
+### Added
+
+- **An application's container port can now be set.** An application that
+  listens on anything but port 8080 and has no domain was probed on 8080 by its
+  health check, failed every deploy, and had no way to correct it short of
+  inventing a domain or turning the health check off. `PUT
+  /api/projects/{projectId}/applications/{applicationId}/port` sets it (send
+  `{"container_port": 0}` to clear it, after which the port comes from the first
+  domain and then falls back to 8080), and the MCP server gains a matching
+  `set_application_port` tool. The change is saved, not applied: the health
+  check and the proxy route take the port at deploy time, so redeploy to use it.
+
 ### Fixed
 
 - **Switching a health check's method no longer marks an empty field as an

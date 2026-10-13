@@ -26,6 +26,9 @@ type application struct {
 	SourceImage     string `json:"source_image,omitempty"`
 	Branch          string `json:"branch,omitempty"`
 	HealthCheckPath string `json:"health_check_path,omitempty"`
+	// ContainerPort is the application's own port; omitted when unset, in which
+	// case it resolves from the first domain and then 8080.
+	ContainerPort int32 `json:"container_port,omitempty"`
 	// PendingChange is service.ApplicationPendingChange, the same rule the
 	// REST wire shape uses: "source" outranks "config" (a deploy applies
 	// both), and it's suppressed before the application's first deploy so a
@@ -48,6 +51,7 @@ func toApplication(a generated.Application) application {
 		SourceImage:     a.SourceImage.String,
 		Branch:          a.Branch.String,
 		HealthCheckPath: a.HealthCheckPath.String,
+		ContainerPort:   a.ContainerPort.Int32,
 		LastDeployedAt:  formatTimestamp(a.LastDeployedAt),
 		CreatedAt:       formatTimestamp(a.CreatedAt),
 		PendingChange:   service.ApplicationPendingChange(a),

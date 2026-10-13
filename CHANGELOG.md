@@ -55,13 +55,15 @@ listed.
 
 ### Added
 
-- **An application's container port can now be set, from the dashboard and the
-  API.** A new **Port** card on the application's Settings page, `PUT
-  /api/projects/{projectId}/applications/{applicationId}/port` (send
-  `{"container_port": 0}` to clear it) and a matching `set_application_port` MCP
-  tool. Until now the only way to give an application a port was through a
-  domain, so an app listening on anything but 8080 with no domain was
-  health-checked on 8080, failed every deploy, and could not be corrected.
+- **An application's container port can now be set, from the Health Check card.**
+  A **Container Port** field at the top of the card on the application's Settings
+  page, and an optional `container_port` on `PUT
+  /api/projects/{projectId}/applications/{applicationId}/health-check` (absent
+  leaves the stored port alone, `0` clears it). Until now the only way to give an
+  application a port was through a domain, so an app listening on anything but
+  8080 with no domain was health-checked on 8080, failed every deploy, and could
+  not be corrected. It is the port *inside* the container; nothing is published on
+  the host.
 
   It also settles a quieter problem. Say an app serves its site on 3000 and an
   admin interface on 3001, with `user.example.com` routed to 3000 and
@@ -71,8 +73,7 @@ listed.
   if the admin interface did not serve the health path; add them the other way
   round and the same configuration passed. Setting the application's port to
   3000 pins the check there whatever order the domains were added in, while each
-  domain still routes to its own port. The card shows what the health check and
-  each hostname resolve to.
+  domain still routes to its own port.
 
   The change is saved, not applied: the health check and the proxy route take the
   port at deploy time, so redeploy to use it.

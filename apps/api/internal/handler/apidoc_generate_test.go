@@ -522,12 +522,15 @@ func TestGenerateAPIReference(t *testing.T) {
 	// 35, 35 -> 42, 42 -> 44, then 44 -> 45, and 47 -> 49 when PUT and DELETE
 	// /api/quotas/{scope}/{scopeId} were re-gated — a quota decides whether a
 	// project can deploy at all, so capping one is an operator decision, not
-	// something a leaked token should reach), the same way a floor assertion is
+	// something a leaked token should reach), then 49 -> 53 when the four git
+	// credential routes were gated (connect, DELETE integration, PUT and
+	// DELETE providers: browser flows and credential operations, see
+	// routes.go), the same way a floor assertion is
 	// meant to be moved. If this moves again, a route was added, removed, or
 	// re-gated — worth an explicit look either way, the same reasoning
 	// destroy_boundary_test.go and reveal_boundary_test.go's own sanity floors
 	// give for their sets.
-	require.Equal(t, 49, sessionRoutes, "expected exactly 49 RequireSession routes")
+	require.Equal(t, 53, sessionRoutes, "expected exactly 53 RequireSession routes")
 
 	sig, directives, behaviour, reg := apidocExtractTypes(t)
 	apidocAssertEmbedsPromoted(t, reg)

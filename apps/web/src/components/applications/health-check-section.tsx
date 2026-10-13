@@ -14,6 +14,7 @@ import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { fieldError } from "@/lib/utils/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import {
   SegmentedControl,
   SegmentedControlItem,
@@ -142,53 +143,6 @@ export function HealthCheckSection({
         }}
       >
         <CardContent className="space-y-4">
-          <form.Field
-            name="port"
-            validators={{ onChange: portRule }}
-            children={(field) => {
-              const error = fieldError(field.state.meta.errors);
-              return (
-                <Field data-invalid={!!error}>
-                  <FieldLabel htmlFor="container-port">
-                    Container Port
-                  </FieldLabel>
-                  <Input
-                    id="container-port"
-                    type="number"
-                    min="1"
-                    max="65535"
-                    value={field.state.value}
-                    onBlur={field.handleBlur}
-                    onChange={(e) => field.handleChange(e.target.value)}
-                    placeholder="8080"
-                    aria-invalid={!!error}
-                  />
-                  {error ? (
-                    <FieldError>{error}</FieldError>
-                  ) : (
-                    <p className="text-muted-foreground text-xs">
-                      The port your application listens on inside its container
-                      — what an HTTP health check probes, and what a domain
-                      routes to unless it sets a port of its own. Leave blank
-                      for 8080.
-                    </p>
-                  )}
-                  {resolved.healthPort !== null && (
-                    <p className="text-muted-foreground text-xs">
-                      Health checks probe{" "}
-                      <span className="font-mono">:{resolved.healthPort}</span>{" "}
-                      {resolved.healthSource === "app"
-                        ? "(this port)"
-                        : resolved.healthSource === "domain"
-                          ? "(from the newest domain that sets one)"
-                          : "(the default)"}
-                    </p>
-                  )}
-                </Field>
-              );
-            }}
-          />
-
           <form.Field
             name="type"
             children={(field) => (
@@ -462,6 +416,58 @@ export function HealthCheckSection({
                 )}
               </>
             )}
+          />
+
+          {/* Card-level, not part of the check: the port is also the proxy's
+              upstream fallback, and templates set it on apps whose method is
+              none — so it stays visible whichever method is selected. */}
+          <Separator />
+
+          <form.Field
+            name="port"
+            validators={{ onChange: portRule }}
+            children={(field) => {
+              const error = fieldError(field.state.meta.errors);
+              return (
+                <Field data-invalid={!!error}>
+                  <FieldLabel htmlFor="container-port">
+                    Container Port
+                  </FieldLabel>
+                  <Input
+                    id="container-port"
+                    type="number"
+                    min="1"
+                    max="65535"
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                    placeholder="8080"
+                    aria-invalid={!!error}
+                  />
+                  {error ? (
+                    <FieldError>{error}</FieldError>
+                  ) : (
+                    <p className="text-muted-foreground text-xs">
+                      The port your application listens on inside its container
+                      — what an HTTP health check probes, and what a domain
+                      routes to unless it sets a port of its own. Leave blank
+                      for 8080.
+                    </p>
+                  )}
+                  {resolved.healthPort !== null && (
+                    <p className="text-muted-foreground text-xs">
+                      Health checks probe{" "}
+                      <span className="font-mono">:{resolved.healthPort}</span>{" "}
+                      {resolved.healthSource === "app"
+                        ? "(this port)"
+                        : resolved.healthSource === "domain"
+                          ? "(from the newest domain that sets one)"
+                          : "(the default)"}
+                    </p>
+                  )}
+                </Field>
+              );
+            }}
           />
 
           <div className="flex justify-end">

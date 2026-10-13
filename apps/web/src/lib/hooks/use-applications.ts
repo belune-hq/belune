@@ -364,17 +364,3 @@ export function useSetResources(projectId: string, applicationId: string) {
     onError: (error) => toast.error(error.message),
   });
 }
-
-export function useSetContainerPort(projectId: string, applicationId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (
-      data: Parameters<typeof applicationsApi.setContainerPort>[2],
-    ) => applicationsApi.setContainerPort(projectId, applicationId, data),
-    onSuccess: () =>
-      qc.invalidateQueries({
-        queryKey: queryKeys.applications.detail(projectId, applicationId),
-      }),
-    onError: (error) => toast.error(error.message),
-  });
-}

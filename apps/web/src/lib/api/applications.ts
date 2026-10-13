@@ -227,6 +227,9 @@ export function setHealthCheck(
     retries?: number;
     start_period_seconds?: number;
     timeout_seconds?: number;
+    // Not part of the check: it is also the proxy's fallback port. Absent
+    // leaves the stored port alone, 0 clears it, 1-65535 sets it.
+    container_port?: number;
   },
 ) {
   return api.put<Application>(
@@ -244,20 +247,6 @@ export function setResources(
 ) {
   return api.put<Application>(
     `/projects/${projectId}/applications/${applicationId}/resources`,
-    data,
-  );
-}
-
-// Sets the port the container listens on; 0 clears it. Its own endpoint, not a
-// field on the general update: that one rewrites every column, and a nullable
-// port there could not tell "left out" from "clear it".
-export function setContainerPort(
-  projectId: string,
-  applicationId: string,
-  data: { container_port: number },
-) {
-  return api.put<Application>(
-    `/projects/${projectId}/applications/${applicationId}/port`,
     data,
   );
 }

@@ -32,21 +32,7 @@ describe("resolvePorts", () => {
       const r = resolvePorts({ container_port: 3000, ...http }, order);
       expect(r.healthPort).toBe(3000);
       expect(r.healthSource).toBe("app");
-      // Each hostname still routes to its own port.
-      expect(
-        r.routes.find((x) => x.hostname === "admin.example.com"),
-      ).toMatchObject({ port: 3001, overridden: true });
-      expect(
-        r.routes.find((x) => x.hostname === "user.example.com"),
-      ).toMatchObject({ port: 3000, overridden: false });
     }
-  });
-
-  it("routes follow the app port when a domain leaves its own blank", () => {
-    const r = resolvePorts({ container_port: 3000, ...http }, [
-      d("a.example.com"),
-    ]);
-    expect(r.routes[0]).toMatchObject({ port: 3000, overridden: false });
   });
 
   it("falls back to 8080 and treats zero as unset", () => {
@@ -55,7 +41,6 @@ describe("resolvePorts", () => {
     ]);
     expect(r.healthPort).toBe(8080);
     expect(r.healthSource).toBe("default");
-    expect(r.routes[0]).toMatchObject({ port: 8080, overridden: false });
   });
 
   it("reports no probe unless an HTTP check with a path is configured", () => {

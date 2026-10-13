@@ -1,13 +1,13 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 /**
- * The Port card on an application's Settings page, in a real browser.
+ * The Container Port field on the Health Check card of an application's
+ * Settings page, in a real browser.
  *
- * The jsdom suite covers the form's logic and the resolution text, but jsdom
- * has no layout engine: a card composited at opacity 0, or collapsed to no
- * height, satisfies every assertion there. This drill is what says a person can
- * actually see the card and the resolved ports, and that a saved port survives
- * a reload.
+ * jsdom has no layout engine: a field composited at opacity 0, or collapsed to
+ * no height, satisfies every assertion there. This drill is what says a person
+ * can actually see the field and the probe line, that the field is not tied to
+ * the HTTP method, and that a saved port survives a reload.
  *
  * Environment prepared by scripts/smoke-browser.sh.
  */
@@ -63,7 +63,7 @@ async function api<T>(
   ) as Promise<T>;
 }
 
-test("the Port card is visible, resolves ports, and a saved port survives a reload", async ({
+test("the Container Port field is visible, saves with the health check, and survives a reload", async ({
   page,
 }) => {
   await page.goto("/login");
@@ -115,25 +115,33 @@ test("the Port card is visible, resolves ports, and a saved port survives a relo
 
   // CardTitle is a div, not a heading; the description is unique to this card.
   const card = page.getByText(
-    "The port your application listens on inside its container.",
+    "How the platform decides the application is healthy.",
   );
   await expect(card).toBeVisible();
   expect((await rendered(card)).opacity).toBe(1);
-  const resolved = page.getByLabel("Resolved ports");
-  await expect(resolved).toBeVisible();
+
+  const input = page.getByLabel("Container Port");
+  await expect(input).toBeVisible();
+  const field = await rendered(input);
+  expect(field.opacity).toBe(1);
+  expect(field.width).toBeGreaterThan(50);
+  expect(field.height).toBeGreaterThan(15);
 
   // Before: no app port, so the probe follows the newest domain (user → 3000).
-  await expect(resolved).toContainText(":3000");
-  await expect(resolved).toContainText("from the newest domain");
+  const probe = page.getByText("Health checks probe");
+  await expect(probe).toContainText(":3000");
+  await expect(probe).toContainText("from the newest domain");
+  const probeBox = await rendered(probe);
+  expect(probeBox.opacity).toBe(1);
+  expect(probeBox.width).toBeGreaterThan(100);
+  expect(probeBox.height).toBeGreaterThan(8);
 
-  // Real layout: the block occupies space and is not faded out.
-  const before = await rendered(resolved);
-  expect(before.opacity).toBe(1);
-  expect(before.width).toBeGreaterThan(100);
-  expect(before.height).toBeGreaterThan(20);
+  // The port belongs to the card, not to the HTTP method: it must stay put
+  // when the method changes, or apps with no HTTP check could not set it.
+  await page.getByRole("button", { name: "None", exact: true }).click();
+  await expect(input).toBeVisible();
+  await page.getByRole("button", { name: "HTTP", exact: true }).click();
 
-  // Pin the check to 3000 explicitly, then to 3001, to prove the probe moves
-  // with the app port while each hostname keeps its own route.
   // Several cards on this page have a Save button; scope to this one's form.
   const save = () =>
     page
@@ -141,26 +149,26 @@ test("the Port card is visible, resolves ports, and a saved port survives a relo
       .filter({ has: page.getByLabel("Container Port") })
       .getByRole("button", { name: "Save", exact: true })
       .click();
-  const input = page.getByLabel("Container Port");
+  const saved = page.getByText("Health check saved");
+
   await input.fill("3001");
   await save();
-  await expect(page.getByText("Container port saved")).toBeVisible();
+  await expect(saved).toBeVisible();
 
   await page.reload();
   await expect(page.getByLabel("Container Port")).toHaveValue("3001");
-  const after = page.getByLabel("Resolved ports");
+  const after = page.getByText("Health checks probe");
   await expect(after).toContainText("Health checks probe :3001");
-  await expect(after).toContainText("user.port-drill.invalid → :3000");
-  await expect(after).toContainText("admin.port-drill.invalid → :3001");
+  await expect(after).toContainText("(this port)");
   expect((await rendered(after)).opacity).toBe(1);
 
   // Clearing it returns to following the domains.
   await page.getByLabel("Container Port").fill("");
   await save();
-  await expect(page.getByText("Container port saved")).toBeVisible();
+  await expect(page.getByText("Health check saved")).toBeVisible();
   await page.reload();
   await expect(page.getByLabel("Container Port")).toHaveValue("");
-  await expect(page.getByLabel("Resolved ports")).toContainText(
+  await expect(page.getByText("Health checks probe")).toContainText(
     "from the newest domain",
   );
 });

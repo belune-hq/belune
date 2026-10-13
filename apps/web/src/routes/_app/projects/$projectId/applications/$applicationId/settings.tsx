@@ -12,7 +12,6 @@ import { ApplicationSettingsForm } from "@/components/applications/application-s
 import { BuildCacheSection } from "@/components/applications/build-cache-section";
 import { RuntimeSection } from "@/components/applications/runtime-section";
 import { ResourcesSection } from "@/components/applications/resources-section";
-import { PortSection } from "@/components/applications/port-section";
 import { HealthCheckSection } from "@/components/applications/health-check-section";
 import { DeleteApplicationDialog } from "@/components/applications/delete-application-dialog";
 
@@ -62,14 +61,6 @@ function ApplicationSettingsPage() {
       <Separator />
 
       <ResourcesSection
-        projectId={projectId}
-        applicationId={applicationId}
-        application={application}
-      />
-
-      <Separator />
-
-      <PortSection
         projectId={projectId}
         applicationId={applicationId}
         application={application}

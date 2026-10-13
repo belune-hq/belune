@@ -151,8 +151,12 @@ export function HealthCheckSection({
                   <div className="space-y-4">
                     <form.Field
                       name="path"
+                      // No onChangeListenTo on "type": it ran this validator as the
+                      // field unmounted on a method switch, parking an error that then
+                      // rendered the moment the field came back — red on a field nobody
+                      // had touched. Save is gated on the values themselves (canSave
+                      // below), so nothing needed the cross-field run.
                       validators={{
-                        onChangeListenTo: ["type"],
                         onChange: ({ value, fieldApi }) =>
                           fieldApi.form.state.values.type === "http" &&
                           value.trim() === ""
@@ -160,7 +164,11 @@ export function HealthCheckSection({
                             : undefined,
                       }}
                       children={(field) => {
-                        const error = fieldError(field.state.meta.errors);
+                        // Visited-only, matching certificates.tsx: an untouched
+                        // field never shows a message or an invalid border.
+                        const error = field.state.meta.isTouched
+                          ? fieldError(field.state.meta.errors)
+                          : undefined;
                         return (
                           <Field data-invalid={!!error}>
                             <FieldLabel>Path</FieldLabel>
@@ -236,8 +244,12 @@ export function HealthCheckSection({
                   <div className="space-y-4">
                     <form.Field
                       name="command"
+                      // No onChangeListenTo on "type": it ran this validator as the
+                      // field unmounted on a method switch, parking an error that then
+                      // rendered the moment the field came back — red on a field nobody
+                      // had touched. Save is gated on the values themselves (canSave
+                      // below), so nothing needed the cross-field run.
                       validators={{
-                        onChangeListenTo: ["type"],
                         onChange: ({ value, fieldApi }) =>
                           fieldApi.form.state.values.type === "command" &&
                           value.trim() === ""
@@ -245,7 +257,9 @@ export function HealthCheckSection({
                             : undefined,
                       }}
                       children={(field) => {
-                        const error = fieldError(field.state.meta.errors);
+                        const error = field.state.meta.isTouched
+                          ? fieldError(field.state.meta.errors)
+                          : undefined;
                         return (
                           <Field data-invalid={!!error}>
                             <FieldLabel>Command</FieldLabel>

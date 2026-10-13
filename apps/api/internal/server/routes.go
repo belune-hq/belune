@@ -344,13 +344,20 @@ func registerRoutes(r chi.Router, h *handler.Handler, auth *service.AuthService,
 				r.With(middleware.RequireSession()).Post("/api/tokens", h.CreateAPIToken)
 				r.With(middleware.RequireSession()).Delete("/api/tokens/{tokenId}", h.DeleteAPIToken)
 
-				// Git connections (per-user connected provider accounts)
+				// Git connections (per-user connected provider accounts). connect
+				// and delete are session-only: connect is a browser flow (it sets a
+				// cookie and returns a URL a person must visit), and deleting an
+				// integration breaks the deploys that use it. Completing a
+				// connection was never reachable by a token, since the OAuth
+				// callback needs that cookie; this keeps the initiator and the
+				// destructive call with a signed-in person. Listing and browsing
+				// repos stay open to tokens.
 				r.Get("/api/git/integrations", h.ListGitIntegrations)
 				r.Get("/api/git/integrations/available", h.ListAvailableProviders)
-				r.Get("/api/git/integrations/connect", h.StartGitIntegrationConnect)
+				r.With(middleware.RequireSession()).Get("/api/git/integrations/connect", h.StartGitIntegrationConnect)
 				r.Get("/api/git/integrations/{integrationId}/repos", h.ListIntegrationRepos)
 				r.Get("/api/git/integrations/{integrationId}/branches", h.ListIntegrationBranches)
-				r.Delete("/api/git/integrations/{integrationId}", h.DeleteGitIntegration)
+				r.With(middleware.RequireSession()).Delete("/api/git/integrations/{integrationId}", h.DeleteGitIntegration)
 
 				// App templates (catalog + one-click instantiation)
 				r.Get("/api/templates", h.ListTemplates)
@@ -711,10 +718,12 @@ func registerRoutes(r chi.Router, h *handler.Handler, auth *service.AuthService,
 					r.Patch("/api/notification-channels/{channelId}", h.SetNotificationChannelEnabled)
 					r.Delete("/api/notification-channels/{channelId}", h.DeleteNotificationChannel)
 					r.Post("/api/notification-channels/{channelId}/test", h.TestNotificationChannel)
-					// Git provider app configs (per-instance GitHub App / OAuth clients)
+					// Git provider app configs (per-instance GitHub App / OAuth clients).
+					// Save and delete are session-only: saving stores credentials,
+					// and deleting a config breaks every deploy that uses it.
 					r.Get("/api/git/providers", h.ListGitProviderConfigs)
-					r.Put("/api/git/providers", h.SaveGitProviderConfig)
-					r.Delete("/api/git/providers/{configId}", h.DeleteGitProviderConfig)
+					r.With(middleware.RequireSession()).Put("/api/git/providers", h.SaveGitProviderConfig)
+					r.With(middleware.RequireSession()).Delete("/api/git/providers/{configId}", h.DeleteGitProviderConfig)
 					r.Get("/api/git/providers/github/manifest", h.GetGitHubAppManifest)
 				})
 			})

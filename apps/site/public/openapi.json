@@ -2003,9 +2003,6 @@
         },
         "security": [
           {
-            "read": []
-          },
-          {
             "session": []
           }
         ]
@@ -2057,9 +2054,6 @@
           }
         },
         "security": [
-          {
-            "write": []
-          },
           {
             "session": []
           }
@@ -2271,9 +2265,6 @@
         },
         "security": [
           {
-            "write": []
-          },
-          {
             "session": []
           }
         ]
@@ -2407,9 +2398,6 @@
           }
         },
         "security": [
-          {
-            "write": []
-          },
           {
             "session": []
           }

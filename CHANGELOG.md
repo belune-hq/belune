@@ -26,6 +26,33 @@ Release notes for each version are also published on the
 
 ## [Unreleased]
 
+### ⚠️ Breaking changes
+
+**Four git credential routes now require a signed-in session.** A personal
+access token can no longer call:
+
+- `GET /api/git/integrations/connect`
+- `DELETE /api/git/integrations/{integrationId}`
+- `PUT /api/git/providers`
+- `DELETE /api/git/providers/{configId}`
+
+Listing and browsing stay open to a token: `GET /api/git/integrations`, its
+`available`, `repos` and `branches` reads, and `GET /api/git/providers`.
+
+These are browser flows and credential operations, so they belong with a person
+rather than routine automation, the same reasoning that moved quota changes to
+sessions in 0.1.19. `connect` starts a browser sign-in: it sets a cookie and
+returns a URL that a person has to visit, so a script has no use for it. Saving
+a provider stores credentials, and deleting a provider or a connection breaks the
+deploys that depend on it. Completing a connection was never possible with a
+token alone, since the provider's callback needs that cookie and a person signing
+in at the provider; this change does not alter that.
+
+If you have a script that calls any of these, it will start receiving `403` and
+needs to be run by a person instead. This is the kind of change the versioning
+contract at the top of this file permits on a patch release, and this is it being
+listed.
+
 ### Fixed
 
 - **The project overview no longer stops loading once a project runs eight or

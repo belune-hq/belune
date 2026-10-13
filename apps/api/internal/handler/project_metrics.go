@@ -7,9 +7,18 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/weiliang79/belune/internal/runtime"
 )
+
+// maxConcurrentStats bounds in-flight Docker stats calls per overview request.
+// Each is a two-sample collection (~2.0s measured against a real daemon, of
+// which transport is ~8ms) rather than CPU work, and dockerd serves them fully
+// in parallel: 8 calls took 1.97s concurrently against 15.26s serially. So the
+// cap protects the daemon, not this process; 16 keeps a 50-app project (four
+// waves, ~8s) inside the 15s handler timeout.
+const maxConcurrentStats = 16
 
 // serviceMetrics is a per-service runtime snapshot for the project overview.
 type serviceMetrics struct {
@@ -83,8 +92,11 @@ func (h *Handler) GetProjectMetrics(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result := map[string]serviceMetrics{}
-	for _, app := range apps {
+	// Indexed by position so the stats goroutines below each write their own
+	// element and need no lock.
+	metrics := make([]serviceMetrics, len(apps))
+	var running []int
+	for i, app := range apps {
 		appID := uuidToString(app.ID)
 		m := serviceMetrics{Status: app.Status, MemoryLimit: app.MemoryLimit}
 
@@ -100,20 +112,7 @@ func (h *Handler) GetProjectMetrics(w http.ResponseWriter, r *http.Request) {
 			// present itself here, as a service reading "Running" with an empty
 			// CPU and memory column.
 			if c.Status == "running" {
-				s, serr := rt.ContainerStats(ctx, app.Slug)
-				if serr != nil {
-					// Left at zero, which the UI renders the same as a genuinely
-					// idle container — so log it, otherwise a failing stats call
-					// is indistinguishable from real zeros.
-					slog.Debug("project metrics: container stats unavailable",
-						"application", app.Slug, "error", serr)
-				} else {
-					m.CPUPercent = s.CPUPercent
-					m.MemoryUsed = s.MemoryUsage
-					if s.MemoryLimit > 0 {
-						m.MemoryLimit = s.MemoryLimit
-					}
-				}
+				running = append(running, i)
 			}
 		}
 
@@ -121,7 +120,41 @@ func (h *Handler) GetProjectMetrics(w http.ResponseWriter, r *http.Request) {
 			m.Domain = d.hostname
 			m.Port = d.port
 		}
-		result[appID] = m
+		metrics[i] = m
+	}
+
+	// A one-shot stats call costs about two seconds (Docker samples twice, ~1s
+	// apart, to compute the CPU delta), so a serial loop needs 2s x N and blew
+	// the 15s handler timeout from 8 apps up. Fan out with a cap so the wall
+	// time stays roughly one call however many apps run. No errgroup context:
+	// a failed stats call must degrade only its own row, never cancel the rest.
+	var g errgroup.Group
+	g.SetLimit(maxConcurrentStats)
+	for _, i := range running {
+		g.Go(func() error {
+			slug := apps[i].Slug
+			s, serr := rt.ContainerStats(ctx, slug)
+			if serr != nil {
+				// Left at zero, which the UI renders the same as a genuinely
+				// idle container — so log it, otherwise a failing stats call
+				// is indistinguishable from real zeros.
+				slog.Debug("project metrics: container stats unavailable",
+					"application", slug, "error", serr)
+				return nil
+			}
+			metrics[i].CPUPercent = s.CPUPercent
+			metrics[i].MemoryUsed = s.MemoryUsage
+			if s.MemoryLimit > 0 {
+				metrics[i].MemoryLimit = s.MemoryLimit
+			}
+			return nil
+		})
+	}
+	_ = g.Wait()
+
+	result := make(map[string]serviceMetrics, len(apps))
+	for i, app := range apps {
+		result[uuidToString(app.ID)] = metrics[i]
 	}
 
 	writeJSON(w, http.StatusOK, result)

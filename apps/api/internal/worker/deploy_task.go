@@ -1313,7 +1313,7 @@ func resolveContainerPort(app generated.Application, domains []generated.Domain)
 		return app.ContainerPort.Int32
 	}
 	for _, d := range domains {
-		if d.ContainerPort.Valid {
+		if d.ContainerPort.Valid && d.ContainerPort.Int32 > 0 {
 			return d.ContainerPort.Int32
 		}
 	}

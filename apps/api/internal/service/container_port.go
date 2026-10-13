@@ -26,3 +26,17 @@ func ValidateContainerPort(port int) (pgtype.Int4, error) {
 	}
 	return pgtype.Int4{Int32: int32(port), Valid: true}, nil
 }
+
+// ValidateDomainContainerPort is the same range rule for a domain's per-route
+// override, where "unset" means something different: an application's 0 is an
+// explicit clear of a stored value, but a domain's port is written whole on
+// every create and update, so an absent value and 0 both simply mean "no
+// override" and store NULL. Storing NULL for 0 is routing-neutral
+// (ResolveUpstreamPort ignores anything not > 0) and keeps a Valid zero from
+// reaching the health-check resolution as port 0.
+func ValidateDomainContainerPort(port *int32) (pgtype.Int4, error) {
+	if port == nil || *port == 0 {
+		return pgtype.Int4{}, nil
+	}
+	return ValidateContainerPort(int(*port))
+}

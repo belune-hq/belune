@@ -55,23 +55,40 @@ listed.
 
 ### Added
 
-- **An application's container port can now be set.** An application that
-  listens on anything but port 8080 and has no domain was probed on 8080 by its
-  health check, failed every deploy, and had no way to correct it short of
-  inventing a domain or turning the health check off. `PUT
-  /api/projects/{projectId}/applications/{applicationId}/port` sets it (send
-  `{"container_port": 0}` to clear it, after which the port comes from the first
-  domain and then falls back to 8080), and the MCP server gains a matching
-  `set_application_port` tool. The change is saved, not applied: the health
-  check and the proxy route take the port at deploy time, so redeploy to use it.
+- **An application's container port can now be set, from the dashboard and the
+  API.** A new **Port** card on the application's Settings page, `PUT
+  /api/projects/{projectId}/applications/{applicationId}/port` (send
+  `{"container_port": 0}` to clear it) and a matching `set_application_port` MCP
+  tool. Until now the only way to give an application a port was through a
+  domain, so an app listening on anything but 8080 with no domain was
+  health-checked on 8080, failed every deploy, and could not be corrected.
+
+  It also settles a quieter problem. Say an app serves its site on 3000 and an
+  admin interface on 3001, with `user.example.com` routed to 3000 and
+  `admin.example.com` to 3001. Both routes work, but the health check needs a
+  single port and, with none set on the application, used the most recently added
+  domain's. Add the admin hostname second and the deploy probed 3001 and failed
+  if the admin interface did not serve the health path; add them the other way
+  round and the same configuration passed. Setting the application's port to
+  3000 pins the check there whatever order the domains were added in, while each
+  domain still routes to its own port. The card shows what the health check and
+  each hostname resolve to.
+
+  The change is saved, not applied: the health check and the proxy route take the
+  port at deploy time, so redeploy to use it.
 
 ### Fixed
 
+- **A domain's container port is now checked.** Out-of-range values such as
+  `99999` were saved and only showed up later as a `502`; they are now refused
+  with a `400`. A port of `0` still means "no override". It is stored as unset
+  rather than as a zero, which the health check could previously probe as port 0.
+- **The domain form no longer says a blank port means 8080.** A blank port now
+  follows the application's own port when it has one.
 - **Switching a health check's method no longer marks an empty field as an
   error.** Changing the method between None, HTTP and Command turned "Path is
   required" (or "Command is required") red on a field nothing had been typed
   into yet. The message now waits until the field has actually been visited.
-
 - **The project overview no longer stops loading once a project runs eight or
   more apps.** Reading a container's CPU takes Docker about two seconds, and the
   overview asked for each app one after another, so past seven running apps it

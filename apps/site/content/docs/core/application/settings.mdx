@@ -53,6 +53,27 @@ for example `0.5` = half a core, `512` = 512 MB.
 
 Applied when the container is next recreated.
 
+## Port
+
+The port your application listens on inside its container. Applied on the next
+deploy, because the health check and the proxy both take it at deploy time.
+
+Leave it blank and the port comes from your domains instead, then falls back to
+`8080`. Set it when your app listens on anything else and either has no domain
+(a template deployed without a hostname, for instance) or has several domains
+that point at different ports.
+
+The two places that use a port prefer different answers, and the card shows both
+so you don't have to remember which:
+
+- **Health checks** use this port first, then the port of the most recently added
+  domain that sets one, then `8080`.
+- **Each domain's route** uses that domain's own port first, then this one, then
+  `8080`. A domain whose port differs from this one is a normal setup, not a
+  mistake. See [Routing Hostnames to Different Ports](/docs/core/application/domains#routing-hostnames-to-different-ports).
+
+Clear the field to unset it.
+
 ## Health Check
 
 <Screenshot name="app-settings-health-check" alt="The Health Check card: method, path, expected status, and timeout." />
@@ -62,7 +83,7 @@ the next deploy:
 
 - **None** — Belune runs no probe of its own.
 - **HTTP** — after each deploy, Belune probes a path (for example `/healthz`) on the
-  container's port; a non-2xx response (or one outside the **Expected status** range)
+  application's [port](#port); a non-2xx response (or one outside the **Expected status** range)
   fails the deploy. Set the **Path**, **Expected status**, and **Timeout**.
 - **Command** — a command runs continuously inside the container and marks the app
   **Unhealthy** whenever it fails.

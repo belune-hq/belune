@@ -15,7 +15,7 @@ Before adding a domain for the application, add an **A** or **AAAA** record on t
 
 **Add Domain** opens a two-tab dialog.
 
-- **Routing** tab — has the hostname, an optional path prefix (leave blank to serve the whole hostname, or set `/api` to share one hostname across several apps), and an optional container-port override — the port this domain routes to inside the container, which follows the app's default port (8080) when left blank.
+- **Routing** tab — has the hostname, an optional path prefix (leave blank to serve the whole hostname, or set `/api` to share one hostname across several apps), and an optional container-port override — the port this domain routes to inside the container. When left blank it follows the application's own [**Port**](/docs/core/application/settings#port) setting, and falls back to 8080 if that isn't set either.
 - **TLS** tab — holds the SSL mode and the **Force HTTPS** toggle, which redirects plain HTTP requests for this domain.
 
 ## About the SSL Modes
@@ -31,6 +31,17 @@ Force HTTPS is unavailable when TLS is off, for the obvious reason: there's noth
 
   So to use a wildcard domain, upload a custom certificate instead.
 </Callout>
+
+## Routing Hostnames to Different Ports
+
+Each domain routes to its own port, so one application that listens on two ports can serve a different hostname on each. Say an app serves its public site on `3000` and an admin interface on `3001`:
+
+- `user.example.com` has a container port of `3000`.
+- `admin.example.com` has a container port of `3001`.
+
+Both routes work as soon as the domains are added. What needs a decision is the health check, which has to settle on a single port for the whole app. With no **Port** set on the application, it probes the port of the **most recently added** domain that sets one. Add `admin.example.com` second and the deploy probes `3001`, and fails if the admin interface doesn't serve the health path. Add them in the other order and the same configuration probes `3000` and passes.
+
+Set the application's [**Port**](/docs/core/application/settings#port) to `3000` and the probe stays on `3000` whatever order the domains were added in, while each domain still routes to its own port. The Port card shows what the health check and each hostname resolve to.
 
 ## Path-Based Routing
 

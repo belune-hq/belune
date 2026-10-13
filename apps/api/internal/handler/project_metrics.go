@@ -13,9 +13,11 @@ import (
 )
 
 // maxConcurrentStats bounds in-flight Docker stats calls per overview request.
-// Each is a ~2s two-sample collection rather than CPU work, so the cap protects
-// the daemon, not this process; 16 keeps a 50-app project well inside the
-// handler timeout.
+// Each is a two-sample collection (~2.0s measured against a real daemon, of
+// which transport is ~8ms) rather than CPU work, and dockerd serves them fully
+// in parallel: 8 calls took 1.97s concurrently against 15.26s serially. So the
+// cap protects the daemon, not this process; 16 keeps a 50-app project (four
+// waves, ~8s) inside the 15s handler timeout.
 const maxConcurrentStats = 16
 
 // serviceMetrics is a per-service runtime snapshot for the project overview.

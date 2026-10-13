@@ -481,7 +481,6 @@ func TestMCP_ToolsListing_NoDestructiveTools(t *testing.T) {
 		"trigger_deployment", "update_application", "start_application", "stop_application",
 		"set_application_env_vars",
 		"set_application_resources", "set_application_health_check", "set_application_runtime",
-		"set_application_port",
 		"set_database_resources",
 		"create_application", "create_database", "create_domain",
 	}, names)

@@ -6,17 +6,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// ValidateContainerPort turns a caller's port into the column value.
+// ValidateContainerPort turns a caller's port into the column value: the
+// range rule for every container port in the API, application and domain alike.
 //
 // 0 clears the port back to NULL, so resolution falls through to the first
-// domain's port and then 8080. The convention is deliberate and shared with
-// every other "unset" in this API (cpu_limit 0 is unlimited, a health tuning
-// field of 0 is the default): a nullable field in the body would make an
-// omitted key and an explicit null indistinguishable once decoded, and the
-// handler and the MCP tool would each have to pick a reading. Callers MUST
-// treat a missing value as an error rather than as 0 — see the REST handler.
-//
-// Shared by REST and MCP so the two cannot disagree about a valid port.
+// domain's port and then 8080 — the same "0 is unset" convention as cpu_limit
+// and the health tuning fields. Whether an absent value means "leave it alone"
+// is the caller's call, not this function's: SetHealthCheck takes a *int and
+// only calls this when the key was present, because the port is not part of
+// the health-check unit and omitting it must not clear it.
 func ValidateContainerPort(port int) (pgtype.Int4, error) {
 	if port == 0 {
 		return pgtype.Int4{}, nil

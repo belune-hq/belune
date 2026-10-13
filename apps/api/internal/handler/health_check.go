@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/weiliang79/belune/internal/service"
+	"github.com/weiliang79/belune/internal/store"
 	"github.com/weiliang79/belune/internal/store/generated"
 )
 
@@ -35,6 +36,15 @@ type healthCheckRequest struct {
 
 	// shared
 	TimeoutSeconds int `json:"timeout_seconds"`
+
+	// ContainerPort is the one pointer in this struct, on purpose. Every field
+	// above is one internal-consistency unit written whole; this is not part of
+	// it. It is also the proxy's upstream fallback (ResolveUpstreamPort: domain,
+	// then app, then 8080), so a caller that PUTs a health check without
+	// mentioning it must not silently wipe a routing default — the same
+	// full-row field-wipe as the ssl_mode bug. Absent or null leaves the stored
+	// port alone, 0 clears it to NULL, 1-65535 sets it.
+	ContainerPort *int `json:"container_port"`
 }
 
 // validateHealthCheck converts the REST wire shape into the shared input and
@@ -86,8 +96,26 @@ func (h *Handler) SetHealthCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	app, err := h.queries.SetApplicationHealthCheck(r.Context(), params)
-	if err != nil {
+	var port pgtype.Int4
+	if req.ContainerPort != nil {
+		if port, err = service.ValidateContainerPort(*req.ContainerPort); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+
+	if err := store.WithTx(r.Context(), h.db, func(q *generated.Queries) error {
+		if _, err := q.SetApplicationHealthCheck(r.Context(), params); err != nil {
+			return err
+		}
+		if req.ContainerPort == nil {
+			return nil
+		}
+		return q.SetApplicationContainerPort(r.Context(), generated.SetApplicationContainerPortParams{
+			ID:            applicationUUID,
+			ContainerPort: port,
+		})
+	}); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update health check")
 		return
 	}
@@ -97,7 +125,17 @@ func (h *Handler) SetHealthCheck(w http.ResponseWriter, r *http.Request) {
 	// reflect the change until the next deploy.
 	h.markConfigChanged(r.Context(), applicationUUID)
 
-	h.audit(r, "set_health_check", "application", applicationID, map[string]any{"type": req.Type})
+	details := map[string]any{"type": req.Type}
+	if req.ContainerPort != nil {
+		details["container_port"] = *req.ContainerPort
+	}
+	h.audit(r, "set_health_check", "application", applicationID, details)
 
+	// Re-read: the health-check statement's returned row predates the port write.
+	app, err := h.queries.GetApplication(r.Context(), applicationUUID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to read the updated application")
+		return
+	}
 	writeJSON(w, http.StatusOK, toApplicationResponse(app))
 }

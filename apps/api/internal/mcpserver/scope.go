@@ -48,7 +48,6 @@ var toolScopes = map[string]string{
 	"set_application_resources":    "write",
 	"set_application_health_check": "write",
 	"set_application_runtime":      "write",
-	"set_application_port":         "write",
 	"set_database_resources":       "write",
 	// Creation. "write" for the same reason the settings tools are: a token
 	// that can repoint an application at a different image is already trusted

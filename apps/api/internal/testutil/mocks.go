@@ -29,6 +29,9 @@ type MockContainerRuntime struct {
 	ImageMissing_     bool     // when true, ImageExists reports false
 	ContainerMissing_ bool     // when true, ContainerExists reports false
 	ListContainers_   []runtime.ContainerInfo
+	// StatsFunc, when set, backs ContainerStats (called outside the lock so a
+	// test can prove concurrent callers overlap). Nil → zeroed stats.
+	StatsFunc func(ctx context.Context, name string) (*runtime.ContainerResourceStats, error)
 
 	// Read-only admin Docker inspect fixtures (nil → empty result).
 	ListAllContainers_    []runtime.ContainerInfo
@@ -231,7 +234,10 @@ func (m *MockContainerRuntime) RemoveImage(_ context.Context, _ string) error  {
 func (m *MockContainerRuntime) PruneImages(_ context.Context) error            { return nil }
 func (m *MockContainerRuntime) PruneVolumes(_ context.Context) error           { return nil }
 func (m *MockContainerRuntime) PruneBuildCache(_ context.Context) error        { return nil }
-func (m *MockContainerRuntime) ContainerStats(_ context.Context, _ string) (*runtime.ContainerResourceStats, error) {
+func (m *MockContainerRuntime) ContainerStats(ctx context.Context, name string) (*runtime.ContainerResourceStats, error) {
+	if m.StatsFunc != nil {
+		return m.StatsFunc(ctx, name)
+	}
 	return &runtime.ContainerResourceStats{}, nil
 }
 

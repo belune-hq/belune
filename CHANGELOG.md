@@ -24,6 +24,18 @@ Belune is pre-1.0. The versioning contract while it stays there:
 Release notes for each version are also published on the
 [Releases page](https://github.com/weiliang79/belune/releases).
 
+## [Unreleased]
+
+### Fixed
+
+- **The project overview no longer stops loading once a project runs eight or
+  more apps.** Reading a container's CPU takes Docker about two seconds, and the
+  overview asked for each app one after another, so past seven running apps it
+  outlasted the 15-second request limit and never finished. The readings are now
+  taken in parallel (up to 16 at a time), so the overview takes roughly as long
+  as one reading however many apps run. An app whose reading fails still shows
+  without live usage, as before.
+
 ## [0.1.20]
 
 **An AI assistant can now operate, configure and create through MCP**, where

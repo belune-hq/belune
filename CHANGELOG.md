@@ -24,7 +24,17 @@ Belune is pre-1.0. The versioning contract while it stays there:
 Release notes for each version are also published on the
 [Releases page](https://github.com/weiliang79/belune/releases).
 
-## [Unreleased]
+## [0.1.21]
+
+**An application can finally be told which port it listens on**, and the project
+overview no longer stalls once a project gets busy. One new setting and four
+fixes. Nothing here changes your install's topology or asks anything of your
+host: run `update.sh` and you are done. There is no migration and no infra
+restart.
+
+Four git credential routes now require a signed-in session rather than a
+personal access token, listed below. That reaches scripts only — never the
+dashboard, never your data.
 
 ### ⚠️ Breaking changes
 
@@ -56,8 +66,8 @@ listed.
 ### Added
 
 - **An application's container port can now be set, from the Health Check card.**
-  A **Container Port** field at the top of the card on the application's Settings
-  page, and an optional `container_port` on `PUT
+  A **Container Port** field on the card on the application's Settings page, and
+  an optional `container_port` on `PUT
   /api/projects/{projectId}/applications/{applicationId}/health-check` (absent
   leaves the stored port alone, `0` clears it). Until now the only way to give an
   application a port was through a domain, so an app listening on anything but

@@ -55,14 +55,34 @@ Applied when the container is next recreated.
 
 ## Health Check
 
-<Screenshot name="app-settings-health-check" alt="The Health Check card: method, path, expected status, and timeout." />
+<Screenshot name="app-settings-health-check" alt="The Health Check card: container port, method, path, expected status, and timeout." />
 
 How Belune decides whether the app is healthy. Three methods, and the change applies on
 the next deploy:
 
+### Container Port
+
+At the top of the card, above the method, is the port your application listens on
+inside its container. It sits here because an HTTP check probes it, but it is not
+part of the check: it applies whichever method you pick, and a domain with no port
+of its own routes to it too. Leave it blank for `8080`. It is saved with the rest
+of the card and applies on the next deploy. This is the port *inside* the
+container; Belune does not publish it on the host, and traffic reaches it through
+a domain.
+
+Resolution differs between the two uses:
+
+- **Health checks** use this port first, then the port of the most recently added
+  domain that sets one, then `8080`. The card shows the port the check will probe.
+- **Each domain's route** uses that domain's own port first, then this one, then
+  `8080`. A domain whose port differs from this one is a normal setup, not a
+  mistake. See [Routing Hostnames to Different Ports](/docs/core/application/domains#routing-hostnames-to-different-ports).
+
+### Methods
+
 - **None** — Belune runs no probe of its own.
 - **HTTP** — after each deploy, Belune probes a path (for example `/healthz`) on the
-  container's port; a non-2xx response (or one outside the **Expected status** range)
+  application's [container port](#container-port); a non-2xx response (or one outside the **Expected status** range)
   fails the deploy. Set the **Path**, **Expected status**, and **Timeout**.
 - **Command** — a command runs continuously inside the container and marks the app
   **Unhealthy** whenever it fails.

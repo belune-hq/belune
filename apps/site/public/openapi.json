@@ -17086,6 +17086,12 @@
           "command": {
             "type": "string"
           },
+          "container_port": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "expect_status": {
             "type": "integer"
           },

@@ -30,8 +30,9 @@ export function useApplication(projectId: string, applicationId: string) {
 export function useCreateApplication(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: Parameters<typeof applicationsApi.createApplication>[1]) =>
-      applicationsApi.createApplication(projectId, data),
+    mutationFn: (
+      data: Parameters<typeof applicationsApi.createApplication>[1],
+    ) => applicationsApi.createApplication(projectId, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.applications.all(projectId) });
       qc.invalidateQueries({ queryKey: queryKeys.projects.detail(projectId) });
@@ -43,8 +44,9 @@ export function useCreateApplication(projectId: string) {
 export function useUpdateApplication(projectId: string, applicationId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: Parameters<typeof applicationsApi.updateApplication>[2]) =>
-      applicationsApi.updateApplication(projectId, applicationId, data),
+    mutationFn: (
+      data: Parameters<typeof applicationsApi.updateApplication>[2],
+    ) => applicationsApi.updateApplication(projectId, applicationId, data),
     // ⚠️ One call, not two. invalidateQueries matches by PREFIX, and `all` is
     // ["projects", p, "applications"] — a prefix of `detail` and of every key
     // nested under it (deployments, domains, cache). So this already covers
@@ -63,7 +65,9 @@ export function useUpdateApplicationRuntime(
 ) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: Parameters<typeof applicationsApi.updateApplicationRuntime>[2]) =>
+    mutationFn: (
+      data: Parameters<typeof applicationsApi.updateApplicationRuntime>[2],
+    ) =>
       applicationsApi.updateApplicationRuntime(projectId, applicationId, data),
     onSuccess: () => {
       qc.invalidateQueries({
@@ -90,7 +94,8 @@ export function useDeleteApplication(projectId: string) {
 export function useDeployApplication(projectId: string, applicationId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => applicationsApi.deployApplication(projectId, applicationId),
+    mutationFn: () =>
+      applicationsApi.deployApplication(projectId, applicationId),
     onSuccess: () => {
       qc.invalidateQueries({
         queryKey: queryKeys.applications.detail(projectId, applicationId),
@@ -128,7 +133,8 @@ export function useStopApplication(projectId: string, applicationId: string) {
 export function useStartApplication(projectId: string, applicationId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => applicationsApi.startApplication(projectId, applicationId),
+    mutationFn: () =>
+      applicationsApi.startApplication(projectId, applicationId),
     // Await BOTH the detail and list refetch so the mutation stays `isPending`
     // until the row's status actually reflects the change. Without awaiting the
     // list query, isPending flips false while the list still shows the old
@@ -147,10 +153,14 @@ export function useStartApplication(projectId: string, applicationId: string) {
   });
 }
 
-export function useRestartApplication(projectId: string, applicationId: string) {
+export function useRestartApplication(
+  projectId: string,
+  applicationId: string,
+) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => applicationsApi.restartApplication(projectId, applicationId),
+    mutationFn: () =>
+      applicationsApi.restartApplication(projectId, applicationId),
     // Await BOTH the detail and list refetch so the mutation stays `isPending`
     // until the row's status actually reflects the change. Without awaiting the
     // list query, isPending flips false while the list still shows the old
@@ -174,7 +184,8 @@ export function useRestartApplication(projectId: string, applicationId: string) 
 export function useReloadApplication(projectId: string, applicationId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => applicationsApi.reloadApplication(projectId, applicationId),
+    mutationFn: () =>
+      applicationsApi.reloadApplication(projectId, applicationId),
     onSuccess: () => {
       qc.invalidateQueries({
         queryKey: queryKeys.applications.detail(projectId, applicationId),
@@ -187,10 +198,14 @@ export function useReloadApplication(projectId: string, applicationId: string) {
   });
 }
 
-export function useRebuildApplication(projectId: string, applicationId: string) {
+export function useRebuildApplication(
+  projectId: string,
+  applicationId: string,
+) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => applicationsApi.rebuildApplication(projectId, applicationId),
+    mutationFn: () =>
+      applicationsApi.rebuildApplication(projectId, applicationId),
     onSuccess: () => {
       qc.invalidateQueries({
         queryKey: queryKeys.applications.detail(projectId, applicationId),
@@ -224,7 +239,10 @@ export function useClearBuildCache(projectId: string, applicationId: string) {
 
 // A mutation, not a query: each call writes an audit-log entry server-side, so
 // the secret is fetched only on an explicit click.
-export function useRevealWebhookSecret(projectId: string, applicationId: string) {
+export function useRevealWebhookSecret(
+  projectId: string,
+  applicationId: string,
+) {
   return useMutation({
     mutationFn: () =>
       applicationsApi.revealWebhookSecret(projectId, applicationId),
@@ -262,7 +280,8 @@ export function useGenerateDeployHook(
 // click: each call writes an audit-log entry server-side.
 export function useRevealDeployHook(projectId: string, applicationId: string) {
   return useMutation({
-    mutationFn: () => applicationsApi.revealDeployHook(projectId, applicationId),
+    mutationFn: () =>
+      applicationsApi.revealDeployHook(projectId, applicationId),
     onError: (error) => toast.error(error.message),
   });
 }
@@ -270,7 +289,8 @@ export function useRevealDeployHook(projectId: string, applicationId: string) {
 export function useDeleteDeployHook(projectId: string, applicationId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => applicationsApi.deleteDeployHook(projectId, applicationId),
+    mutationFn: () =>
+      applicationsApi.deleteDeployHook(projectId, applicationId),
     onSuccess: () => {
       qc.invalidateQueries({
         queryKey: queryKeys.applications.deployHook(projectId, applicationId),
@@ -302,7 +322,8 @@ export function useChangeApplicationSource(
   return useMutation({
     mutationFn: (
       data: Parameters<typeof applicationsApi.changeApplicationSource>[2],
-    ) => applicationsApi.changeApplicationSource(projectId, applicationId, data),
+    ) =>
+      applicationsApi.changeApplicationSource(projectId, applicationId, data),
     // The list carries `type` too, and the settings page renders entirely
     // different fields either side of the switch.
     onSuccess: () =>

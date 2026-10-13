@@ -199,7 +199,7 @@ func TestMCP_SetRuntime_AppliesAndValidates(t *testing.T) {
 	assert.Equal(t, "standard", readAppRuntime(t, appID).caps, "a refused profile must not be written")
 }
 
-// TestMCP_Settings_ScopeAndPin is the security half for all four tools: the
+// TestMCP_Settings_ScopeAndPin is the security half for every settings tool: the
 // read/deploy scopes cannot reach them, and a project-pinned token cannot
 // touch another project's application or database.
 func TestMCP_Settings_ScopeAndPin(t *testing.T) {

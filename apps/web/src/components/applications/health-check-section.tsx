@@ -14,11 +14,14 @@ import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { fieldError } from "@/lib/utils/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import {
   SegmentedControl,
   SegmentedControlItem,
 } from "@/components/ui/segmented-control";
 import { useSetHealthCheck } from "@/lib/hooks/use-applications";
+import { useDomains } from "@/lib/hooks/use-domains";
+import { resolvePorts } from "@/lib/utils/ports";
 import type { Application } from "@/lib/types";
 
 /**
@@ -51,6 +54,13 @@ const positiveNumber = z
     "Must be a positive whole number",
   );
 
+// Blank clears the port, so it is valid; anything else must be a real port.
+const portRule = z.string().refine((v) => {
+  if (v === "") return true;
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 1 && n <= 65535;
+}, "Port must be between 1 and 65535");
+
 export function HealthCheckSection({
   projectId,
   applicationId,
@@ -61,9 +71,12 @@ export function HealthCheckSection({
   application: Application;
 }) {
   const setHealthCheck = useSetHealthCheck(projectId, applicationId);
+  const { data: domains } = useDomains(projectId, applicationId);
+  const resolved = resolvePorts(application, domains ?? []);
 
   const form = useForm({
     defaultValues: {
+      port: application.container_port?.toString() ?? "",
       type: application.health_check_type as HealthType,
       path: application.health_check_path ?? "",
       expectStatus: application.health_check_expect_status?.toString() ?? "",
@@ -75,18 +88,24 @@ export function HealthCheckSection({
       timeout: application.health_check_timeout_seconds?.toString() ?? "",
     },
     onSubmit: ({ value }) => {
+      // Not part of the check (templates set it on apps with no HTTP check, and
+      // it is the routing fallback regardless), but it rides on this request.
+      // The endpoint reads blank-as-absent as "leave it", so a clear is spelled 0.
+      const container_port = value.port === "" ? 0 : Number(value.port);
       const data =
         value.type === "none"
-          ? { type: "none" as const }
+          ? { type: "none" as const, container_port }
           : value.type === "http"
             ? {
                 type: "http" as const,
+                container_port,
                 path: value.path.trim(),
                 expect_status: numOrUndefined(value.expectStatus),
                 timeout_seconds: numOrUndefined(value.timeout),
               }
             : {
                 type: "command" as const,
+                container_port,
                 command: value.command.trim(),
                 interval_seconds: numOrUndefined(value.interval),
                 retries: numOrUndefined(value.retries),
@@ -397,6 +416,58 @@ export function HealthCheckSection({
                 )}
               </>
             )}
+          />
+
+          {/* Card-level, not part of the check: the port is also the proxy's
+              upstream fallback, and templates set it on apps whose method is
+              none — so it stays visible whichever method is selected. */}
+          <Separator />
+
+          <form.Field
+            name="port"
+            validators={{ onChange: portRule }}
+            children={(field) => {
+              const error = fieldError(field.state.meta.errors);
+              return (
+                <Field data-invalid={!!error}>
+                  <FieldLabel htmlFor="container-port">
+                    Container Port
+                  </FieldLabel>
+                  <Input
+                    id="container-port"
+                    type="number"
+                    min="1"
+                    max="65535"
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                    placeholder="8080"
+                    aria-invalid={!!error}
+                  />
+                  {error ? (
+                    <FieldError>{error}</FieldError>
+                  ) : (
+                    <p className="text-muted-foreground text-xs">
+                      The port your application listens on inside its container
+                      — what an HTTP health check probes, and what a domain
+                      routes to unless it sets a port of its own. Leave blank
+                      for 8080.
+                    </p>
+                  )}
+                  {resolved.healthPort !== null && (
+                    <p className="text-muted-foreground text-xs">
+                      Health checks probe{" "}
+                      <span className="font-mono">:{resolved.healthPort}</span>{" "}
+                      {resolved.healthSource === "app"
+                        ? "(this port)"
+                        : resolved.healthSource === "domain"
+                          ? "(from the newest domain that sets one)"
+                          : "(the default)"}
+                    </p>
+                  )}
+                </Field>
+              );
+            }}
           />
 
           <div className="flex justify-end">

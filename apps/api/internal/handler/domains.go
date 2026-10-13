@@ -17,6 +17,7 @@ import (
 
 	"github.com/weiliang79/belune/internal/naming"
 	"github.com/weiliang79/belune/internal/proxy"
+	"github.com/weiliang79/belune/internal/service"
 	"github.com/weiliang79/belune/internal/store/generated"
 )
 
@@ -330,9 +331,12 @@ func (h *Handler) AddDomain(w http.ResponseWriter, r *http.Request) {
 		StripPath:      req.StripPath,
 		InternalPath:   internalPath,
 	}
-	if req.ContainerPort != nil {
-		params.ContainerPort = pgtype.Int4{Int32: *req.ContainerPort, Valid: true}
+	domainPort, err := service.ValidateDomainContainerPort(req.ContainerPort)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
 	}
+	params.ContainerPort = domainPort
 
 	domain, err := h.createDomainRecord(r.Context(), applicationID, applicationUUID, params)
 	if err != nil {
@@ -492,9 +496,12 @@ func (h *Handler) UpdateDomain(w http.ResponseWriter, r *http.Request) {
 		StripPath:    stripPath,
 		InternalPath: internalPath,
 	}
-	if req.ContainerPort != nil {
-		params.ContainerPort = pgtype.Int4{Int32: *req.ContainerPort, Valid: true}
+	domainPort, err := service.ValidateDomainContainerPort(req.ContainerPort)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
 	}
+	params.ContainerPort = domainPort
 
 	domain, err := h.queries.UpdateDomain(r.Context(), params)
 	if err != nil {
@@ -517,11 +524,7 @@ func (h *Handler) UpdateDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	reqPort := pgtype.Int4{}
-	if req.ContainerPort != nil {
-		reqPort = pgtype.Int4{Int32: *req.ContainerPort, Valid: true}
-	}
-	port := proxy.ResolveUpstreamPort(reqPort, row.ContainerPort)
+	port := proxy.ResolveUpstreamPort(params.ContainerPort, row.ContainerPort)
 
 	// Load route features for this domain
 	features := h.loadRouteFeatures(r, domainUUID)

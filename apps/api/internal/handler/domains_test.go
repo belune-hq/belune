@@ -1,6 +1,7 @@
 package handler_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"testing"
@@ -157,4 +158,57 @@ func TestListDomains(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	domains := testutil.ReadJSONArray(t, resp)
 	assert.Len(t, domains, 2)
+}
+
+// A domain's port override is range-checked like the application's. Before,
+// 99999 was persisted and surfaced as a 502 at request time instead of a 400.
+func TestDomainContainerPort_RangeAndZero(t *testing.T) {
+	resetDB(t)
+	token := env.SetupAdmin(t, "admin@test.com", "password123")
+	project := env.CreateProject(t, token, "Test Project", "test-project")
+	projectID := extractID(project["id"])
+	app := env.CreateApplication(t, token, projectID, map[string]any{
+		"name": "Domain App", "type": "git", "build_type": "dockerfile", "source_repo": "https://github.com/test/repo",
+	})
+	appID := extractID(app["id"])
+	base := fmt.Sprintf("/api/projects/%s/applications/%s/domains", projectID, appID)
+
+	for _, bad := range []int{99999, 65536, -1} {
+		resp := env.DoRequest(t, "POST", base, map[string]any{
+			"hostname": "bad.example.com", "container_port": bad,
+		}, testutil.AuthHeader(token))
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode, "create with %d", bad)
+		resp.Body.Close()
+	}
+	var n int
+	require.NoError(t, env.Pool.QueryRow(context.Background(), `SELECT count(*) FROM domains`).Scan(&n))
+	assert.Zero(t, n, "a refused create persisted a domain")
+
+	// 0 is "no override": accepted, and stored as NULL rather than a Valid 0.
+	resp := env.DoRequest(t, "POST", base, map[string]any{
+		"hostname": "zero.example.com", "container_port": 0,
+	}, testutil.AuthHeader(token))
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	domainID := extractID(testutil.ReadJSON(t, resp)["id"])
+	var port *int32
+	require.NoError(t, env.Pool.QueryRow(context.Background(),
+		`SELECT container_port FROM domains WHERE id = $1`, domainID).Scan(&port))
+	assert.Nil(t, port)
+
+	// Update: out of range is refused and leaves the stored port alone.
+	url := base + "/" + domainID
+	resp = env.DoRequest(t, "PUT", url, map[string]any{
+		"hostname": "zero.example.com", "container_port": 3001,
+	}, testutil.AuthHeader(token))
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
+	resp = env.DoRequest(t, "PUT", url, map[string]any{
+		"hostname": "zero.example.com", "container_port": 70000,
+	}, testutil.AuthHeader(token))
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	resp.Body.Close()
+	require.NoError(t, env.Pool.QueryRow(context.Background(),
+		`SELECT container_port FROM domains WHERE id = $1`, domainID).Scan(&port))
+	require.NotNil(t, port)
+	assert.EqualValues(t, 3001, *port)
 }

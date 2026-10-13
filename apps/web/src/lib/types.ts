@@ -44,6 +44,10 @@ export interface Application {
   builder_image: string | null;
   cpu_limit: number;
   memory_limit: number;
+  // The port the container listens on. Null = unset: the health check then
+  // takes the newest domain's port and the proxy a domain's own, both falling
+  // back to 8080. See resolvePorts.
+  container_port: number | null;
   status: string;
   auto_deploy_branch: string | null;
   // Secrets never cross the wire. These say only whether one is set; the

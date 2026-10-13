@@ -6,7 +6,9 @@ export function listApplications(projectId: string) {
 }
 
 export function getApplication(projectId: string, applicationId: string) {
-  return api.get<Application>(`/projects/${projectId}/applications/${applicationId}`);
+  return api.get<Application>(
+    `/projects/${projectId}/applications/${applicationId}`,
+  );
 }
 
 export function createApplication(
@@ -52,7 +54,10 @@ export function updateApplication(
     // accepted here — sending them would be silently ignored.
   },
 ) {
-  return api.put<Application>(`/projects/${projectId}/applications/${applicationId}`, data);
+  return api.put<Application>(
+    `/projects/${projectId}/applications/${applicationId}`,
+    data,
+  );
 }
 
 export function updateApplicationRuntime(
@@ -67,7 +72,9 @@ export function updateApplicationRuntime(
 }
 
 export function deleteApplication(projectId: string, applicationId: string) {
-  return api.delete<void>(`/projects/${projectId}/applications/${applicationId}`);
+  return api.delete<void>(
+    `/projects/${projectId}/applications/${applicationId}`,
+  );
 }
 
 export function deployApplication(projectId: string, applicationId: string) {
@@ -220,6 +227,9 @@ export function setHealthCheck(
     retries?: number;
     start_period_seconds?: number;
     timeout_seconds?: number;
+    // Not part of the check: it is also the proxy's fallback port. Absent
+    // leaves the stored port alone, 0 clears it, 1-65535 sets it.
+    container_port?: number;
   },
 ) {
   return api.put<Application>(

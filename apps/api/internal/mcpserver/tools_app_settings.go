@@ -49,7 +49,7 @@ type setHealthCheckInput struct {
 	TimeoutSeconds int `json:"timeout_seconds,omitempty" jsonschema:"seconds before a single check is considered failed; omit for the default"`
 }
 
-// settingsResult is the shared shape for the three application settings tools:
+// settingsResult is the shared shape for the application settings tools:
 // the updated application plus a note saying when the change takes effect,
 // which differs per tool and is the thing an assistant most often gets wrong.
 type settingsResult struct {
@@ -58,7 +58,7 @@ type settingsResult struct {
 }
 
 func registerApplicationSettingsTools(srv *mcp.Server, d Deps) {
-	// authorizedApp is the preamble all three share: resolve the application by
+	// authorizedApp is the preamble all of them share: resolve the application by
 	// its OWN id, then authorize against the project that row actually belongs
 	// to. Never a project id from the caller — there is no such argument on
 	// these tools, which is what makes them immune to naming a parent you may

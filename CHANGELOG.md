@@ -55,6 +55,11 @@ listed.
 
 ### Fixed
 
+- **Switching a health check's method no longer marks an empty field as an
+  error.** Changing the method between None, HTTP and Command turned "Path is
+  required" (or "Command is required") red on a field nothing had been typed
+  into yet. The message now waits until the field has actually been visited.
+
 - **The project overview no longer stops loading once a project runs eight or
   more apps.** Reading a container's CPU takes Docker about two seconds, and the
   overview asked for each app one after another, so past seven running apps it

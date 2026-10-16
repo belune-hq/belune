@@ -171,7 +171,12 @@ function DomainForm({
               internal_path: internalPath,
               ssl_mode: value.ssl_mode,
               force_https: value.force_https,
-              container_port: portNum,
+              // 0, not null, to clear the override. The server reads an absent
+              // container_port as "keep what is stored" so that a PUT about
+              // something else cannot wipe it, and JSON null is
+              // indistinguishable from absent once it is decoded into a
+              // pointer. 0 is the documented way to remove an override.
+              container_port: portNum ?? 0,
               certificate_id: value.certificate_id || undefined,
             })
           : addDomain.mutateAsync({

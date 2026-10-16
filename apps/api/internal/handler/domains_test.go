@@ -259,8 +259,22 @@ func TestUpdateDomain_OmittedContainerPortIsPreserved(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.EqualValues(t, 3000, testutil.ReadJSON(t, resp)["container_port"])
 
-	// An explicit 0 still clears it: absent and zero must stay distinguishable,
-	// since zero is the only way a caller can remove an override.
+	// ⚠️ An explicit null reads as absent and therefore KEEPS the value: it
+	// decodes into a nil *int32, which no amount of handler code can tell
+	// apart from a field that was never sent. Pinned rather than merely
+	// tolerated, because the dashboard used to send null to clear a port and
+	// would have silently stopped being able to.
+	resp = env.DoRequest(t, "PUT", url, map[string]any{
+		"hostname": "port.example.com", "container_port": nil,
+	}, testutil.AuthHeader(token))
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
+	port = storedPort(t)
+	require.NotNil(t, port, "an explicit null cleared the port override")
+	assert.EqualValues(t, 3000, *port)
+
+	// An explicit 0 clears it, and is the only way to: absent and zero must
+	// stay distinguishable, since zero is how a caller removes an override.
 	resp = env.DoRequest(t, "PUT", url, map[string]any{
 		"hostname": "port.example.com", "container_port": 0,
 	}, testutil.AuthHeader(token))

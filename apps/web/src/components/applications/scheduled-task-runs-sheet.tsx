@@ -1,3 +1,4 @@
+import { ScheduleText } from "@/components/ui/schedule-text";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Loader2, Play, ScrollText } from "lucide-react";
@@ -16,7 +17,6 @@ import {
   useScheduledTaskRuns,
 } from "@/lib/hooks/use-scheduled-tasks";
 import { formatDateTimeShort } from "@/lib/utils/format";
-import { describeCron } from "@/lib/utils/schedule";
 import { cn } from "@/lib/utils";
 import type { ScheduledTask } from "@/lib/types";
 import { runLabel, runTone } from "./scheduled-task-status";
@@ -68,8 +68,7 @@ export function ScheduledTaskRunsSheet({
         <SheetHeader>
           <SheetTitle>{task.name}</SheetTitle>
           <SheetDescription>
-            {describeCron(task.cron)} ({task.timezone}) ·{" "}
-            <code className="font-mono">{task.cron}</code>
+            <ScheduleText cron={task.cron} timezone={task.timezone} />
           </SheetDescription>
         </SheetHeader>
 

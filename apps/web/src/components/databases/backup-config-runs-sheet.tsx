@@ -1,3 +1,4 @@
+import { ScheduleText } from "@/components/ui/schedule-text";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -48,7 +49,6 @@ import {
   formatDateTimeShort,
   formatRelativeTime,
 } from "@/lib/utils/format";
-import { humanizeSchedule } from "@/lib/utils/schedule";
 import { cn } from "@/lib/utils";
 import type { Database, DatabaseBackupConfig } from "@/lib/types";
 
@@ -172,12 +172,13 @@ export function BackupConfigRunsSheet({
                 )}
               </div>
               <div className="text-text-faint mt-0.5 text-xs">
-                {humanizeSchedule(config.schedule)}
-                {config.schedule && (
-                  <>
-                    {" · "}
-                    <code className="font-mono">{config.schedule}</code>
-                  </>
+                {config.schedule ? (
+                  <ScheduleText
+                    cron={config.schedule}
+                    timezone={config.timezone}
+                  />
+                ) : (
+                  "Manual only"
                 )}
                 {config.keep_latest != null && ` · keep ${config.keep_latest}`}
                 {config.last_run_at &&

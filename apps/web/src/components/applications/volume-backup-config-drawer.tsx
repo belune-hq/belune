@@ -1,3 +1,4 @@
+import { ScheduleText } from "@/components/ui/schedule-text";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -14,8 +15,11 @@ import {
   useRunVolumeBackup,
   useRestoreVolumeBackup,
 } from "@/lib/hooks/use-volume-backups";
-import { formatBytes, formatDateTimeShort, formatRelativeTime } from "@/lib/utils/format";
-import { humanizeSchedule } from "@/lib/utils/schedule";
+import {
+  formatBytes,
+  formatDateTimeShort,
+  formatRelativeTime,
+} from "@/lib/utils/format";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -168,12 +172,13 @@ export function VolumeBackupConfigDrawer({
                 )}
               </div>
               <div className="text-text-faint mt-0.5 text-xs">
-                {humanizeSchedule(config.schedule)}
-                {config.schedule && (
-                  <>
-                    {" · "}
-                    <code className="font-mono">{config.schedule}</code>
-                  </>
+                {config.schedule ? (
+                  <ScheduleText
+                    cron={config.schedule}
+                    timezone={config.timezone}
+                  />
+                ) : (
+                  "Manual only"
                 )}
                 {config.keep_latest != null && ` · keep ${config.keep_latest}`}
                 {config.last_run_at &&
@@ -375,7 +380,10 @@ export function VolumeBackupConfigDrawer({
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={doRestore} disabled={restore.isPending}>
+              <AlertDialogAction
+                onClick={doRestore}
+                disabled={restore.isPending}
+              >
                 Restore
               </AlertDialogAction>
             </AlertDialogFooter>

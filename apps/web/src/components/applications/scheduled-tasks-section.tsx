@@ -1,3 +1,4 @@
+import { ScheduleText } from "@/components/ui/schedule-text";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
@@ -36,7 +37,6 @@ import {
   useScheduledTasks,
   useUpdateScheduledTask,
 } from "@/lib/hooks/use-scheduled-tasks";
-import { describeCron } from "@/lib/utils/schedule";
 import { formatInTimezone } from "@/lib/utils/format";
 import { cn } from "@/lib/utils";
 import type { ScheduledTask } from "@/lib/types";
@@ -190,8 +190,7 @@ function TaskRow({
           )}
         </div>
         <p className="text-text-faint text-xs">
-          {describeCron(task.cron)} ({task.timezone}) ·{" "}
-          <code className="font-mono">{task.cron}</code>
+          <ScheduleText cron={task.cron} timezone={task.timezone} />
         </p>
         <p className="text-text-faint text-xs">
           {task.enabled && task.next_run_at

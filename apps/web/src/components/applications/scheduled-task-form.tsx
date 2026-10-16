@@ -25,7 +25,7 @@ import {
   useCreateScheduledTask,
   useUpdateScheduledTask,
 } from "@/lib/hooks/use-scheduled-tasks";
-import { describeCron } from "@/lib/utils/schedule";
+import { describeCronOrNull } from "@/lib/utils/schedule";
 import { fieldError } from "@/lib/utils/field-error";
 import type { ScheduledTask } from "@/lib/types";
 
@@ -228,9 +228,8 @@ function TaskForm({
                   <FieldError>{error}</FieldError>
                 ) : (
                   <p className="text-muted-foreground text-xs">
-                    {field.state.value.trim()
-                      ? describeCron(field.state.value)
-                      : "Standard 5-field cron."}{" "}
+                    {describeCronOrNull(field.state.value) ??
+                      "Standard 5-field cron."}{" "}
                     Checked once a minute, so a run can start up to 60 seconds
                     late.
                   </p>

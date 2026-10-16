@@ -1,3 +1,4 @@
+import { ScheduleText } from "@/components/ui/schedule-text";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   Card,
@@ -1308,7 +1309,7 @@ function BackupsTab({ db, canDelete }: { db: Database; canDelete: boolean }) {
                     )}
                   </div>
                   <p className="text-text-faint text-xs">
-                    <code className="font-mono">{c.schedule}</code>
+                    <ScheduleText cron={c.schedule} timezone={c.timezone} />
                     {c.all_databases
                       ? " · all databases"
                       : ` · ${c.databases.join(", ")}`}

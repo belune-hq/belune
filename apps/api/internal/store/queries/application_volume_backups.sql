@@ -1,8 +1,8 @@
 -- name: CreateApplicationVolumeBackupConfig :one
 INSERT INTO application_volume_backup_configs (
-    application_volume_id, destination_id, prefix, schedule, keep_latest, enabled, quiesce
+    application_volume_id, destination_id, prefix, schedule, keep_latest, enabled, quiesce, timezone
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING *;
 
 -- name: UpdateApplicationVolumeBackupConfig :one
@@ -13,6 +13,7 @@ SET destination_id = $2,
     keep_latest    = $5,
     enabled        = $6,
     quiesce        = $7,
+    timezone       = $8,
     updated_at     = NOW()
 WHERE id = $1
 RETURNING *;

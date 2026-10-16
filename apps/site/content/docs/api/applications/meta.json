@@ -13,6 +13,7 @@
     "previews",
     "metrics-logs",
     "volumes-backups",
+    "scheduled-tasks",
     "file-mounts",
     "resources"
   ]

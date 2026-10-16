@@ -14,10 +14,12 @@ import (
 	"github.com/robfig/cron/v3"
 
 	"github.com/weiliang79/belune/internal/config"
+	"github.com/weiliang79/belune/internal/pkg/cronspec"
 	"github.com/weiliang79/belune/internal/store/generated"
 )
 
-// HandleBackupScheduleSweep runs every minute: for the control-plane backup
+// HandleBackupScheduleSweep runs every minute (and dispatches due scheduled
+// tasks, see sweepScheduledTasks): for the control-plane backup
 // schedule and for each enabled per-resource backup config (database or
 // application volume) whose cron schedule has elapsed since its last run, it
 // enqueues the matching backup task. Best-effort — a failed enqueue leaves the
@@ -30,6 +32,7 @@ func (h *TaskHandler) HandleBackupScheduleSweep(ctx context.Context) {
 	h.sweepControlPlaneBackup(ctx, now)
 	h.sweepDatabaseBackupConfigs(ctx, now)
 	h.sweepVolumeBackupConfigs(ctx, now)
+	h.sweepScheduledTasks(ctx, now)
 }
 
 // sweepControlPlaneBackup enqueues TypeBackupNow when the in-app control-plane
@@ -132,7 +135,7 @@ func (h *TaskHandler) sweepDatabaseBackupConfigs(ctx context.Context, now time.T
 // (so a new config fires at its next scheduled occurrence, not immediately).
 // An unparseable schedule is treated as not-due (validated at create/update).
 func backupConfigDue(cfg generated.DatabaseBackupConfig, now time.Time) bool {
-	sched, err := cron.ParseStandard(cfg.Schedule)
+	sched, err := cronspec.Parse(cfg.Schedule, cfg.Timezone)
 	if err != nil {
 		slog.Warn("backup sweep: invalid schedule", "config_id", formatUUID(cfg.ID), "schedule", cfg.Schedule, "error", err)
 		return false
@@ -210,7 +213,7 @@ func (h *TaskHandler) sweepVolumeBackupConfigs(ctx context.Context, now time.Tim
 // An unparseable/empty schedule is treated as not-due (validated at
 // create/update; the enabled-config query already filters empty schedules).
 func volumeBackupConfigDue(cfg generated.ApplicationVolumeBackupConfig, now time.Time) bool {
-	sched, err := cron.ParseStandard(cfg.Schedule)
+	sched, err := cronspec.Parse(cfg.Schedule, cfg.Timezone)
 	if err != nil {
 		slog.Warn("backup sweep: invalid volume schedule", "config_id", formatUUID(cfg.ID), "schedule", cfg.Schedule, "error", err)
 		return false

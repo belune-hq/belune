@@ -5,6 +5,7 @@ export interface SaveBackupConfig {
   destination_id: string;
   prefix?: string;
   schedule: string;
+  timezone?: string;
   keep_latest?: number | null;
   enabled?: boolean;
   databases?: string[]; // specific databases; empty = all databases (cluster)

@@ -32,6 +32,8 @@ const (
 	EventVolumeRestored      = "application.volume_restored"
 	EventVolumeRestoreFailed = "application.volume_restore_failed"
 
+	EventScheduledTaskFailed = "application.scheduled_task_failed"
+
 	// EventUpdateAvailable fires from the daily update-check worker
 	// (worker/update_check_task.go) the first time a manifest fetch finds a
 	// version newer than the one running — a transition, not every tick.
@@ -54,6 +56,8 @@ var eventRegistry = []EventDef{
 	{Type: EventVolumeBackupFailed, Label: "Volume backup failed", Description: "An application volume backup failed.", Severity: SeverityError, Group: "Volumes"},
 	{Type: EventVolumeRestored, Label: "Volume restored", Description: "An application volume was restored from a backup.", Severity: SeverityOK, Group: "Volumes"},
 	{Type: EventVolumeRestoreFailed, Label: "Volume restore failed", Description: "An application volume restore failed.", Severity: SeverityError, Group: "Volumes"},
+
+	{Type: EventScheduledTaskFailed, Label: "Scheduled task failed", Description: "A scheduled task failed or timed out.", Severity: SeverityError, Group: "Scheduled Tasks"},
 
 	{Type: EventUpdateAvailable, Label: "Update available", Description: "A newer Belune release is available.", Severity: SeverityWarn, Group: "Platform"},
 }

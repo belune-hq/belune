@@ -158,6 +158,12 @@ export function OperatorHealthStrip({ className }: { className?: string }) {
                   {needs_attention.failed_deploys === 1 ? "" : "s"}
                 </Badge>
               )}
+              {needs_attention.failed_tasks > 0 && (
+                <Badge variant="destructive">
+                  {needs_attention.failed_tasks} failed task
+                  {needs_attention.failed_tasks === 1 ? "" : "s"}
+                </Badge>
+              )}
               {needs_attention.failed_backups > 0 && (
                 <Badge variant="destructive">
                   {needs_attention.failed_backups} failed backup

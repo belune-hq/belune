@@ -10,6 +10,7 @@ export interface SaveVolumeBackupConfig {
   destination_id: string;
   prefix?: string;
   schedule?: string;
+  timezone?: string;
   keep_latest?: number | null;
   quiesce: boolean;
   enabled?: boolean;

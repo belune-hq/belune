@@ -1,3 +1,4 @@
+import { ScheduleText } from "@/components/ui/schedule-text";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
@@ -44,7 +45,10 @@ interface Props {
   applicationId: string;
 }
 
-export function VolumeBackupConfigsSection({ projectId, applicationId }: Props) {
+export function VolumeBackupConfigsSection({
+  projectId,
+  applicationId,
+}: Props) {
   const { data: configs, isLoading } = useAppVolumeBackupConfigs(
     projectId,
     applicationId,
@@ -54,9 +58,8 @@ export function VolumeBackupConfigsSection({ projectId, applicationId }: Props) 
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<AppVolumeBackupConfig | null>(null);
-  const [manageTarget, setManageTarget] = useState<AppVolumeBackupConfig | null>(
-    null,
-  );
+  const [manageTarget, setManageTarget] =
+    useState<AppVolumeBackupConfig | null>(null);
 
   const destName = (id: string) =>
     destinations?.find((d) => d.id === id)?.name ?? "Unknown destination";
@@ -214,7 +217,7 @@ function ConfigRow({
           {destinationName}
           {" · "}
           {config.schedule ? (
-            <code className="font-mono">{config.schedule}</code>
+            <ScheduleText cron={config.schedule} timezone={config.timezone} />
           ) : (
             "manual only"
           )}
@@ -238,11 +241,7 @@ function ConfigRow({
         >
           <HistoryIcon aria-hidden="true" className="size-4" />
         </IconAction>
-        <IconAction
-          label="Edit"
-          size="icon-sm"
-          onClick={() => onEdit(config)}
-        >
+        <IconAction label="Edit" size="icon-sm" onClick={() => onEdit(config)}>
           <PencilIcon aria-hidden="true" className="size-4" />
         </IconAction>
         <IconAction

@@ -9,8 +9,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/robfig/cron/v3"
 
+	"github.com/weiliang79/belune/internal/pkg/cronspec"
 	"github.com/weiliang79/belune/internal/status"
 	"github.com/weiliang79/belune/internal/store/generated"
 	"github.com/weiliang79/belune/internal/worker"
@@ -22,6 +22,7 @@ type databaseBackupConfigResponse struct {
 	DestinationID string     `json:"destination_id"`
 	Prefix        string     `json:"prefix"`
 	Schedule      string     `json:"schedule"`
+	Timezone      string     `json:"timezone"`
 	KeepLatest    *int32     `json:"keep_latest,omitempty"`
 	Enabled       bool       `json:"enabled"`
 	Databases     []string   `json:"databases"`
@@ -47,6 +48,7 @@ func toBackupConfigResponse(c generated.DatabaseBackupConfig) databaseBackupConf
 		DestinationID: uuidToString(c.DestinationID),
 		Prefix:        c.Prefix,
 		Schedule:      c.Schedule,
+		Timezone:      c.Timezone,
 		Enabled:       c.Enabled,
 		Databases:     dbs,
 		AllDatabases:  all,
@@ -68,8 +70,12 @@ type databaseBackupConfigRequest struct {
 	DestinationID string `json:"destination_id"`
 	Prefix        string `json:"prefix"`
 	Schedule      string `json:"schedule"`
-	KeepLatest    *int32 `json:"keep_latest"`
-	Enabled       *bool  `json:"enabled"`
+	// Timezone the schedule is evaluated in. Omitted means UTC on create and the
+	// stored zone on update, so a partial PUT never silently changes when a
+	// backup fires.
+	Timezone   string `json:"timezone"`
+	KeepLatest *int32 `json:"keep_latest"`
+	Enabled    *bool  `json:"enabled"`
 	// Databases lists specific database names to back up. Empty means all
 	// databases in the container (cluster backup).
 	Databases []string `json:"databases"`
@@ -111,7 +117,7 @@ func (h *Handler) databaseFromPath(w http.ResponseWriter, r *http.Request) (gene
 
 // validateConfigRequest validates the schedule and destination (same-project
 // invariant) and returns the parsed values.
-func (h *Handler) validateConfigRequest(r *http.Request, db generated.Database, req databaseBackupConfigRequest) (destID pgtype.UUID, keep pgtype.Int4, msg string) {
+func (h *Handler) validateConfigRequest(r *http.Request, db generated.Database, req databaseBackupConfigRequest, tz string) (destID pgtype.UUID, keep pgtype.Int4, msg string) {
 	if err := destID.Scan(req.DestinationID); err != nil {
 		return destID, keep, "invalid destination id"
 	}
@@ -125,7 +131,10 @@ func (h *Handler) validateConfigRequest(r *http.Request, db generated.Database, 
 	if strings.TrimSpace(req.Schedule) == "" {
 		return destID, keep, "schedule is required"
 	}
-	if _, err := cron.ParseStandard(req.Schedule); err != nil {
+	if err := cronspec.ValidateTimezone(tz); err != nil {
+		return destID, keep, err.Error()
+	}
+	if _, err := cronspec.Parse(strings.TrimSpace(req.Schedule), tz); err != nil {
 		return destID, keep, "invalid cron schedule"
 	}
 	if req.KeepLatest != nil {
@@ -178,7 +187,8 @@ func (h *Handler) CreateDatabaseBackupConfig(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	destID, keep, msg := h.validateConfigRequest(r, db, req)
+	tz := timezoneOr(req.Timezone, cronspec.DefaultTimezone)
+	destID, keep, msg := h.validateConfigRequest(r, db, req, tz)
 	if msg != "" {
 		writeError(w, http.StatusBadRequest, msg)
 		return
@@ -196,6 +206,7 @@ func (h *Handler) CreateDatabaseBackupConfig(w http.ResponseWriter, r *http.Requ
 		KeepLatest:     keep,
 		Enabled:        enabled,
 		TargetDatabase: req.targetDatabase(),
+		Timezone:       tz,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create backup config")
@@ -243,7 +254,8 @@ func (h *Handler) UpdateDatabaseBackupConfig(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	destID, keep, msg := h.validateConfigRequest(r, db, req)
+	tz := timezoneOr(req.Timezone, cfg.Timezone)
+	destID, keep, msg := h.validateConfigRequest(r, db, req, tz)
 	if msg != "" {
 		writeError(w, http.StatusBadRequest, msg)
 		return
@@ -261,6 +273,7 @@ func (h *Handler) UpdateDatabaseBackupConfig(w http.ResponseWriter, r *http.Requ
 		KeepLatest:     keep,
 		Enabled:        enabled,
 		TargetDatabase: req.targetDatabase(),
+		Timezone:       tz,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update backup config")

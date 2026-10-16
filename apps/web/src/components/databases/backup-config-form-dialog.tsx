@@ -1,3 +1,8 @@
+import {
+  TimezoneInput,
+  browserTimezone,
+  isKnownTimezone,
+} from "@/components/ui/timezone-input";
 import { useDialogBody } from "@/lib/hooks/use-dialog-body";
 import { useState } from "react";
 import { useForm, useStore } from "@tanstack/react-form";
@@ -15,6 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
+import { cronError } from "@/lib/utils/schedule";
 import { fieldError } from "@/lib/utils/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -95,6 +101,7 @@ function BackupConfigForm({
     defaultValues: {
       destinationId: config?.destination_id ?? "",
       schedule: config?.schedule ?? "0 0 * * *",
+      timezone: config?.timezone ?? browserTimezone(),
       prefix: config?.prefix ?? "",
       keepLatest: config?.keep_latest != null ? String(config.keep_latest) : "",
       enabled: config?.enabled ?? true,
@@ -112,6 +119,7 @@ function BackupConfigForm({
       const data = {
         destination_id: value.destinationId,
         schedule: value.schedule.trim(),
+        timezone: value.timezone.trim(),
         prefix: value.prefix.trim(),
         keep_latest: keep,
         enabled: value.enabled,
@@ -151,6 +159,7 @@ function BackupConfigForm({
   };
 
   const pending = create.isPending || update.isPending;
+  const attempted = useStore(form.store, (s) => s.submissionAttempts > 0);
 
   return (
     <>
@@ -216,13 +225,19 @@ function BackupConfigForm({
             onChange: z
               .string()
               .min(1, "Schedule is required")
-              .regex(
-                /^\S+\s+\S+\s+\S+\s+\S+\s+\S+$/,
-                "Must be a 5-field cron expression",
-              ),
+              .superRefine((v, ctx) => {
+                const msg = cronError(v);
+                if (msg) ctx.addIssue({ code: "custom", message: msg });
+              }),
           }}
           children={(field) => {
-            const error = fieldError(field.state.meta.errors);
+            // Gated on isBlurred (or a submit attempt), not isTouched: TanStack sets
+            // isTouched on every change, so it would flash red while a valid
+            // expression is still being typed (the v0.1.21 failure mode).
+            const error =
+              field.state.meta.isBlurred || attempted
+                ? fieldError(field.state.meta.errors)
+                : undefined;
             const presetValue =
               SCHEDULE_PRESETS.find((p) => p.value === field.state.value)
                 ?.value ?? "custom";
@@ -270,6 +285,38 @@ function BackupConfigForm({
                 ) : (
                   <p className="text-muted-foreground text-xs">
                     Standard 5-field cron expression.
+                  </p>
+                )}
+              </Field>
+            );
+          }}
+        />
+
+        <form.Field
+          name="timezone"
+          validators={{
+            onChange: z
+              .string()
+              .trim()
+              .refine(isKnownTimezone, "Unknown timezone"),
+          }}
+          children={(field) => {
+            const error = fieldError(field.state.meta.errors);
+            return (
+              <Field data-invalid={!!error}>
+                <FieldLabel htmlFor="cfg-tz">Timezone</FieldLabel>
+                <TimezoneInput
+                  id="cfg-tz"
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  aria-invalid={!!error}
+                />
+                {error ? (
+                  <FieldError>{error}</FieldError>
+                ) : (
+                  <p className="text-muted-foreground text-xs">
+                    The schedule above is read in this timezone.
                   </p>
                 )}
               </Field>

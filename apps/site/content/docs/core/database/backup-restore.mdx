@@ -6,7 +6,9 @@ description: Scheduled and on-demand backups of a managed database, and restorin
 Every managed database can back up its own data, on a schedule or on demand to a project [backup destination](/docs/core/project/backup-destinations), and restore from any successful backup right from the dashboard.
 
 <Callout type="warn">
-This is separate from [Belune's own control-plane backup](/docs/core/server/configurations#backups), which protects the platform's own Postgres and Caddy state and is a different system entirely.
+  This is separate from [Belune's own control-plane
+  backup](/docs/core/server/configurations#backups), which protects the
+  platform's own Postgres and Caddy state and is a different system entirely.
 </Callout>
 
 ## What Can Be Backed Up
@@ -28,17 +30,21 @@ A backup has to go somewhere, so a schedule needs a project [backup destination]
 
 ## Schedules
 
-<Screenshot name="db-backups" alt="A database's Backups tab: schedules and on-demand backups." />
+<Screenshot
+  name="db-backups"
+  alt="A database's Backups tab: schedules and on-demand backups."
+/>
 
 From a database's **Backups** tab, add one or more schedules. Each has:
 
-- **Cron schedule** - the time when it runs,
+- **Cron schedule** - the time when it runs, read in the **timezone** beside it
+  (existing schedules read as UTC, which is what they already did),
 - **Destination** - the location to save the backups, and an optional path prefix within it,
 - a **retention count** — how many backups to keep before the oldest is pruned,
 - a **scope** — just this database, or every database in the project.
 
 <Callout type="warn">
-Deleting a schedule also deletes the backups it produced.
+  Deleting a schedule also deletes the backups it produced.
 </Callout>
 
 ## Deleting a Database
@@ -48,7 +54,10 @@ Deleting a database deletes every backup ever taken of it, including copies alre
 The delete dialog states how many backups will go and names the destinations holding them, and asks you to type the database name to confirm. The count and the destruction are recorded in the [audit log](/docs/core/server/audit-log), so the question "where did those backups go" has an answer afterwards.
 
 <Callout type="warn">
-Deleting the **project** removes its databases the same way, and their backups with them — but the project delete dialog does not itemise what it is about to destroy. Delete databases individually first if you want to see the consequences before agreeing to them.
+  Deleting the **project** removes its databases the same way, and their backups
+  with them — but the project delete dialog does not itemise what it is about to
+  destroy. Delete databases individually first if you want to see the
+  consequences before agreeing to them.
 </Callout>
 
 ## On-Demand Backups
@@ -62,7 +71,9 @@ Deleting the **project** removes its databases the same way, and their backups w
 Unlike the control-plane restore (host/CLI only), a database restore runs **from the dashboard**. On the **Backups** tab, pick a **succeeded** backup and restore it. The database must be **running**, and the restore is enqueued and recorded in a restore history you can review afterwards.
 
 <Callout type="warn">
-  Restoring **overwrites the database's current data** with the contents of the chosen backup, and can't be undone. Take a fresh backup first if the current state still matters.
+  Restoring **overwrites the database's current data** with the contents of the
+  chosen backup, and can't be undone. Take a fresh backup first if the current
+  state still matters.
 </Callout>
 
 Restore is offered for the same engines that support backups — Postgres, MySQL, MongoDB, and an "Other" database configured with a snapshot or command backup mode. It isn't available for Redis.
@@ -70,7 +81,19 @@ Restore is offered for the same engines that support backups — Postgres, MySQL
 ## Related
 
 <Cards>
-  <Card title="Backup Destinations" description="Where a project's backups are stored." href="/docs/core/project/backup-destinations" />
-  <Card title="Databases" description="Provision and manage databases." href="/docs/core/database/overview" />
-  <Card title="Platform backup & restore" description="Belune's own control-plane backups." href="/docs/core/server/configurations#backups" />
+  <Card
+    title="Backup Destinations"
+    description="Where a project's backups are stored."
+    href="/docs/core/project/backup-destinations"
+  />
+  <Card
+    title="Databases"
+    description="Provision and manage databases."
+    href="/docs/core/database/overview"
+  />
+  <Card
+    title="Platform backup & restore"
+    description="Belune's own control-plane backups."
+    href="/docs/core/server/configurations#backups"
+  />
 </Cards>

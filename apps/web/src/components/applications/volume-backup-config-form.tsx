@@ -1,3 +1,8 @@
+import {
+  TimezoneInput,
+  browserTimezone,
+  isKnownTimezone,
+} from "@/components/ui/timezone-input";
 import { useDialogBody } from "@/lib/hooks/use-dialog-body";
 import { useState } from "react";
 import { useForm, useStore } from "@tanstack/react-form";
@@ -15,6 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
+import { cronError } from "@/lib/utils/schedule";
 import { fieldError } from "@/lib/utils/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -99,6 +105,7 @@ function ConfigForm({
       destinationId: config?.destination_id ?? "",
       prefix: config?.prefix ?? "",
       schedule: config?.schedule ?? "",
+      timezone: config?.timezone ?? browserTimezone(),
       keepLatest: config?.keep_latest != null ? String(config.keep_latest) : "",
       quiesce: config?.quiesce ?? false,
       enabled: config?.enabled ?? true,
@@ -110,6 +117,7 @@ function ConfigForm({
         destination_id: value.destinationId,
         prefix: value.prefix.trim(),
         schedule: value.schedule.trim(),
+        timezone: value.timezone.trim(),
         keep_latest: keep,
         quiesce: value.quiesce,
         enabled: value.enabled,
@@ -141,6 +149,7 @@ function ConfigForm({
   );
 
   const pending = create.isPending || update.isPending;
+  const attempted = useStore(form.store, (s) => s.submissionAttempts > 0);
   const noDestinations = destinations?.length === 0;
   const noVolumes = volumes?.length === 0;
 
@@ -282,15 +291,19 @@ function ConfigForm({
           validators={{
             onChange: z
               .string()
-              .refine(
-                (v) =>
-                  v.trim() === "" ||
-                  /^\S+\s+\S+\s+\S+\s+\S+\s+\S+$/.test(v.trim()),
-                "Must be a 5-field cron expression",
-              ),
+              .superRefine((v, ctx) => {
+                const msg = cronError(v);
+                if (msg) ctx.addIssue({ code: "custom", message: msg });
+              }),
           }}
           children={(field) => {
-            const error = fieldError(field.state.meta.errors);
+            // Gated on isBlurred (or a submit attempt), not isTouched: TanStack sets
+            // isTouched on every change, so it would flash red while a valid
+            // expression is still being typed (the v0.1.21 failure mode).
+            const error =
+              field.state.meta.isBlurred || attempted
+                ? fieldError(field.state.meta.errors)
+                : undefined;
             const presetValue = customMode
               ? "custom"
               : field.state.value === ""
@@ -353,6 +366,38 @@ function ConfigForm({
                   <p className="text-muted-foreground text-xs">
                     Standard 5-field cron expression. Empty = back up on demand
                     only.
+                  </p>
+                )}
+              </Field>
+            );
+          }}
+        />
+
+        <form.Field
+          name="timezone"
+          validators={{
+            onChange: z
+              .string()
+              .trim()
+              .refine(isKnownTimezone, "Unknown timezone"),
+          }}
+          children={(field) => {
+            const error = fieldError(field.state.meta.errors);
+            return (
+              <Field data-invalid={!!error}>
+                <FieldLabel htmlFor="vbc-tz">Timezone</FieldLabel>
+                <TimezoneInput
+                  id="vbc-tz"
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  aria-invalid={!!error}
+                />
+                {error ? (
+                  <FieldError>{error}</FieldError>
+                ) : (
+                  <p className="text-muted-foreground text-xs">
+                    The schedule above is read in this timezone.
                   </p>
                 )}
               </Field>

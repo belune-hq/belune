@@ -24,6 +24,75 @@ Belune is pre-1.0. The versioning contract while it stays there:
 Release notes for each version are also published on the
 [Releases page](https://github.com/weiliang79/belune/releases).
 
+## [0.1.22]
+
+**Applications can now run commands on a schedule.** A Tasks tab, a cron
+expression, and the command runs inside the container your application is
+already running in. Backup schedules gain a timezone of their own at the same
+time, and every cron field in the dashboard now tells you what your expression
+actually means before you save it.
+
+Nothing here changes your install's topology or asks anything of your host: run
+`update.sh` and you are done. There is one migration; it is additive and takes
+no downtime beyond the usual restart.
+
+### Added
+
+- **Scheduled tasks for applications.** On an application's new **Tasks** tab,
+  give a task a name, a command, a 5-field cron expression and a timezone, and
+  it runs on that schedule inside the application's *already-running* container
+  — so `php artisan schedule:run`, `rails runner` and friends see the app's own
+  code, environment variables, network and volumes with no extra configuration.
+
+  Each run is recorded with its status, exit code, duration, how it was
+  triggered and the command's output. **Run now** runs a task immediately
+  without shifting its schedule. Full details in the
+  [documentation](https://belune.dev/docs/core/application/scheduled-tasks).
+
+  Two behaviours worth knowing before you rely on it. A **stopped application
+  does not fire its cron** — the run is recorded as skipped, with the reason,
+  rather than silently not happening. And **preview applications do not inherit
+  their parent's tasks**, so a pull request cannot double-process a queue or
+  send a second copy of a nightly email.
+
+  Schedules are checked once a minute, so a run can start up to 60 seconds after
+  its nominal time; sub-minute schedules are refused rather than accepted and
+  quietly under-fired.
+
+- **Backup schedules now have a timezone.** Database and volume backup schedules
+  each carry their own zone instead of being read in UTC. Existing schedules
+  keep firing at exactly the same moment — they are set to UTC, which is what
+  they already were.
+
+- **`SCHEDULED_TASK_MAX_CONCURRENT`** caps how many scheduled-task runs may be
+  in flight across the install at once, default `2`. Due runs beyond the cap are
+  recorded as skipped with that reason. Background workers are shared with
+  deploys, builds and backups, so the cap keeps a handful of slow crons from
+  stalling them; the worker pool itself has been raised from 5 to 8 to match.
+
+### Fixed
+
+- **Cron expressions are now validated in the field, not only on save.**
+  `0 99 * * *` and other impossible expressions were accepted by every cron form
+  — the check only counted that there were five space-separated parts — and the
+  error appeared only after you pressed Save. All three cron fields (scheduled
+  tasks, database backups, volume backups) now reject a genuinely invalid
+  expression as you leave the field, and describe a valid one in plain language
+  as you type: `0 3 * * 1-5` reads back as "At 03:00, Monday through Friday".
+
+- **A cron field no longer flags an error while you are still typing one.** The
+  message now waits until you leave the field or press Save.
+
+### Changed
+
+- **A backup schedule that carried its timezone inside the cron expression is
+  migrated automatically.** Before schedules had a timezone field, the only way
+  to express one was a `CRON_TZ=Asia/Tokyo 0 3 * * *` prefix. The upgrade lifts
+  that prefix into the new timezone field, leaving the schedule firing at
+  exactly the same moment. If you never used that form, nothing changes. A
+  prefix naming a timezone the server does not recognise is left alone — those
+  schedules were already failing to parse and were not running.
+
 ## [0.1.21]
 
 **An application can finally be told which port it listens on**, and the project

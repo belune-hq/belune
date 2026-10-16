@@ -48,7 +48,7 @@ func TestValidateVolumeBackupSchedule(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			msg, ok := validateVolumeBackupSchedule(c.req)
+			msg, ok := validateVolumeBackupSchedule(c.req, "UTC")
 			if ok != c.wantOK {
 				t.Fatalf("validateVolumeBackupSchedule() ok = %v, want %v (msg=%q)", ok, c.wantOK, msg)
 			}

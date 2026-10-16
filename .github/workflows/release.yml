@@ -14,7 +14,13 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  # A LITERAL, deliberately not ${{ github.repository }}. GHCR packages belong to
+  # the ACCOUNT, not the repository, so a rename or an org transfer would move
+  # this repo without moving the package — and the next release would publish to
+  # a path no installed updater pulls from, with the run still green. Every
+  # install resolves its next version using the image path ITS OWN version was
+  # built with, so this string has to outlive the repo's name.
+  IMAGE_NAME: weiliang79/belune
 
 jobs:
   # A tag must not publish a broken image. CI runs on branch pushes, not tags,

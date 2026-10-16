@@ -26,7 +26,13 @@ set -euo pipefail
 # before it runs, and `exit` on the same line means the file is never read again.
 main() {
   INSTALL_DIR="${BELUNE_DIR:-/opt/belune}"
-  GITHUB_REPO="weiliang79/belune"
+  # IMAGE_REPO is the GHCR image path; SOURCE_REPO is the GitHub repo release
+  # metadata comes from. Same string today, separate because they move
+  # independently: a GHCR package belongs to the ACCOUNT, not the repository, so
+  # an org transfer relocates the repo and leaves the package behind. Keep them
+  # in step with imageRepo/sourceRepo in cmd/update/update.go.
+  IMAGE_REPO="weiliang79/belune"
+  SOURCE_REPO="weiliang79/belune"
 
   die() { echo "  [err]   $*" >&2; exit 1; }
 
@@ -36,13 +42,13 @@ main() {
   TARGET_VERSION="${1:-}"
   if [[ -z "${TARGET_VERSION}" ]]; then
     echo "  [info]  Resolving the latest release..."
-    TARGET_VERSION=$(curl -sSfL "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" \
+    TARGET_VERSION=$(curl -sSfL "https://api.github.com/repos/${SOURCE_REPO}/releases/latest" \
       | grep '"tag_name"' | head -1 | cut -d'"' -f4 || true)
     [[ -n "${TARGET_VERSION}" ]] || die "Could not resolve the latest release. Pass a version: bash update.sh v0.2.0"
   fi
   # Git tags carry a leading v, image tags do not.
   TARGET_VERSION="${TARGET_VERSION#v}"
-  TARGET_IMAGE="ghcr.io/${GITHUB_REPO}:${TARGET_VERSION}"
+  TARGET_IMAGE="ghcr.io/${IMAGE_REPO}:${TARGET_VERSION}"
 
   echo "  [info]  Pulling ${TARGET_IMAGE}..."
   docker pull "${TARGET_IMAGE}" || die "Could not pull ${TARGET_IMAGE}. Does that version exist?"

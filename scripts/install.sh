@@ -4,7 +4,13 @@
 set -euo pipefail
 
 INSTALL_DIR="${BELUNE_DIR:-/opt/belune}"
-GITHUB_REPO="weiliang79/belune"
+# IMAGE_REPO is the GHCR image path; SOURCE_REPO is the GitHub repo that serves
+# release metadata, the infra files and the doc links below. Same string today,
+# separate because they move independently: a GHCR package belongs to the
+# ACCOUNT, not the repository, so an org transfer relocates the repo and leaves
+# the package behind. Keep them in step with cmd/update/update.go.
+IMAGE_REPO="weiliang79/belune"
+SOURCE_REPO="weiliang79/belune"
 
 # The version to install. Defaults to the latest published release; set
 # BELUNE_VERSION=v0.1.0 to install a specific one.
@@ -157,7 +163,7 @@ cd "${INSTALL_DIR}"
 
 if [[ -z "${BELUNE_VERSION}" ]]; then
   info "Resolving the latest release..."
-  BELUNE_VERSION=$(curl -sSfL "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" \
+  BELUNE_VERSION=$(curl -sSfL "https://api.github.com/repos/${SOURCE_REPO}/releases/latest" \
     | grep '"tag_name"' | head -1 | cut -d'"' -f4 || true)
   [[ -n "${BELUNE_VERSION}" ]] || die "Could not resolve the latest release. Set BELUNE_VERSION=vX.Y.Z and retry."
 fi
@@ -170,7 +176,7 @@ fi
 BELUNE_VERSION="${BELUNE_VERSION#v}"
 GIT_REF="v${BELUNE_VERSION}"
 
-IMAGE="ghcr.io/${GITHUB_REPO}:${BELUNE_VERSION}"
+IMAGE="ghcr.io/${IMAGE_REPO}:${BELUNE_VERSION}"
 info "Installing ${GIT_REF}"
 
 # ── Download Compose + Caddy configs ──────────────────────────────────────────
@@ -178,7 +184,7 @@ info "Installing ${GIT_REF}"
 # Fetched from the release tag, not main: config files must match the image
 # being installed, and main moves on between releases. This one wants the git
 # ref, so it keeps the v.
-RAW_URL="https://raw.githubusercontent.com/${GITHUB_REPO}/${GIT_REF}"
+RAW_URL="https://raw.githubusercontent.com/${SOURCE_REPO}/${GIT_REF}"
 
 info "Downloading docker-compose.yml..."
 curl -sSfL "${RAW_URL}/infra/docker-compose.prod.yml" -o docker-compose.yml
@@ -501,8 +507,8 @@ echo "  Open http://${DASHBOARD_HOST} in your browser to finish setup."
 echo "  Logs: cd ${INSTALL_DIR} && docker compose logs -f"
 echo ""
 echo "  Next steps (DNS, TLS, first deploy):"
-echo "    https://github.com/${GITHUB_REPO}/blob/main/docs/runbooks/install.md"
+echo "    https://github.com/${SOURCE_REPO}/blob/main/docs/runbooks/install.md"
 echo ""
 echo "  Options you can set:    ${INSTALL_DIR}/.env.example"
-echo "  Full reference:         https://github.com/${GITHUB_REPO}/blob/main/docs/configuration.md"
+echo "  Full reference:         https://github.com/${SOURCE_REPO}/blob/main/docs/configuration.md"
 echo ""

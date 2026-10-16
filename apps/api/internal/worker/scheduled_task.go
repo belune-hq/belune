@@ -15,6 +15,7 @@ import (
 	"github.com/weiliang79/belune/internal/naming"
 	"github.com/weiliang79/belune/internal/notify"
 	"github.com/weiliang79/belune/internal/pkg/cronspec"
+	"github.com/weiliang79/belune/internal/runtime"
 	"github.com/weiliang79/belune/internal/service"
 	"github.com/weiliang79/belune/internal/store/generated"
 )
@@ -32,6 +33,24 @@ const (
 	// both images — 124 alone would have called every Alpine timeout a failure.
 	sigtermExitCode = 143
 )
+
+// scheduledRunEnv is the variable that marks every process of one run.
+const scheduledRunEnv = "BELUNE_TASK_RUN"
+
+// killTaggedProcesses SIGKILLs whatever a timed-out run left behind, found by
+// its environment tag. The run id is a validated UUID, so it is safe to embed.
+// Best-effort and silent: the run is already recorded as timed out. The dead
+// processes may linger as zombies until the container's PID 1 reaps them, which
+// many app images (node, php-fpm) never do; that is a PID-table entry, not a
+// running process, and a restart clears it.
+func (h *TaskHandler) killTaggedProcesses(ctx context.Context, rt runtime.ContainerRuntime, containerName, runID string) {
+	script := fmt.Sprintf(`for d in /proc/[0-9]*; do p=${d#/proc/}; [ "$p" = "$$" ] && continue; tr '\0' '\n' <"$d/environ" 2>/dev/null | grep -qx '%s=%s' && kill -KILL "$p"; done; true`, scheduledRunEnv, runID)
+	cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+	defer cancel()
+	if _, err := rt.ContainerExec(cctx, containerName, []string{"sh", "-c", script}, nil, nil, nil); err != nil {
+		slog.Warn("scheduled task: clean up timed-out processes", "container", containerName, "error", err)
+	}
+}
 
 // timedOut reports whether exit means timeout(1) fired. 143 is also what a
 // command SIGTERMed by something else exits with, so it only counts when the run
@@ -146,7 +165,12 @@ func (h *TaskHandler) HandleScheduledTaskRun(ctx context.Context, t *asynq.Task)
 	// kill-exec API, so cancelling from here would leave the process running.
 	// The command is passed as argv to `sh -c` so the whole pipeline — not just
 	// its first word — is under timeout(1).
-	cmd := []string{"timeout", fmt.Sprintf("%d", task.TimeoutSeconds), "sh", "-c", task.Command}
+	//
+	// env tags the whole process tree with the run id: timeout(1) signals only
+	// its direct child, so a backgrounded or piped grandchild outlives a timeout
+	// (GNU timeout also signals its group, busybox does not). The tag lets
+	// killTaggedProcesses find those orphans afterwards.
+	cmd := []string{"env", scheduledRunEnv + "=" + payload.RunID, "timeout", fmt.Sprintf("%d", task.TimeoutSeconds), "sh", "-c", task.Command}
 
 	// Backstop only; see above for why it cannot be the primary mechanism.
 	execCtx, cancel := context.WithTimeout(ctx, time.Duration(task.TimeoutSeconds)*time.Second+30*time.Second)
@@ -165,6 +189,7 @@ func (h *TaskHandler) HandleScheduledTaskRun(ctx context.Context, t *asynq.Task)
 	case exit == 0:
 		h.finishScheduledRun(ctx, run.ID, "succeeded", &exit, output, "", task)
 	case timedOut(exit, elapsed, time.Duration(task.TimeoutSeconds)*time.Second):
+		h.killTaggedProcesses(ctx, rt, containerName, payload.RunID)
 		h.finishScheduledRun(ctx, run.ID, "timed_out", &exit, output, "", task)
 		h.notifyScheduledTaskFailure(ctx, task, appRow.Name, appRow.ProjectID, fmt.Sprintf("timed out after %ds", task.TimeoutSeconds))
 	default:

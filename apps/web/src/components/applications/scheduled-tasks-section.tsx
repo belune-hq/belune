@@ -212,7 +212,9 @@ function TaskRow({
         <IconAction
           label="Run now"
           size="icon-sm"
-          disabled={run.isPending}
+          // A second click while one is in flight would exec a possibly
+          // non-idempotent command twice; the server check is not atomic.
+          disabled={run.isPending || latest?.status === "running"}
           onClick={runNow}
         >
           <PlayIcon aria-hidden="true" className="size-4" />

@@ -82,7 +82,9 @@ export function ScheduledTaskRunsSheet({
               size="sm"
               className="shrink-0"
               onClick={run}
-              disabled={runNow.isPending}
+              disabled={
+                runNow.isPending || runs?.some((r) => r.status === "running")
+              }
             >
               <Play aria-hidden="true" className="size-4" />
               Run now

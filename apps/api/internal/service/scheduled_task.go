@@ -99,6 +99,14 @@ func (d *ScheduledTaskDispatcher) Dispatch(ctx context.Context, task generated.A
 }
 
 // refusal returns why task must not run right now, or "" when it may.
+//
+// ⚠️ The in-flight and cap checks are read-then-insert, not atomic. The sweep
+// is sequential, but "Run now" runs concurrently with it, so two dispatches can
+// both see cap-1 and both admit (cap over by one), or two fast clicks could
+// both pass the in-flight check. Tolerated deliberately: at the default cap of 2
+// against 8 workers the overshoot is benign, and a lock is not worth it. The UI
+// disables Run now while a run is in flight, which closes the realistic
+// double-exec path. Do not treat the cap as a hard invariant.
 func (d *ScheduledTaskDispatcher) refusal(ctx context.Context, task generated.ApplicationScheduledTask) (string, error) {
 	app, err := d.queries.GetApplication(ctx, task.ApplicationID)
 	if err != nil {

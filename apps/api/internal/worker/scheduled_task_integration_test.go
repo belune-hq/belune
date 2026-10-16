@@ -195,7 +195,12 @@ func TestScheduledTaskRun_MapsExitCodes(t *testing.T) {
 			task := seedTask(t, app.ID, "0 3 1 1 *")
 
 			var gotCmd []string
+			cleanups := 0
 			rt := &testutil.MockContainerRuntime{ExecFunc: func(_ context.Context, _ string, cmd []string, _ io.Reader, stdout, _ io.Writer) (int, error) {
+				if cmd[0] != "env" {
+					cleanups++ // the post-timeout sweep for orphaned processes
+					return 0, nil
+				}
 				gotCmd = cmd
 				_, _ = stdout.Write([]byte("some output"))
 				return c.exit, c.execErr
@@ -207,7 +212,12 @@ func TestScheduledTaskRun_MapsExitCodes(t *testing.T) {
 			assert.True(t, got.FinishedAt.Valid)
 			assert.Contains(t, got.Output, "some output")
 			// The timeout lives INSIDE the container; the whole command is one argv to sh -c.
-			assert.Equal(t, []string{"timeout", "30", "sh", "-c", "echo hi"}, gotCmd)
+			wantCleanups := 0
+			if c.wantStatus == "timed_out" {
+				wantCleanups = 1
+			}
+			assert.Equal(t, wantCleanups, cleanups, "orphans are swept after a timeout and only then")
+			assert.Equal(t, []string{"env", "BELUNE_TASK_RUN=" + uuidString(got.ID), "timeout", "30", "sh", "-c", "echo hi"}, gotCmd)
 		})
 	}
 }

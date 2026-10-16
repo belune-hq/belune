@@ -2,6 +2,7 @@ package handler_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/weiliang79/belune/internal/testutil"
+	"github.com/weiliang79/belune/internal/worker"
 )
 
 func createAppArgs(projectID, name string, extra map[string]any) map[string]any {
@@ -402,4 +404,67 @@ func TestMCP_CreateDomain_RefusesAHostnameAlreadyServedWithTLS(t *testing.T) {
 	decodeToolResult(t, callToolArgs(t, token, "create_domain", map[string]any{
 		"application_id": appID, "hostname": "fresh.example.com",
 	}), &struct{}{})
+}
+
+// create_application applies the hard quota gate, so before this it could walk
+// an owner up to their limit having sent none of the threshold warnings the REST
+// path sends — the first they heard of the cap was being refused at it. Asserted
+// against the REST path in the same test, because the two agreeing is the actual
+// requirement; a hand-written expectation would pass while they drifted.
+func TestMCP_CreateApplication_SendsTheQuotaThresholdWarning(t *testing.T) {
+	resetDB(t)
+	adminToken := env.SetupAdmin(t, "mcp-create-quota@test.com", "password123")
+	token := mintScoped(t, adminToken, []string{"write"})
+
+	quotaEmails := func(t *testing.T) []string {
+		t.Helper()
+		var out []string
+		for _, task := range env.Asynq.Tasks {
+			if task.TypeName != worker.TypeEmailSend {
+				continue
+			}
+			var p struct {
+				TemplateID string `json:"template_id"`
+				To         string `json:"to"`
+			}
+			require.NoError(t, json.Unmarshal(task.Payload, &p))
+			if p.TemplateID == "alert_quota_threshold" {
+				out = append(out, p.To)
+			}
+		}
+		return out
+	}
+
+	for _, tc := range []struct {
+		name   string
+		create func(t *testing.T, projectID, appName string)
+	}{
+		{"mcp", func(t *testing.T, projectID, appName string) {
+			decodeToolResult(t, callToolArgs(t, token, "create_application",
+				createAppArgs(projectID, appName, nil)), &struct {
+				Application map[string]any `json:"application"`
+			}{})
+		}},
+		{"rest", func(t *testing.T, projectID, appName string) {
+			env.CreateApplication(t, adminToken, projectID, map[string]any{
+				"name": appName, "type": "image", "build_type": "image",
+				"source_image": "nginx:1.27-alpine",
+			})
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Two apps allowed, so the first create lands at 50% of the cap
+			// (quiet) and the second at 100% (past the default 80% threshold).
+			projectID := extractID(env.CreateProject(t, adminToken, "P-"+tc.name, "p-"+tc.name)["id"])
+			setQuota(t, adminToken, "project", projectID, 2)
+			env.Asynq.Tasks = nil
+
+			tc.create(t, projectID, "First "+tc.name)
+			assert.Empty(t, quotaEmails(t), "warned at half the cap, before the threshold")
+
+			tc.create(t, projectID, "Second "+tc.name)
+			assert.Equal(t, []string{"mcp-create-quota@test.com"}, quotaEmails(t),
+				"no threshold warning once the project hit its application cap")
+		})
+	}
 }

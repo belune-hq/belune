@@ -177,7 +177,7 @@ func (h *Handler) CreateApplication(w http.ResponseWriter, r *http.Request) {
 
 	h.audit(r, "create_application", "application", uuidToString(app.ID), map[string]any{"name": req.Name, "project_id": projectID})
 
-	h.maybeEnqueueQuotaAlert(r, projectUUID, project.UserID)
+	h.MaybeEnqueueQuotaAlert(r.Context(), projectUUID, project.UserID)
 
 	writeJSON(w, http.StatusCreated, toApplicationResponse(app))
 }
@@ -940,14 +940,21 @@ func newAlertQuotaTask(toEmail, projectName string, usagePct, threshold int) (*a
 	})
 }
 
-// maybeEnqueueQuotaAlert checks the project's quota usage after an app is created
+// MaybeEnqueueQuotaAlert checks the project's quota usage after an app is created
 // and enqueues an alert email if the owner's threshold has been crossed.
-func (h *Handler) maybeEnqueueQuotaAlert(r *http.Request, projectID, ownerUserID pgtype.UUID) {
+//
+// Exported and context-taking rather than request-taking because MCP's
+// create_application needs it too: it applies the same hard quota gate, so
+// without this it let an owner walk into the limit having had no warning that
+// the REST path would have sent. Every failure here is logged and swallowed —
+// the application has already been created, and a missing warning email must
+// not turn a successful create into an error.
+func (h *Handler) MaybeEnqueueQuotaAlert(ctx context.Context, projectID, ownerUserID pgtype.UUID) {
 	if h.quotaSvc == nil || h.asynq == nil {
 		return
 	}
 
-	ownerPrefs, err := h.queries.GetAlertPreferences(r.Context(), ownerUserID)
+	ownerPrefs, err := h.queries.GetAlertPreferences(ctx, ownerUserID)
 	threshold := 80
 	if err == nil {
 		if !ownerPrefs.QuotaThreshold {
@@ -958,12 +965,12 @@ func (h *Handler) maybeEnqueueQuotaAlert(r *http.Request, projectID, ownerUserID
 		return
 	}
 
-	alert, err := h.quotaSvc.MaybeAlertProjectThreshold(r.Context(), projectID, threshold)
+	alert, err := h.quotaSvc.MaybeAlertProjectThreshold(ctx, projectID, threshold)
 	if err != nil || alert == nil {
 		return
 	}
 
-	ownerInfo, err := h.queries.GetProjectOwnerInfo(r.Context(), projectID)
+	ownerInfo, err := h.queries.GetProjectOwnerInfo(ctx, projectID)
 	if err != nil {
 		return
 	}

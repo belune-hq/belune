@@ -56,6 +56,20 @@ type Deps struct {
 	// the running container as well as persisting it — the live half lives in
 	// the service so REST and MCP cannot drift on it.
 	DBs *service.DatabaseService
+	// Alerts fires the quota threshold warning after create_application, the
+	// half of the quota story Quotas above does not cover: Quotas REFUSES at
+	// the limit, Alerts warns on the way to it. Separate from Databases
+	// because this tool is registered whether or not provisioning is wired.
+	// nil skips the warning, which is what the handler's own nil checks do.
+	Alerts QuotaAlerter
+}
+
+// QuotaAlerter sends the approaching-the-limit warning for a project.
+// Satisfied by *handler.Handler, which owns both the quota service and the
+// asynq client the email goes through; an interface because this package must
+// not import internal/handler.
+type QuotaAlerter interface {
+	MaybeEnqueueQuotaAlert(ctx context.Context, projectID, ownerUserID pgtype.UUID)
 }
 
 // New builds the MCP server and wraps it in a stateless streamable-HTTP

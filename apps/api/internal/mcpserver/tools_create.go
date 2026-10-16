@@ -146,6 +146,15 @@ func registerCreateTools(srv *mcp.Server, d Deps) {
 		auditTool(ctx, d.Audit, "create_application", "application", uuidToString(app.ID),
 			map[string]any{"name": name, "project_id": in.ProjectID})
 
+		// The warning half of the same quota check applied above. Without it
+		// an owner creating applications through MCP crossed their threshold
+		// in silence and only learnt of the limit by being refused at it,
+		// while the REST path had warned them. Fire-and-forget by design: the
+		// application exists either way.
+		if d.Alerts != nil {
+			d.Alerts.MaybeEnqueueQuotaAlert(ctx, projectID, project.UserID)
+		}
+
 		return textResult(createdApplication{
 			Application: toApplication(app),
 			Note:        "created but not deployed — call trigger_deployment to build and start it",

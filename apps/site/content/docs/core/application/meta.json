@@ -10,6 +10,7 @@
     "mounts",
     "logs-metrics",
     "terminal",
+    "scheduled-tasks",
     "settings",
     "frameworks"
   ]

@@ -1,0 +1,86 @@
+---
+title: Scheduled Tasks
+description: Run a command inside an application's container on a cron schedule.
+---
+
+Run a command on a schedule inside the container your application is already running in — `php artisan schedule:run`, `rails runner`, a nightly cleanup, a report. The command sees the same code, environment variables, network and volumes as the application itself, because it runs in the same place.
+
+Find them on an application's **Tasks** tab.
+
+## Adding a Task
+
+**Add Task** opens a form with six fields:
+
+- **Name** — what it is, for the list and the run history.
+- **Command** — run through `sh -c`, so pipes, redirects and `&&` all work.
+- **Schedule** — a standard 5-field cron expression. As you type, the description underneath tells you what it means in plain language, which is the cheapest way to catch a cron that does not say what you think.
+- **Timezone** — the zone the schedule is read in. Defaults to your browser's.
+- **Timeout** — how long the command may run before it is killed, in seconds. Default 300, maximum 86400.
+- **Keep runs** — how many entries of run history to retain. Default 20.
+
+A task can be disabled without deleting it; a disabled task keeps its history and its schedule.
+
+## Schedules and Timezones
+
+Standard five fields (`0 3 * * *`), plus the usual descriptors — `@daily`, `@hourly`, `@weekly`, and `@every 1h30m`.
+
+Schedules are checked **once a minute**, so a run can start up to 60 seconds after its nominal time. `* * * * *` works and runs every minute; anything faster is rejected, because a sub-minute schedule would silently under-fire against a per-minute check rather than doing what it says.
+
+The timezone belongs to the task, not to your install, so two tasks on the same application can run in different zones. The list shows the schedule in plain language with its zone, and the next run time in that same zone — hover the description to see the raw cron expression.
+
+<Callout type="warn">
+  Daylight-saving transitions behave the way cron does: a time that does not
+  exist on the day the clocks go forward does not run, and a time that happens
+  twice when they go back runs once.
+</Callout>
+
+## What Runs, and Where
+
+The command runs inside the application's **already-running** container, not a fresh one. That is what makes the obvious framework commands work without any extra configuration — they need the app's code and environment, and they inherit both.
+
+It also means a stopped application does not fire its cron. That is deliberate rather than a limitation: a stopped app is either deliberately stopped or broken, and neither wants `schedule:run` firing into it. The run is still recorded, as **Skipped**, with the reason — an invisible skip would be indistinguishable from a cron that never fired at all.
+
+Preview applications do not inherit their parent's tasks, so a pull request cannot double-process a queue or send a second copy of a nightly email.
+
+## Run History
+
+Every run is recorded with its status, exit code, duration, how it was triggered, and the command's output:
+
+| Status        | Meaning                                  |
+| ------------- | ---------------------------------------- |
+| **Running**   | In progress now.                         |
+| **Succeeded** | Exited `0`.                              |
+| **Failed**    | Exited non-zero. The exit code is shown. |
+| **Timed out** | Hit the timeout and was killed.          |
+| **Skipped**   | Did not run, with the reason beside it.  |
+
+A skip is normal operation, not a failure, and is shown in a neutral colour rather than red — colouring routine skips as failures trains you to ignore the real ones.
+
+Output is captured up to roughly 64 KB. A chattier command keeps its beginning and its end, with the omitted amount noted in between, because the start usually shows what the job was doing and the end shows why it stopped.
+
+**Run now** runs the task immediately without waiting for its schedule, and does **not** shift it — a manual run at 2pm does not postpone the 3am one. It is refused while a run of the same task is already in flight.
+
+## Timeouts
+
+The timeout is enforced from inside the container, by the container. When it fires, the command is terminated and the run is recorded as **Timed out** rather than as a plain failure, so a job that is simply too slow is distinguishable from one that is broken.
+
+A command that backgrounds its own children — a pipeline, or something ending in `&` — may leave those children running past the timeout on Alpine-based images. Belune sweeps them when the timeout fires, but a command that deliberately detaches work is outside what a timeout can promise.
+
+## Concurrency
+
+Two limits keep a busy task from crowding out everything else:
+
+- **One run per task at a time.** If the previous run is still going when the next is due, the new one is skipped with that reason rather than queued.
+- **A cap across the whole install**, two by default. Beyond it, due tasks are skipped with the reason until a slot frees. Set `SCHEDULED_TASK_MAX_CONCURRENT` in your `.env` to change it — see [configuration](/docs/core/server/configurations).
+
+Both exist because background workers are shared with deploys, builds and backups, and a handful of slow crons should not be able to stall those.
+
+## Secrets
+
+Reference secrets as environment variables — `$DATABASE_URL`, `$API_KEY` — rather than pasting the value into the command. The command is stored as written and is shown to anyone who can see the application, so a pasted secret is a secret in plain text.
+
+Commands are deliberately **not** recorded in the [audit log](/docs/core/server/audit-log) for the same reason. The log records that a task was created, changed, run or deleted, and by whom, but never the command body.
+
+## When a Task Fails
+
+A task whose most recent run failed is counted in **Needs Attention** on the dashboard. The count is of tasks, not of runs, so a task failing every minute contributes one — enough to notice, not enough to drown the number.

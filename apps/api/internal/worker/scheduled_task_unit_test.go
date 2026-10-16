@@ -63,3 +63,12 @@ func TestCappedOutputKeepsHeadAndTail(t *testing.T) {
 	_, _ = small.Write([]byte("hello"))
 	assert.Equal(t, "hello", small.String())
 }
+
+func TestTimedOut(t *testing.T) {
+	limit := 300 * time.Second
+	assert.True(t, timedOut(124, time.Second, limit), "GNU timeout")
+	assert.True(t, timedOut(143, 300*time.Second, limit), "busybox timeout reports the signal")
+	assert.False(t, timedOut(143, 5*time.Second, limit), "a command SIGTERMed early is a failure, not a timeout")
+	assert.False(t, timedOut(1, 300*time.Second, limit))
+	assert.False(t, timedOut(0, 300*time.Second, limit))
+}

@@ -24,10 +24,24 @@ const (
 	// because the start shows what the job was doing and the end shows why it died.
 	scheduledTaskOutputCap = 64 * 1024
 
-	// timeoutExitCode is what timeout(1) exits with when it had to kill the
-	// command — an unambiguous "timed out" signal from inside the container.
+	// timeoutExitCode is what GNU timeout(1) (Debian) exits with when it had to
+	// kill the command.
 	timeoutExitCode = 124
+	// sigtermExitCode is what busybox timeout (Alpine) exits with instead: it
+	// reports the signal that killed the command (128+SIGTERM). Found by running
+	// both images — 124 alone would have called every Alpine timeout a failure.
+	sigtermExitCode = 143
 )
+
+// timedOut reports whether exit means timeout(1) fired. 143 is also what a
+// command SIGTERMed by something else exits with, so it only counts when the run
+// lasted the whole limit.
+func timedOut(exit int, elapsed, limit time.Duration) bool {
+	if exit == timeoutExitCode {
+		return true
+	}
+	return exit == sigtermExitCode && elapsed >= limit-time.Second
+}
 
 // sweepScheduledTasks is the FOURTH sweep in HandleBackupScheduleSweep. Same
 // shape as the backup sweeps: a per-minute walk comparing sched.Next(baseline)
@@ -139,7 +153,9 @@ func (h *TaskHandler) HandleScheduledTaskRun(ctx context.Context, t *asynq.Task)
 	defer cancel()
 
 	out := newCappedOutput(scheduledTaskOutputCap)
+	started := time.Now()
 	exit, execErr := rt.ContainerExec(execCtx, containerName, cmd, nil, out, out)
+	elapsed := time.Since(started)
 
 	output := out.String()
 	switch {
@@ -148,7 +164,7 @@ func (h *TaskHandler) HandleScheduledTaskRun(ctx context.Context, t *asynq.Task)
 		h.notifyScheduledTaskFailure(ctx, task, appRow.Name, appRow.ProjectID, "could not run: "+execErr.Error())
 	case exit == 0:
 		h.finishScheduledRun(ctx, run.ID, "succeeded", &exit, output, "", task)
-	case exit == timeoutExitCode:
+	case timedOut(exit, elapsed, time.Duration(task.TimeoutSeconds)*time.Second):
 		h.finishScheduledRun(ctx, run.ID, "timed_out", &exit, output, "", task)
 		h.notifyScheduledTaskFailure(ctx, task, appRow.Name, appRow.ProjectID, fmt.Sprintf("timed out after %ds", task.TimeoutSeconds))
 	default:

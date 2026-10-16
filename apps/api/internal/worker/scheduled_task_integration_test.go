@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -149,13 +151,104 @@ func TestScheduledTaskSweep_ReapsAbandonedRuns(t *testing.T) {
 	task := seedTask(t, app.ID, "0 3 1 1 *") // not due
 	run, err := testQueries.InsertScheduledTaskRun(ctx, generated.InsertScheduledTaskRunParams{TaskID: task.ID, Trigger: "schedule"})
 	require.NoError(t, err)
-	_, err = testPool.Exec(ctx, `UPDATE application_scheduled_task_runs SET started_at = NOW() - interval '1 hour' WHERE id = $1`, run.ID)
+	_, err = testPool.Exec(ctx, `UPDATE application_scheduled_task_runs SET started_at = NOW() - interval '1 hour', picked_up_at = NOW() - interval '1 hour' WHERE id = $1`, run.ID)
 	require.NoError(t, err)
 
 	sweepHandler(&testutil.MockTaskEnqueuer{}, 2).HandleBackupScheduleSweep(ctx)
 
 	got, _ := testQueries.GetScheduledTaskRun(ctx, run.ID)
 	assert.Equal(t, "failed", got.Status, "a run orphaned by a worker restart must not pin the cap forever")
+}
+
+// A run that merely waited in the queue (workers busy for longer than the
+// timeout grace) is not abandoned and must not be recorded as a failure.
+func TestScheduledTaskSweep_DoesNotReapARunStillQueued(t *testing.T) {
+	ctx := context.Background()
+	app, _ := seedApp(t)
+	setAppStatus(t, app.ID, "running")
+	task := seedTask(t, app.ID, "0 3 1 1 *")
+	run, err := testQueries.InsertScheduledTaskRun(ctx, generated.InsertScheduledTaskRunParams{TaskID: task.ID, Trigger: "schedule"})
+	require.NoError(t, err)
+	_, err = testPool.Exec(ctx, `UPDATE application_scheduled_task_runs SET started_at = NOW() - interval '1 hour' WHERE id = $1`, run.ID)
+	require.NoError(t, err)
+
+	sweepHandler(&testutil.MockTaskEnqueuer{}, 2).HandleBackupScheduleSweep(ctx)
+
+	got, _ := testQueries.GetScheduledTaskRun(ctx, run.ID)
+	assert.Equal(t, "running", got.Status)
+}
+
+// The 64KB cap cuts at a byte boundary, which lands mid-rune for any multi-byte
+// character (32768 % 3 == 2). Postgres rejects that, and a row that failed to
+// finish stays 'running' and counts against the install-wide cap.
+func TestScheduledTaskRun_RecordsOutputThatIsNotValidUTF8(t *testing.T) {
+	app, _ := seedApp(t)
+	setAppStatus(t, app.ID, "running")
+	task := seedTask(t, app.ID, "0 3 1 1 *")
+	rt := &testutil.MockContainerRuntime{ExecFunc: func(_ context.Context, _ string, _ []string, _ io.Reader, stdout, _ io.Writer) (int, error) {
+		_, _ = stdout.Write([]byte(strings.Repeat("€", 40000)))
+		_, _ = stdout.Write([]byte("nul\x00byte \xff"))
+		return 0, nil
+	}}
+	got := runTask(t, newTestHandler(rt, nil), task)
+
+	assert.Equal(t, "succeeded", got.Status)
+	assert.True(t, got.FinishedAt.Valid)
+	assert.Contains(t, got.Output, "€", "the output itself must be stored, not the retry's fallback")
+	assert.NotContains(t, got.Output, "could not be stored")
+	for _, r := range taskRuns(t, task.ID) {
+		assert.NotEqual(t, "running", r.Status, "a stuck row would pin the install-wide cap")
+	}
+}
+
+func TestScheduledTaskDispatch_SkipsArePruned(t *testing.T) {
+	ctx := context.Background()
+	app, _ := seedApp(t)
+	setAppStatus(t, app.ID, "stopped")
+	task := seedTask(t, app.ID, "0 3 1 1 *") // keep_runs = 3
+	disp := service.NewScheduledTaskDispatcher(testQueries, &testutil.MockTaskEnqueuer{}, 5)
+	for i := 0; i < 8; i++ {
+		_, skipped, err := disp.Dispatch(ctx, task, service.RunTriggerSchedule)
+		require.NoError(t, err)
+		require.True(t, skipped)
+	}
+	assert.Len(t, taskRuns(t, task.ID), 3)
+}
+
+// 000068 retrofits a timezone column onto schedules that used to carry a
+// CRON_TZ= prefix, which the parser no longer accepts.
+func TestMigration68_LiftsLegacyTimezonePrefixes(t *testing.T) {
+	ctx := context.Background()
+	raw, err := os.ReadFile("../migrations/000068_scheduled_tasks.up.sql")
+	require.NoError(t, err)
+	sql := string(raw)
+	backfill := sql[strings.Index(sql, "UPDATE database_backup_configs"):]
+
+	db := seedDatabase(t)
+	dest, err := testQueries.CreateBackupDestination(ctx, generated.CreateBackupDestinationParams{
+		ProjectID: db.ProjectID, Name: "on-host", Provider: "local", CredentialsEncrypted: []byte{},
+	})
+	require.NoError(t, err)
+	cfg, err := testQueries.CreateDatabaseBackupConfig(ctx, generated.CreateDatabaseBackupConfigParams{
+		DatabaseID: db.ID, DestinationID: dest.ID, Schedule: "0 3 * * *", Enabled: true, Timezone: "UTC",
+	})
+	require.NoError(t, err)
+	cfgID := cfg.ID
+	for _, c := range []struct{ in, wantTZ, wantSched string }{
+		{"CRON_TZ=Asia/Tokyo 0 3 * * *", "Asia/Tokyo", "0 3 * * *"},
+		{"TZ=Europe/Paris  30 2 * * 1", "Europe/Paris", "30 2 * * 1"},
+		{"CRON_TZ=Not/AZone 0 3 * * *", "UTC", "CRON_TZ=Not/AZone 0 3 * * *"},
+		{"0 3 * * *", "UTC", "0 3 * * *"},
+	} {
+		_, err := testPool.Exec(ctx, `UPDATE database_backup_configs SET schedule = $2, timezone = 'UTC' WHERE id = $1`, cfgID, c.in)
+		require.NoError(t, err)
+		_, err = testPool.Exec(ctx, backfill)
+		require.NoError(t, err)
+		var tz, sched string
+		require.NoError(t, testPool.QueryRow(ctx, `SELECT timezone, schedule FROM database_backup_configs WHERE id = $1`, cfgID).Scan(&tz, &sched))
+		assert.Equal(t, c.wantTZ, tz, c.in)
+		assert.Equal(t, c.wantSched, sched, c.in)
+	}
 }
 
 // run dispatches via the real dispatcher and executes the queued payload.

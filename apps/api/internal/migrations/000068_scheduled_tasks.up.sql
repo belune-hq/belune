@@ -30,7 +30,8 @@ CREATE TABLE application_scheduled_task_runs (
     exit_code   INT,
     output      TEXT NOT NULL DEFAULT '',
     skip_reason TEXT,
-    started_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    started_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),  -- dispatch time; the run may queue after this
+    picked_up_at TIMESTAMPTZ,                         -- when a worker began the exec; the reaper measures from here
     finished_at TIMESTAMPTZ
 );
 
@@ -42,3 +43,22 @@ CREATE INDEX idx_scheduled_task_runs_running ON application_scheduled_task_runs(
 -- did before.
 ALTER TABLE database_backup_configs ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC';
 ALTER TABLE application_volume_backup_configs ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC';
+
+-- Before this column, the only way to schedule in a zone was a CRON_TZ=/TZ=
+-- prefix inside the expression, which robfig accepted. The parser now takes the
+-- zone from its own column and rejects the prefix, so an existing prefixed
+-- schedule would stop firing silently. Lift the zone out: the firing time is
+-- identical, and the rewrite only happens for names Postgres knows verbatim
+-- (Go's LoadLocation is case-sensitive too); anything else was already failing
+-- to parse before this change and is left alone.
+UPDATE database_backup_configs c
+SET timezone = m[1], schedule = m[2]
+FROM (SELECT id, regexp_match(schedule, '^\s*(?:CRON_TZ|TZ)=(\S+)\s+(.*\S)\s*$') AS m FROM database_backup_configs) x
+WHERE c.id = x.id AND x.m IS NOT NULL
+  AND EXISTS (SELECT 1 FROM pg_timezone_names n WHERE n.name = x.m[1]);
+
+UPDATE application_volume_backup_configs c
+SET timezone = m[1], schedule = m[2]
+FROM (SELECT id, regexp_match(schedule, '^\s*(?:CRON_TZ|TZ)=(\S+)\s+(.*\S)\s*$') AS m FROM application_volume_backup_configs) x
+WHERE c.id = x.id AND x.m IS NOT NULL
+  AND EXISTS (SELECT 1 FROM pg_timezone_names n WHERE n.name = x.m[1]);

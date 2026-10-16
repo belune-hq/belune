@@ -116,7 +116,7 @@ func (q *Queries) DeleteScheduledTaskRun(ctx context.Context, id pgtype.UUID) er
 const finishScheduledTaskRun = `-- name: FinishScheduledTaskRun :exec
 UPDATE application_scheduled_task_runs
 SET status = $2, exit_code = $3, output = $4, skip_reason = $5, finished_at = NOW()
-WHERE id = $1
+WHERE id = $1 AND status = 'running'
 `
 
 type FinishScheduledTaskRunParams struct {
@@ -163,7 +163,7 @@ func (q *Queries) GetScheduledTask(ctx context.Context, id pgtype.UUID) (Applica
 }
 
 const getScheduledTaskRun = `-- name: GetScheduledTaskRun :one
-SELECT id, task_id, trigger, status, exit_code, output, skip_reason, started_at, finished_at FROM application_scheduled_task_runs WHERE id = $1
+SELECT id, task_id, trigger, status, exit_code, output, skip_reason, started_at, picked_up_at, finished_at FROM application_scheduled_task_runs WHERE id = $1
 `
 
 func (q *Queries) GetScheduledTaskRun(ctx context.Context, id pgtype.UUID) (ApplicationScheduledTaskRun, error) {
@@ -178,6 +178,7 @@ func (q *Queries) GetScheduledTaskRun(ctx context.Context, id pgtype.UUID) (Appl
 		&i.Output,
 		&i.SkipReason,
 		&i.StartedAt,
+		&i.PickedUpAt,
 		&i.FinishedAt,
 	)
 	return i, err
@@ -186,7 +187,7 @@ func (q *Queries) GetScheduledTaskRun(ctx context.Context, id pgtype.UUID) (Appl
 const insertScheduledTaskRun = `-- name: InsertScheduledTaskRun :one
 INSERT INTO application_scheduled_task_runs (task_id, trigger)
 VALUES ($1, $2)
-RETURNING id, task_id, trigger, status, exit_code, output, skip_reason, started_at, finished_at
+RETURNING id, task_id, trigger, status, exit_code, output, skip_reason, started_at, picked_up_at, finished_at
 `
 
 type InsertScheduledTaskRunParams struct {
@@ -206,6 +207,7 @@ func (q *Queries) InsertScheduledTaskRun(ctx context.Context, arg InsertSchedule
 		&i.Output,
 		&i.SkipReason,
 		&i.StartedAt,
+		&i.PickedUpAt,
 		&i.FinishedAt,
 	)
 	return i, err
@@ -214,7 +216,7 @@ func (q *Queries) InsertScheduledTaskRun(ctx context.Context, arg InsertSchedule
 const insertSkippedScheduledTaskRun = `-- name: InsertSkippedScheduledTaskRun :one
 INSERT INTO application_scheduled_task_runs (task_id, trigger, status, skip_reason, finished_at)
 VALUES ($1, $2, 'skipped', $3, NOW())
-RETURNING id, task_id, trigger, status, exit_code, output, skip_reason, started_at, finished_at
+RETURNING id, task_id, trigger, status, exit_code, output, skip_reason, started_at, picked_up_at, finished_at
 `
 
 type InsertSkippedScheduledTaskRunParams struct {
@@ -235,13 +237,14 @@ func (q *Queries) InsertSkippedScheduledTaskRun(ctx context.Context, arg InsertS
 		&i.Output,
 		&i.SkipReason,
 		&i.StartedAt,
+		&i.PickedUpAt,
 		&i.FinishedAt,
 	)
 	return i, err
 }
 
 const latestScheduledTaskRuns = `-- name: LatestScheduledTaskRuns :many
-SELECT DISTINCT ON (r.task_id) r.id, r.task_id, r.trigger, r.status, r.exit_code, r.output, r.skip_reason, r.started_at, r.finished_at
+SELECT DISTINCT ON (r.task_id) r.id, r.task_id, r.trigger, r.status, r.exit_code, r.output, r.skip_reason, r.started_at, r.picked_up_at, r.finished_at
 FROM application_scheduled_task_runs r
 JOIN application_scheduled_tasks t ON t.id = r.task_id
 WHERE t.application_id = $1
@@ -267,6 +270,7 @@ func (q *Queries) LatestScheduledTaskRuns(ctx context.Context, applicationID pgt
 			&i.Output,
 			&i.SkipReason,
 			&i.StartedAt,
+			&i.PickedUpAt,
 			&i.FinishedAt,
 		); err != nil {
 			return nil, err
@@ -319,7 +323,7 @@ func (q *Queries) ListEnabledScheduledTasks(ctx context.Context) ([]ApplicationS
 }
 
 const listScheduledTaskRuns = `-- name: ListScheduledTaskRuns :many
-SELECT id, task_id, trigger, status, exit_code, output, skip_reason, started_at, finished_at FROM application_scheduled_task_runs
+SELECT id, task_id, trigger, status, exit_code, output, skip_reason, started_at, picked_up_at, finished_at FROM application_scheduled_task_runs
 WHERE task_id = $1
 ORDER BY started_at DESC
 LIMIT $2
@@ -348,6 +352,7 @@ func (q *Queries) ListScheduledTaskRuns(ctx context.Context, arg ListScheduledTa
 			&i.Output,
 			&i.SkipReason,
 			&i.StartedAt,
+			&i.PickedUpAt,
 			&i.FinishedAt,
 		); err != nil {
 			return nil, err
@@ -399,6 +404,18 @@ func (q *Queries) ListScheduledTasksForApplication(ctx context.Context, applicat
 	return items, nil
 }
 
+const markScheduledTaskRunPickedUp = `-- name: MarkScheduledTaskRunPickedUp :exec
+UPDATE application_scheduled_task_runs SET picked_up_at = NOW()
+WHERE id = $1 AND status = 'running'
+`
+
+// Stamped when the worker starts the exec, so the reaper's grace covers
+// execution only and not however long the run sat in the queue.
+func (q *Queries) MarkScheduledTaskRunPickedUp(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, markScheduledTaskRunPickedUp, id)
+	return err
+}
+
 const pruneScheduledTaskRuns = `-- name: PruneScheduledTaskRuns :exec
 DELETE FROM application_scheduled_task_runs r
 WHERE r.task_id = $1
@@ -434,12 +451,17 @@ SET status = 'failed', finished_at = NOW(),
 FROM application_scheduled_tasks t
 WHERE r.task_id = t.id
   AND r.status = 'running'
-  AND r.started_at < NOW() - make_interval(secs => t.timeout_seconds + 120)
+  AND (
+        r.picked_up_at < NOW() - make_interval(secs => t.timeout_seconds + 120)
+        OR (r.picked_up_at IS NULL AND r.started_at < NOW() - INTERVAL '24 hours')
+  )
 `
 
 // A worker that died mid-run (restart, OOM) leaves 'running' forever, which
 // would pin the global cap and block the task's next run. The grace covers the
-// in-container timeout plus the worker's own backstop.
+// in-container timeout plus the worker's own backstop, measured from pickup. A
+// run never picked up (the queue lost it) is reaped a day after dispatch: queue
+// wait behind busy workers is legitimate and must not be recorded as a failure.
 func (q *Queries) ReapStaleScheduledTaskRuns(ctx context.Context) (int64, error) {
 	result, err := q.db.Exec(ctx, reapStaleScheduledTaskRuns)
 	if err != nil {

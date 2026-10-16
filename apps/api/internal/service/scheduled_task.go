@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -78,6 +79,9 @@ func (d *ScheduledTaskDispatcher) Dispatch(ctx context.Context, task generated.A
 		if err != nil {
 			return zero, false, fmt.Errorf("recording skipped run: %w", err)
 		}
+		// The worker never sees a skipped run, so history is pruned here, or a
+		// stopped app would write a row a minute forever.
+		PruneScheduledTaskRuns(ctx, d.queries, task)
 		return run, true, nil
 	}
 
@@ -141,4 +145,17 @@ func IsNotRunnable(err error) (*ErrScheduledTaskNotRunnable, bool) {
 		return e, true
 	}
 	return nil, false
+}
+
+// PruneScheduledTaskRuns trims a task's history to keep_runs finished runs plus
+// keep_runs skipped ones. They are separate pools so a stopped app's skips
+// cannot evict the output someone wants to read.
+func PruneScheduledTaskRuns(ctx context.Context, q *generated.Queries, task generated.ApplicationScheduledTask) {
+	for _, skipped := range []bool{false, true} {
+		if err := q.PruneScheduledTaskRuns(ctx, generated.PruneScheduledTaskRunsParams{
+			TaskID: task.ID, IsSkipped: skipped, Keep: task.KeepRuns,
+		}); err != nil {
+			slog.Warn("scheduled task: prune runs", "task_id", uuidToString(task.ID), "error", err)
+		}
+	}
 }

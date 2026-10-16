@@ -2,14 +2,12 @@ package handler
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/weiliang79/belune/internal/pkg/cronspec"
@@ -399,12 +397,15 @@ func (h *Handler) ListScheduledTaskRuns(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	limit := int32(task.KeepRuns)
+	// The prune keeps keep_runs of finished runs AND keep_runs of skips, so the
+	// table legitimately holds twice that; a single keep_runs limit let newer
+	// skips push every real run out of the list.
+	limit := int32(task.KeepRuns) * 2
 	if v, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && v > 0 && int32(v) < limit {
 		limit = int32(v)
 	}
 	runs, err := h.queries.ListScheduledTaskRuns(r.Context(), generated.ListScheduledTaskRunsParams{TaskID: task.ID, Limit: limit})
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list runs")
 		return
 	}

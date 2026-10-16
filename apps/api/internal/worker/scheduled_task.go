@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/hibiken/asynq"
@@ -139,6 +140,9 @@ func (h *TaskHandler) HandleScheduledTaskRun(ctx context.Context, t *asynq.Task)
 	if run.Status != "running" {
 		return nil
 	}
+	if err := h.Queries.MarkScheduledTaskRunPickedUp(ctx, run.ID); err != nil {
+		slog.Warn("scheduled task: stamp pickup", "run_id", payload.RunID, "error", err)
+	}
 	task, err := h.Queries.GetScheduledTask(ctx, run.TaskID)
 	if err != nil {
 		return errors.Join(fmt.Errorf("get task (permanent): %w", err), asynq.SkipRetry)
@@ -214,19 +218,28 @@ func (h *TaskHandler) finishScheduledRun(ctx context.Context, runID pgtype.UUID,
 		}
 		p.Output += note
 	}
+	// Postgres rejects invalid UTF-8 (the 64KB cap can cut a multi-byte rune in
+	// half) and NUL in a text value. A rejected write used to leave the row
+	// 'running', which counts against the install-wide cap.
+	p.Output = sanitizeOutput(p.Output)
 	// Detached: the run must be recorded even if the task ctx is already done.
 	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer cancel()
 	if err := h.Queries.FinishScheduledTaskRun(wctx, p); err != nil {
 		slog.Warn("scheduled task: finish run", "run_id", formatUUID(runID), "error", err)
-	}
-	for _, skipped := range []bool{false, true} {
-		if err := h.Queries.PruneScheduledTaskRuns(wctx, generated.PruneScheduledTaskRunsParams{
-			TaskID: task.ID, IsSkipped: skipped, Keep: task.KeepRuns,
-		}); err != nil {
-			slog.Warn("scheduled task: prune runs", "task_id", formatUUID(task.ID), "error", err)
+		// No write failure may leave the row 'running': it would pin the global
+		// cap until the reaper. Retry once without the output.
+		p.Output = "Output could not be stored: " + err.Error()
+		if err := h.Queries.FinishScheduledTaskRun(wctx, p); err != nil {
+			slog.Error("scheduled task: finish run retry", "run_id", formatUUID(runID), "error", err)
 		}
 	}
+	service.PruneScheduledTaskRuns(wctx, h.Queries, task)
+}
+
+// sanitizeOutput makes captured output safe for a Postgres text column.
+func sanitizeOutput(s string) string {
+	return strings.ToValidUTF8(strings.ReplaceAll(s, "\x00", ""), "\uFFFD")
 }
 
 // notifyScheduledTaskFailure fires on failure ONLY, never success, like the

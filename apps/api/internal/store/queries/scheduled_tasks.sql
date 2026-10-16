@@ -54,7 +54,13 @@ SELECT * FROM application_scheduled_task_runs WHERE id = $1;
 -- name: FinishScheduledTaskRun :exec
 UPDATE application_scheduled_task_runs
 SET status = $2, exit_code = $3, output = $4, skip_reason = $5, finished_at = NOW()
-WHERE id = $1;
+WHERE id = $1 AND status = 'running';
+
+-- name: MarkScheduledTaskRunPickedUp :exec
+-- Stamped when the worker starts the exec, so the reaper's grace covers
+-- execution only and not however long the run sat in the queue.
+UPDATE application_scheduled_task_runs SET picked_up_at = NOW()
+WHERE id = $1 AND status = 'running';
 
 -- name: DeleteScheduledTaskRun :exec
 DELETE FROM application_scheduled_task_runs WHERE id = $1;
@@ -84,14 +90,19 @@ SELECT EXISTS (
 -- name: ReapStaleScheduledTaskRuns :execrows
 -- A worker that died mid-run (restart, OOM) leaves 'running' forever, which
 -- would pin the global cap and block the task's next run. The grace covers the
--- in-container timeout plus the worker's own backstop.
+-- in-container timeout plus the worker's own backstop, measured from pickup. A
+-- run never picked up (the queue lost it) is reaped a day after dispatch: queue
+-- wait behind busy workers is legitimate and must not be recorded as a failure.
 UPDATE application_scheduled_task_runs r
 SET status = 'failed', finished_at = NOW(),
     output = CASE WHEN r.output = '' THEN 'Run abandoned: the worker stopped before it finished.' ELSE r.output END
 FROM application_scheduled_tasks t
 WHERE r.task_id = t.id
   AND r.status = 'running'
-  AND r.started_at < NOW() - make_interval(secs => t.timeout_seconds + 120);
+  AND (
+        r.picked_up_at < NOW() - make_interval(secs => t.timeout_seconds + 120)
+        OR (r.picked_up_at IS NULL AND r.started_at < NOW() - INTERVAL '24 hours')
+  );
 
 -- name: PruneScheduledTaskRuns :exec
 -- Skipped rows are pruned on their own budget (is_skipped selects the pool) so a

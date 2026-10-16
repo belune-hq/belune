@@ -121,6 +121,7 @@ type ApplicationScheduledTaskRun struct {
 	Output     string             `json:"output"`
 	SkipReason pgtype.Text        `json:"skip_reason"`
 	StartedAt  pgtype.Timestamptz `json:"started_at"`
+	PickedUpAt pgtype.Timestamptz `json:"picked_up_at"`
 	FinishedAt pgtype.Timestamptz `json:"finished_at"`
 }
 

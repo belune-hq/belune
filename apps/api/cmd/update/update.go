@@ -14,7 +14,19 @@ import (
 )
 
 const (
-	githubRepo        = "weiliang79/belune"
+	// imageRepo is the GHCR image path. sourceRepo is the GitHub repository the
+	// version-pinned infra files come from. They hold the same string today and
+	// are separate anyway, because the two move independently: GHCR packages
+	// belong to the ACCOUNT, not the repository, so a rename or an org transfer
+	// relocates the repo and leaves the package where it was.
+	//
+	// ⚠️ imageRepo can only change in a release that installs have ALREADY taken.
+	// An install resolves its next version with its OWN copy of this constant, so
+	// a release that moves the path is a release the version before it cannot
+	// find. sourceRepo is the softer of the two — the fetch below runs
+	// `curl -sSfL`, so GitHub's transfer redirect carries it.
+	imageRepo         = "weiliang79/belune"
+	sourceRepo        = "weiliang79/belune"
 	defaultInstallDir = "/opt/belune"
 	healthURL         = "http://localhost:8080/healthz"
 	systemdDir        = "/etc/systemd/system"
@@ -256,7 +268,7 @@ func (u *updater) Run(args []string) (err error) {
 	// pull below would ask for a tag that was never published.
 	u.targetVersion = strings.TrimPrefix(target, "v")
 
-	u.targetImage = "ghcr.io/" + githubRepo + ":" + u.targetVersion
+	u.targetImage = "ghcr.io/" + imageRepo + ":" + u.targetVersion
 
 	u.info("Currently installed: %s", u.currentVersion)
 	u.info("Updating to:         %s", u.targetVersion)
@@ -286,7 +298,7 @@ func (u *updater) Run(args []string) (err error) {
 	// Git tags keep the leading v; image tags drop it. The target version was
 	// normalised without one above, so re-add it for the git ref — same
 	// construction install.sh uses so the two stay in lockstep.
-	rawURL := "https://raw.githubusercontent.com/" + githubRepo + "/v" + u.targetVersion
+	rawURL := "https://raw.githubusercontent.com/" + sourceRepo + "/v" + u.targetVersion
 
 	// Download everything to a staging dir first: a failed fetch must abort before a
 	// single file on disk is touched, so a transient network error can never leave a

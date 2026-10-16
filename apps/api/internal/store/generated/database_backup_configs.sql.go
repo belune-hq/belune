@@ -13,10 +13,10 @@ import (
 
 const createDatabaseBackupConfig = `-- name: CreateDatabaseBackupConfig :one
 INSERT INTO database_backup_configs (
-    database_id, destination_id, prefix, schedule, keep_latest, enabled, target_database
+    database_id, destination_id, prefix, schedule, keep_latest, enabled, target_database, timezone
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, database_id, destination_id, prefix, schedule, keep_latest, enabled, last_run_at, created_at, updated_at, target_database
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id, database_id, destination_id, prefix, schedule, keep_latest, enabled, last_run_at, created_at, updated_at, target_database, timezone
 `
 
 type CreateDatabaseBackupConfigParams struct {
@@ -27,6 +27,7 @@ type CreateDatabaseBackupConfigParams struct {
 	KeepLatest     pgtype.Int4 `json:"keep_latest"`
 	Enabled        bool        `json:"enabled"`
 	TargetDatabase string      `json:"target_database"`
+	Timezone       string      `json:"timezone"`
 }
 
 func (q *Queries) CreateDatabaseBackupConfig(ctx context.Context, arg CreateDatabaseBackupConfigParams) (DatabaseBackupConfig, error) {
@@ -38,6 +39,7 @@ func (q *Queries) CreateDatabaseBackupConfig(ctx context.Context, arg CreateData
 		arg.KeepLatest,
 		arg.Enabled,
 		arg.TargetDatabase,
+		arg.Timezone,
 	)
 	var i DatabaseBackupConfig
 	err := row.Scan(
@@ -52,6 +54,7 @@ func (q *Queries) CreateDatabaseBackupConfig(ctx context.Context, arg CreateData
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.TargetDatabase,
+		&i.Timezone,
 	)
 	return i, err
 }
@@ -66,7 +69,7 @@ func (q *Queries) DeleteDatabaseBackupConfig(ctx context.Context, id pgtype.UUID
 }
 
 const getDatabaseBackupConfig = `-- name: GetDatabaseBackupConfig :one
-SELECT id, database_id, destination_id, prefix, schedule, keep_latest, enabled, last_run_at, created_at, updated_at, target_database FROM database_backup_configs WHERE id = $1
+SELECT id, database_id, destination_id, prefix, schedule, keep_latest, enabled, last_run_at, created_at, updated_at, target_database, timezone FROM database_backup_configs WHERE id = $1
 `
 
 func (q *Queries) GetDatabaseBackupConfig(ctx context.Context, id pgtype.UUID) (DatabaseBackupConfig, error) {
@@ -84,12 +87,13 @@ func (q *Queries) GetDatabaseBackupConfig(ctx context.Context, id pgtype.UUID) (
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.TargetDatabase,
+		&i.Timezone,
 	)
 	return i, err
 }
 
 const listDatabaseBackupConfigs = `-- name: ListDatabaseBackupConfigs :many
-SELECT id, database_id, destination_id, prefix, schedule, keep_latest, enabled, last_run_at, created_at, updated_at, target_database FROM database_backup_configs
+SELECT id, database_id, destination_id, prefix, schedule, keep_latest, enabled, last_run_at, created_at, updated_at, target_database, timezone FROM database_backup_configs
 WHERE database_id = $1
 ORDER BY created_at
 `
@@ -115,6 +119,7 @@ func (q *Queries) ListDatabaseBackupConfigs(ctx context.Context, databaseID pgty
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.TargetDatabase,
+			&i.Timezone,
 		); err != nil {
 			return nil, err
 		}
@@ -127,7 +132,7 @@ func (q *Queries) ListDatabaseBackupConfigs(ctx context.Context, databaseID pgty
 }
 
 const listEnabledDatabaseBackupConfigs = `-- name: ListEnabledDatabaseBackupConfigs :many
-SELECT id, database_id, destination_id, prefix, schedule, keep_latest, enabled, last_run_at, created_at, updated_at, target_database FROM database_backup_configs
+SELECT id, database_id, destination_id, prefix, schedule, keep_latest, enabled, last_run_at, created_at, updated_at, target_database, timezone FROM database_backup_configs
 WHERE enabled
 ORDER BY created_at
 `
@@ -153,6 +158,7 @@ func (q *Queries) ListEnabledDatabaseBackupConfigs(ctx context.Context) ([]Datab
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.TargetDatabase,
+			&i.Timezone,
 		); err != nil {
 			return nil, err
 		}
@@ -188,9 +194,10 @@ SET destination_id  = $2,
     keep_latest     = $5,
     enabled         = $6,
     target_database = $7,
+    timezone        = $8,
     updated_at      = NOW()
 WHERE id = $1
-RETURNING id, database_id, destination_id, prefix, schedule, keep_latest, enabled, last_run_at, created_at, updated_at, target_database
+RETURNING id, database_id, destination_id, prefix, schedule, keep_latest, enabled, last_run_at, created_at, updated_at, target_database, timezone
 `
 
 type UpdateDatabaseBackupConfigParams struct {
@@ -201,6 +208,7 @@ type UpdateDatabaseBackupConfigParams struct {
 	KeepLatest     pgtype.Int4 `json:"keep_latest"`
 	Enabled        bool        `json:"enabled"`
 	TargetDatabase string      `json:"target_database"`
+	Timezone       string      `json:"timezone"`
 }
 
 func (q *Queries) UpdateDatabaseBackupConfig(ctx context.Context, arg UpdateDatabaseBackupConfigParams) (DatabaseBackupConfig, error) {
@@ -212,6 +220,7 @@ func (q *Queries) UpdateDatabaseBackupConfig(ctx context.Context, arg UpdateData
 		arg.KeepLatest,
 		arg.Enabled,
 		arg.TargetDatabase,
+		arg.Timezone,
 	)
 	var i DatabaseBackupConfig
 	err := row.Scan(
@@ -226,6 +235,7 @@ func (q *Queries) UpdateDatabaseBackupConfig(ctx context.Context, arg UpdateData
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.TargetDatabase,
+		&i.Timezone,
 	)
 	return i, err
 }

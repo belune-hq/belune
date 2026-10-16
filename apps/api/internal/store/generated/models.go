@@ -97,6 +97,33 @@ type ApplicationFileMount struct {
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
 }
 
+type ApplicationScheduledTask struct {
+	ID             pgtype.UUID        `json:"id"`
+	ApplicationID  pgtype.UUID        `json:"application_id"`
+	Name           string             `json:"name"`
+	Command        string             `json:"command"`
+	Cron           string             `json:"cron"`
+	Timezone       string             `json:"timezone"`
+	Enabled        bool               `json:"enabled"`
+	TimeoutSeconds int32              `json:"timeout_seconds"`
+	KeepRuns       int32              `json:"keep_runs"`
+	LastRunAt      pgtype.Timestamptz `json:"last_run_at"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
+type ApplicationScheduledTaskRun struct {
+	ID         pgtype.UUID        `json:"id"`
+	TaskID     pgtype.UUID        `json:"task_id"`
+	Trigger    string             `json:"trigger"`
+	Status     string             `json:"status"`
+	ExitCode   pgtype.Int4        `json:"exit_code"`
+	Output     string             `json:"output"`
+	SkipReason pgtype.Text        `json:"skip_reason"`
+	StartedAt  pgtype.Timestamptz `json:"started_at"`
+	FinishedAt pgtype.Timestamptz `json:"finished_at"`
+}
+
 type ApplicationVolume struct {
 	ID            pgtype.UUID        `json:"id"`
 	ApplicationID pgtype.UUID        `json:"application_id"`
@@ -132,6 +159,7 @@ type ApplicationVolumeBackupConfig struct {
 	LastRunAt           pgtype.Timestamptz `json:"last_run_at"`
 	CreatedAt           pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+	Timezone            string             `json:"timezone"`
 }
 
 type ApplicationVolumeRestore struct {
@@ -276,6 +304,7 @@ type DatabaseBackupConfig struct {
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
 	TargetDatabase string             `json:"target_database"`
+	Timezone       string             `json:"timezone"`
 }
 
 type DatabaseRestore struct {

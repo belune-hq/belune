@@ -1,0 +1,11 @@
+{
+  "title": "Scheduled Tasks",
+  "pages": [
+    "list-scheduled-tasks",
+    "create-scheduled-task",
+    "update-scheduled-task",
+    "delete-scheduled-task",
+    "run-scheduled-task",
+    "list-scheduled-task-runs"
+  ]
+}

@@ -13,10 +13,10 @@ import (
 
 const createApplicationVolumeBackupConfig = `-- name: CreateApplicationVolumeBackupConfig :one
 INSERT INTO application_volume_backup_configs (
-    application_volume_id, destination_id, prefix, schedule, keep_latest, enabled, quiesce
+    application_volume_id, destination_id, prefix, schedule, keep_latest, enabled, quiesce, timezone
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, application_volume_id, destination_id, prefix, schedule, keep_latest, enabled, quiesce, last_run_at, created_at, updated_at
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id, application_volume_id, destination_id, prefix, schedule, keep_latest, enabled, quiesce, last_run_at, created_at, updated_at, timezone
 `
 
 type CreateApplicationVolumeBackupConfigParams struct {
@@ -27,6 +27,7 @@ type CreateApplicationVolumeBackupConfigParams struct {
 	KeepLatest          pgtype.Int4 `json:"keep_latest"`
 	Enabled             bool        `json:"enabled"`
 	Quiesce             bool        `json:"quiesce"`
+	Timezone            string      `json:"timezone"`
 }
 
 func (q *Queries) CreateApplicationVolumeBackupConfig(ctx context.Context, arg CreateApplicationVolumeBackupConfigParams) (ApplicationVolumeBackupConfig, error) {
@@ -38,6 +39,7 @@ func (q *Queries) CreateApplicationVolumeBackupConfig(ctx context.Context, arg C
 		arg.KeepLatest,
 		arg.Enabled,
 		arg.Quiesce,
+		arg.Timezone,
 	)
 	var i ApplicationVolumeBackupConfig
 	err := row.Scan(
@@ -52,6 +54,7 @@ func (q *Queries) CreateApplicationVolumeBackupConfig(ctx context.Context, arg C
 		&i.LastRunAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Timezone,
 	)
 	return i, err
 }
@@ -98,7 +101,7 @@ func (q *Queries) GetApplicationVolumeBackup(ctx context.Context, id pgtype.UUID
 }
 
 const getApplicationVolumeBackupConfig = `-- name: GetApplicationVolumeBackupConfig :one
-SELECT id, application_volume_id, destination_id, prefix, schedule, keep_latest, enabled, quiesce, last_run_at, created_at, updated_at FROM application_volume_backup_configs WHERE id = $1
+SELECT id, application_volume_id, destination_id, prefix, schedule, keep_latest, enabled, quiesce, last_run_at, created_at, updated_at, timezone FROM application_volume_backup_configs WHERE id = $1
 `
 
 func (q *Queries) GetApplicationVolumeBackupConfig(ctx context.Context, id pgtype.UUID) (ApplicationVolumeBackupConfig, error) {
@@ -116,6 +119,7 @@ func (q *Queries) GetApplicationVolumeBackupConfig(ctx context.Context, id pgtyp
 		&i.LastRunAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Timezone,
 	)
 	return i, err
 }
@@ -178,7 +182,7 @@ func (q *Queries) InsertApplicationVolumeRestore(ctx context.Context, arg Insert
 }
 
 const listApplicationVolumeBackupConfigs = `-- name: ListApplicationVolumeBackupConfigs :many
-SELECT id, application_volume_id, destination_id, prefix, schedule, keep_latest, enabled, quiesce, last_run_at, created_at, updated_at FROM application_volume_backup_configs
+SELECT id, application_volume_id, destination_id, prefix, schedule, keep_latest, enabled, quiesce, last_run_at, created_at, updated_at, timezone FROM application_volume_backup_configs
 WHERE application_volume_id = $1
 ORDER BY created_at
 `
@@ -204,6 +208,7 @@ func (q *Queries) ListApplicationVolumeBackupConfigs(ctx context.Context, applic
 			&i.LastRunAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Timezone,
 		); err != nil {
 			return nil, err
 		}
@@ -216,7 +221,7 @@ func (q *Queries) ListApplicationVolumeBackupConfigs(ctx context.Context, applic
 }
 
 const listApplicationVolumeBackupConfigsForApp = `-- name: ListApplicationVolumeBackupConfigsForApp :many
-SELECT c.id, c.application_volume_id, c.destination_id, c.prefix, c.schedule, c.keep_latest, c.enabled, c.quiesce, c.last_run_at, c.created_at, c.updated_at, v.name AS volume_name, v.mount_path AS volume_mount_path
+SELECT c.id, c.application_volume_id, c.destination_id, c.prefix, c.schedule, c.keep_latest, c.enabled, c.quiesce, c.last_run_at, c.created_at, c.updated_at, c.timezone, v.name AS volume_name, v.mount_path AS volume_mount_path
 FROM application_volume_backup_configs c
 JOIN application_volumes v ON v.id = c.application_volume_id
 WHERE v.application_id = $1
@@ -235,6 +240,7 @@ type ListApplicationVolumeBackupConfigsForAppRow struct {
 	LastRunAt           pgtype.Timestamptz `json:"last_run_at"`
 	CreatedAt           pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+	Timezone            string             `json:"timezone"`
 	VolumeName          string             `json:"volume_name"`
 	VolumeMountPath     string             `json:"volume_mount_path"`
 }
@@ -260,6 +266,7 @@ func (q *Queries) ListApplicationVolumeBackupConfigsForApp(ctx context.Context, 
 			&i.LastRunAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Timezone,
 			&i.VolumeName,
 			&i.VolumeMountPath,
 		); err != nil {
@@ -403,7 +410,7 @@ func (q *Queries) ListApplicationVolumeRestores(ctx context.Context, arg ListApp
 }
 
 const listEnabledApplicationVolumeBackupConfigs = `-- name: ListEnabledApplicationVolumeBackupConfigs :many
-SELECT id, application_volume_id, destination_id, prefix, schedule, keep_latest, enabled, quiesce, last_run_at, created_at, updated_at FROM application_volume_backup_configs
+SELECT id, application_volume_id, destination_id, prefix, schedule, keep_latest, enabled, quiesce, last_run_at, created_at, updated_at, timezone FROM application_volume_backup_configs
 WHERE enabled AND schedule <> ''
 ORDER BY created_at
 `
@@ -429,6 +436,7 @@ func (q *Queries) ListEnabledApplicationVolumeBackupConfigs(ctx context.Context)
 			&i.LastRunAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Timezone,
 		); err != nil {
 			return nil, err
 		}
@@ -571,9 +579,10 @@ SET destination_id = $2,
     keep_latest    = $5,
     enabled        = $6,
     quiesce        = $7,
+    timezone       = $8,
     updated_at     = NOW()
 WHERE id = $1
-RETURNING id, application_volume_id, destination_id, prefix, schedule, keep_latest, enabled, quiesce, last_run_at, created_at, updated_at
+RETURNING id, application_volume_id, destination_id, prefix, schedule, keep_latest, enabled, quiesce, last_run_at, created_at, updated_at, timezone
 `
 
 type UpdateApplicationVolumeBackupConfigParams struct {
@@ -584,6 +593,7 @@ type UpdateApplicationVolumeBackupConfigParams struct {
 	KeepLatest    pgtype.Int4 `json:"keep_latest"`
 	Enabled       bool        `json:"enabled"`
 	Quiesce       bool        `json:"quiesce"`
+	Timezone      string      `json:"timezone"`
 }
 
 func (q *Queries) UpdateApplicationVolumeBackupConfig(ctx context.Context, arg UpdateApplicationVolumeBackupConfigParams) (ApplicationVolumeBackupConfig, error) {
@@ -595,6 +605,7 @@ func (q *Queries) UpdateApplicationVolumeBackupConfig(ctx context.Context, arg U
 		arg.KeepLatest,
 		arg.Enabled,
 		arg.Quiesce,
+		arg.Timezone,
 	)
 	var i ApplicationVolumeBackupConfig
 	err := row.Scan(
@@ -609,6 +620,7 @@ func (q *Queries) UpdateApplicationVolumeBackupConfig(ctx context.Context, arg U
 		&i.LastRunAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Timezone,
 	)
 	return i, err
 }

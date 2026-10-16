@@ -64,6 +64,11 @@
         "title": "Volumes & Backups"
       },
       {
+        "slug": "scheduled-tasks",
+        "tag": "Application Scheduled Tasks",
+        "title": "Scheduled Tasks"
+      },
+      {
         "slug": "file-mounts",
         "tag": "Application File Mounts",
         "title": "File Mounts"

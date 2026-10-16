@@ -93,8 +93,10 @@ func New(redisOpt asynq.RedisConnOpt, handler *TaskHandler) *Worker {
 		asynq.Config{
 			// Route asynq's own output through slog so it shares the level
 			// filter, format and module label with everything else.
-			Logger:      asynqLogger{},
-			Concurrency: 5,
+			Logger: asynqLogger{},
+			// 8 rather than 5: the scheduled-task cap (default 2) plus builds,
+			// backups and a deploy must fit without a long build starving the rest.
+			Concurrency: 8,
 			Queues: map[string]int{
 				"critical": 6,
 				"default":  3,
@@ -146,6 +148,7 @@ func (w *Worker) Start() error {
 	mux.HandleFunc(TypeBackupNow, w.handler.HandleBackupNowTask)
 	mux.HandleFunc(TypeBackupVolume, w.handler.HandleBackupVolumeTask)
 	mux.HandleFunc(TypeRestoreVolume, w.handler.HandleRestoreVolumeTask)
+	mux.HandleFunc(TypeScheduledTask, w.handler.HandleScheduledTaskRun)
 	mux.HandleFunc(TypeBackupRotate, w.handler.HandleBackupRotateTask)
 	mux.HandleFunc(TypeBackupSchedSweep, func(ctx context.Context, t *asynq.Task) error {
 		w.handler.HandleBackupScheduleSweep(ctx)

@@ -8,8 +8,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/robfig/cron/v3"
 
+	"github.com/weiliang79/belune/internal/pkg/cronspec"
 	"github.com/weiliang79/belune/internal/store/generated"
 	"github.com/weiliang79/belune/internal/worker"
 )
@@ -50,6 +50,7 @@ type volumeBackupConfigResponse struct {
 	Destination string     `json:"destination_id"`
 	Prefix      string     `json:"prefix"`
 	Schedule    string     `json:"schedule"`
+	Timezone    string     `json:"timezone"`
 	KeepLatest  *int32     `json:"keep_latest,omitempty"`
 	Enabled     bool       `json:"enabled"`
 	Quiesce     bool       `json:"quiesce"`
@@ -64,6 +65,7 @@ func toVolumeBackupConfigResponse(c generated.ApplicationVolumeBackupConfig) vol
 		Destination: uuidToString(c.DestinationID),
 		Prefix:      c.Prefix,
 		Schedule:    c.Schedule,
+		Timezone:    c.Timezone,
 		Enabled:     c.Enabled,
 		Quiesce:     c.Quiesce,
 		CreatedAt:   c.CreatedAt.Time,
@@ -147,6 +149,7 @@ func (h *Handler) ListBackupConfigsForApplication(w http.ResponseWriter, r *http
 				DestinationID:       row.DestinationID,
 				Prefix:              row.Prefix,
 				Schedule:            row.Schedule,
+				Timezone:            row.Timezone,
 				KeepLatest:          row.KeepLatest,
 				Enabled:             row.Enabled,
 				Quiesce:             row.Quiesce,
@@ -166,18 +169,24 @@ type volumeBackupConfigRequest struct {
 	DestinationID string `json:"destination_id"`
 	Prefix        string `json:"prefix"`
 	Schedule      string `json:"schedule"`
-	KeepLatest    *int32 `json:"keep_latest"`
-	Enabled       *bool  `json:"enabled"`
-	Quiesce       bool   `json:"quiesce"`
+	// Omitted means UTC on create and the stored zone on update (see
+	// databaseBackupConfigRequest.Timezone).
+	Timezone   string `json:"timezone"`
+	KeepLatest *int32 `json:"keep_latest"`
+	Enabled    *bool  `json:"enabled"`
+	Quiesce    bool   `json:"quiesce"`
 }
 
 // validateVolumeBackupSchedule reports whether a config request is well-formed.
 // An empty schedule means manual-only (no scheduled runs) and is allowed; a
 // non-empty schedule must be a valid cron expression. keep_latest, when set,
 // must be positive.
-func validateVolumeBackupSchedule(req volumeBackupConfigRequest) (string, bool) {
+func validateVolumeBackupSchedule(req volumeBackupConfigRequest, tz string) (string, bool) {
+	if err := cronspec.ValidateTimezone(tz); err != nil {
+		return err.Error(), false
+	}
 	if req.Schedule != "" {
-		if _, err := cron.ParseStandard(req.Schedule); err != nil {
+		if _, err := cronspec.Parse(req.Schedule, tz); err != nil {
 			return "invalid cron schedule", false
 		}
 	}
@@ -201,7 +210,8 @@ func (h *Handler) CreateVolumeBackupConfig(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if msg, ok := validateVolumeBackupSchedule(req); !ok {
+	tz := timezoneOr(req.Timezone, cronspec.DefaultTimezone)
+	if msg, ok := validateVolumeBackupSchedule(req, tz); !ok {
 		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
@@ -228,6 +238,7 @@ func (h *Handler) CreateVolumeBackupConfig(w http.ResponseWriter, r *http.Reques
 		KeepLatest:          nullableInt4(req.KeepLatest),
 		Enabled:             enabled,
 		Quiesce:             req.Quiesce,
+		Timezone:            tz,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create backup config")
@@ -257,7 +268,8 @@ func (h *Handler) UpdateVolumeBackupConfig(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if msg, ok := validateVolumeBackupSchedule(req); !ok {
+	tz := timezoneOr(req.Timezone, cfg.Timezone)
+	if msg, ok := validateVolumeBackupSchedule(req, tz); !ok {
 		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
@@ -282,6 +294,7 @@ func (h *Handler) UpdateVolumeBackupConfig(w http.ResponseWriter, r *http.Reques
 		KeepLatest:    nullableInt4(req.KeepLatest),
 		Enabled:       enabled,
 		Quiesce:       req.Quiesce,
+		Timezone:      tz,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update backup config")

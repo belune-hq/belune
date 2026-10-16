@@ -55,6 +55,9 @@
       "name": "Application Volumes \u0026 Backups"
     },
     {
+      "name": "Application Scheduled Tasks"
+    },
+    {
       "name": "Application File Mounts"
     },
     {
@@ -7645,6 +7648,431 @@
         "security": [
           {
             "write": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/projects/{projectId}/applications/{applicationId}/scheduled-tasks": {
+      "get": {
+        "operationId": "ListScheduledTasks",
+        "summary": "Get Tasks",
+        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
+        "tags": [
+          "Application Scheduled Tasks"
+        ],
+        "x-belune-order": 1,
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/scheduledTaskResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "read": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "CreateScheduledTask",
+        "summary": "Create Task",
+        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
+        "tags": [
+          "Application Scheduled Tasks"
+        ],
+        "x-belune-order": 2,
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/scheduledTaskRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/scheduledTaskResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "write": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/projects/{projectId}/applications/{applicationId}/scheduled-tasks/{taskId}": {
+      "delete": {
+        "operationId": "DeleteScheduledTask",
+        "summary": "Delete Task",
+        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
+        "tags": [
+          "Application Scheduled Tasks"
+        ],
+        "x-belune-order": 4,
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Not resolved by static extraction — see the handler for the exact response."
+          }
+        },
+        "security": [
+          {
+            "write": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "UpdateScheduledTask",
+        "summary": "Update Task",
+        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
+        "tags": [
+          "Application Scheduled Tasks"
+        ],
+        "x-belune-order": 3,
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/scheduledTaskRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/scheduledTaskResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "write": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/projects/{projectId}/applications/{applicationId}/scheduled-tasks/{taskId}/run": {
+      "post": {
+        "operationId": "RunScheduledTask",
+        "summary": "Run Task",
+        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
+        "tags": [
+          "Application Scheduled Tasks"
+        ],
+        "x-belune-order": 5,
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/scheduledTaskRunResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "write": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/projects/{projectId}/applications/{applicationId}/scheduled-tasks/{taskId}/runs": {
+      "get": {
+        "operationId": "ListScheduledTaskRuns",
+        "summary": "Get Task Runs",
+        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
+        "tags": [
+          "Application Scheduled Tasks"
+        ],
+        "x-belune-order": 6,
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/scheduledTaskRunResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "read": []
           },
           {
             "session": []
@@ -15419,6 +15847,9 @@
           "schedule": {
             "type": "string"
           },
+          "timezone": {
+            "type": "string"
+          },
           "volume_name": {
             "type": "string"
           }
@@ -16303,6 +16734,9 @@
           },
           "schedule": {
             "type": "string"
+          },
+          "timezone": {
+            "type": "string"
           }
         },
         "type": "object"
@@ -16351,6 +16785,9 @@
             "type": "string"
           },
           "schedule": {
+            "type": "string"
+          },
+          "timezone": {
             "type": "string"
           },
           "updated_at": {
@@ -17327,6 +17764,9 @@
           "failed_deploys": {
             "type": "integer"
           },
+          "failed_tasks": {
+            "type": "integer"
+          },
           "total": {
             "type": "integer"
           },
@@ -17820,6 +18260,154 @@
             "type": "string"
           },
           "webhook_secret": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "scheduledTaskRequest": {
+        "properties": {
+          "command": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cron": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "keep_runs": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "timeout_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "timezone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "scheduledTaskResponse": {
+        "properties": {
+          "application_id": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "cron": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "keep_runs": {
+            "type": "integer"
+          },
+          "last_run_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latest_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/scheduledTaskRunResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "next_run_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "timeout_seconds": {
+            "type": "integer"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "scheduledTaskRunResponse": {
+        "properties": {
+          "exit_code": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "finished_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "output": {
+            "type": "string"
+          },
+          "skip_reason": {
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "trigger": {
             "type": "string"
           }
         },
@@ -18540,6 +19128,9 @@
           },
           "schedule": {
             "type": "string"
+          },
+          "timezone": {
+            "type": "string"
           }
         },
         "type": "object"
@@ -18582,6 +19173,9 @@
             "type": "boolean"
           },
           "schedule": {
+            "type": "string"
+          },
+          "timezone": {
             "type": "string"
           }
         },

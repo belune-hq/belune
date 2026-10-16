@@ -471,6 +471,14 @@ func registerRoutes(r chi.Router, h *handler.Handler, auth *service.AuthService,
 				r.Get("/api/projects/{projectId}/applications/{applicationId}/volumes/{volumeId}/restores", h.ListVolumeRestores)
 				r.Get("/api/projects/{projectId}/applications/{applicationId}/volume-backup-configs", h.ListBackupConfigsForApplication)
 
+				// Scheduled tasks (cron exec into the running container)
+				r.Get("/api/projects/{projectId}/applications/{applicationId}/scheduled-tasks", h.ListScheduledTasks)
+				r.Post("/api/projects/{projectId}/applications/{applicationId}/scheduled-tasks", h.CreateScheduledTask)
+				r.Put("/api/projects/{projectId}/applications/{applicationId}/scheduled-tasks/{taskId}", h.UpdateScheduledTask)
+				r.Delete("/api/projects/{projectId}/applications/{applicationId}/scheduled-tasks/{taskId}", h.DeleteScheduledTask)
+				r.Post("/api/projects/{projectId}/applications/{applicationId}/scheduled-tasks/{taskId}/run", h.RunScheduledTask)
+				r.Get("/api/projects/{projectId}/applications/{applicationId}/scheduled-tasks/{taskId}/runs", h.ListScheduledTaskRuns)
+
 				// Application file/config mounts
 				r.Get("/api/projects/{projectId}/applications/{applicationId}/file-mounts", h.ListFileMounts)
 				r.With(middleware.RequireSession()).Get("/api/projects/{projectId}/applications/{applicationId}/file-mounts/{fileMountId}/reveal", h.RevealFileMount)

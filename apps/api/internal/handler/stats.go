@@ -69,7 +69,9 @@ type needsAttention struct {
 	ErrorServices     int64 `json:"error_services"`
 	UnhealthyServices int64 `json:"unhealthy_services"`
 	FailedBackups     int64 `json:"failed_backups"`
-	Total             int64 `json:"total"`
+	// FailedTasks counts scheduled tasks whose latest run failed — tasks, not runs.
+	FailedTasks int64 `json:"failed_tasks"`
+	Total       int64 `json:"total"`
 }
 
 type statsResponse struct {
@@ -176,6 +178,12 @@ func (h *Handler) GetStats(w http.ResponseWriter, r *http.Request) {
 		failedBackups = 0
 	}
 
+	failedTasks, err := h.queries.CountFailedScheduledTasks(ctx, scope)
+	if err != nil {
+		slog.Warn("stats: count failed scheduled tasks", "error", err)
+		failedTasks = 0
+	}
+
 	if isAdmin {
 		platformBackup, perr := h.queries.CountUnresolvedFailedBackup(ctx)
 		if perr != nil {
@@ -197,7 +205,8 @@ func (h *Handler) GetStats(w http.ResponseWriter, r *http.Request) {
 		ErrorServices:     errorServices,
 		UnhealthyServices: unhealthyServices,
 		FailedBackups:     failedBackups,
-		Total:             unresolvedDeploys + errorServices + unhealthyServices + failedBackups,
+		FailedTasks:       failedTasks,
+		Total:             unresolvedDeploys + errorServices + unhealthyServices + failedBackups + failedTasks,
 	}
 
 	writeJSON(w, http.StatusOK, resp)

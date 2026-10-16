@@ -152,6 +152,12 @@ stock install that has never touched the Configure sheet.
 
 Destinations and schedules are configured per project in the dashboard, not here.
 
+## Scheduled tasks
+
+| Variable | Default | Notes |
+|---|---|---|
+| `SCHEDULED_TASK_MAX_CONCURRENT` | `2` | Most scheduled-task runs in flight at once; further due runs are recorded as skipped. The worker pool is shared with deploys, so keep this well under it |
+
 ## Email
 
 Configurable from **Server → Configuration**; those values are stored in the

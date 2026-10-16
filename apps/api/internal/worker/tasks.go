@@ -1,5 +1,7 @@
 package worker
 
+import "github.com/weiliang79/belune/internal/service"
+
 const (
 	TypeDeploy              = "deploy"
 	TypeBuild               = "build"
@@ -26,4 +28,5 @@ const (
 	TypeTemplateFinalize    = "template:finalize"
 	TypeNotifyDeliver       = "notify:deliver"
 	TypeUpdateCheck         = "update:check"
+	TypeScheduledTask       = service.ScheduledTaskType
 )

@@ -176,6 +176,11 @@ type Config struct {
 	// pruned (rows + local files + S3 objects) after a new backup succeeds.
 	DatabaseBackupRetainCount int
 
+	// ScheduledTaskMaxConcurrent caps scheduled-task runs in flight at once.
+	// The worker has a fixed pool shared with deploys, so this is what stops a
+	// handful of slow `* * * * *` tasks from starving them.
+	ScheduledTaskMaxConcurrent int
+
 	// ControlPlaneBackupDir is where the worker writes belune-backup-*.tar.gz
 	// archives (Postgres dump + Caddy TLS data + .env). Must be the same HOST
 	// directory scripts/backup.sh and restore.sh use, bind-mounted into this
@@ -278,24 +283,25 @@ func Load() (*Config, error) {
 		SMTPFromName:  getEnv("SMTP_FROM_NAME", "Belune"),
 		SMTPTLSMode:   getEnv("SMTP_TLS_MODE", "starttls"),
 
-		BackupRemoteEnabled:       getEnvBool("BACKUP_REMOTE_ENABLED", false),
-		BackupS3Endpoint:          getEnv("BACKUP_S3_ENDPOINT", ""),
-		BackupS3Region:            getEnv("BACKUP_S3_REGION", "us-east-1"),
-		BackupS3Bucket:            getEnv("BACKUP_S3_BUCKET", ""),
-		BackupS3AccessKey:         getEnv("BACKUP_S3_ACCESS_KEY", ""),
-		BackupS3SecretKey:         getEnv("BACKUP_S3_SECRET_KEY", ""),
-		BackupS3Prefix:            getEnv("BACKUP_S3_PREFIX", "belune/"),
-		BackupS3UseSSL:            getEnvBool("BACKUP_S3_USE_SSL", true),
-		BackupRemoteConfigPath:    getEnv("BACKUP_REMOTE_CONFIG_PATH", beluneDir()+"/backup-remote.env"),
-		BackupRetainDays:          getEnvInt("BACKUP_RETAIN_DAYS", 30),
-		BackupRetainCount:         getEnvInt("BACKUP_RETAIN_COUNT", 14),
-		DatabaseBackupDir:         getEnv("DATABASE_BACKUP_DIR", beluneDir()+"/backups/databases"),
-		FileMountsDir:             getEnv("FILE_MOUNTS_DIR", beluneDir()+"/filemounts"),
-		DatabaseBackupHelperImage: getEnv("DATABASE_BACKUP_HELPER_IMAGE", "alpine:3.20"),
-		DatabaseBackupRetainCount: getEnvInt("DATABASE_BACKUP_RETAIN_COUNT", 7),
-		ControlPlaneBackupDir:     getEnv("CONTROL_PLANE_BACKUP_DIR", beluneDir()+"/backups"),
-		EnvFilePath:               getEnv("ENV_FILE_PATH", beluneDir()+"/.env"),
-		BackupEncryptionKey:       getEnv("BACKUP_ENCRYPTION_KEY", ""),
+		BackupRemoteEnabled:        getEnvBool("BACKUP_REMOTE_ENABLED", false),
+		BackupS3Endpoint:           getEnv("BACKUP_S3_ENDPOINT", ""),
+		BackupS3Region:             getEnv("BACKUP_S3_REGION", "us-east-1"),
+		BackupS3Bucket:             getEnv("BACKUP_S3_BUCKET", ""),
+		BackupS3AccessKey:          getEnv("BACKUP_S3_ACCESS_KEY", ""),
+		BackupS3SecretKey:          getEnv("BACKUP_S3_SECRET_KEY", ""),
+		BackupS3Prefix:             getEnv("BACKUP_S3_PREFIX", "belune/"),
+		BackupS3UseSSL:             getEnvBool("BACKUP_S3_USE_SSL", true),
+		BackupRemoteConfigPath:     getEnv("BACKUP_REMOTE_CONFIG_PATH", beluneDir()+"/backup-remote.env"),
+		BackupRetainDays:           getEnvInt("BACKUP_RETAIN_DAYS", 30),
+		BackupRetainCount:          getEnvInt("BACKUP_RETAIN_COUNT", 14),
+		DatabaseBackupDir:          getEnv("DATABASE_BACKUP_DIR", beluneDir()+"/backups/databases"),
+		FileMountsDir:              getEnv("FILE_MOUNTS_DIR", beluneDir()+"/filemounts"),
+		DatabaseBackupHelperImage:  getEnv("DATABASE_BACKUP_HELPER_IMAGE", "alpine:3.20"),
+		DatabaseBackupRetainCount:  getEnvInt("DATABASE_BACKUP_RETAIN_COUNT", 7),
+		ScheduledTaskMaxConcurrent: getEnvInt("SCHEDULED_TASK_MAX_CONCURRENT", 2),
+		ControlPlaneBackupDir:      getEnv("CONTROL_PLANE_BACKUP_DIR", beluneDir()+"/backups"),
+		EnvFilePath:                getEnv("ENV_FILE_PATH", beluneDir()+"/.env"),
+		BackupEncryptionKey:        getEnv("BACKUP_ENCRYPTION_KEY", ""),
 	}
 
 	if cfg.JWTSecret == "" {

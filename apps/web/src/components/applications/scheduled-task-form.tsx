@@ -215,6 +215,15 @@ function TaskForm({
             // typed. A submit attempt also reveals it.
             const invalid =
               !!error && (field.state.meta.isBlurred || attempted);
+            // cronstrue's output and the preset labels carry no terminating
+            // full stop, so the sentence after them ran straight on ("…only in
+            // December Checked once a minute…"). The fallback has its own, so
+            // only a real description needs one.
+            //
+            // Deliberately NOT added inside describeCron: the list rows render
+            // "<description> (<timezone>)", where a full stop before the zone
+            // would read wrong.
+            const described = describeCronOrNull(field.state.value);
             return (
               <Field data-invalid={invalid}>
                 <FieldLabel htmlFor="task-cron">Schedule</FieldLabel>
@@ -231,8 +240,7 @@ function TaskForm({
                   <FieldError>{error}</FieldError>
                 ) : (
                   <p className="text-muted-foreground text-xs">
-                    {describeCronOrNull(field.state.value) ??
-                      "Standard 5-field cron."}{" "}
+                    {described ? `${described}.` : "Standard 5-field cron."}{" "}
                     Checked once a minute, so a run can start up to 60 seconds
                     late.
                   </p>

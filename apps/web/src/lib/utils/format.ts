@@ -89,3 +89,28 @@ const listFormatter = new Intl.ListFormat("en", {
 export function formatList(items: string[]): string {
   return listFormatter.format(items);
 }
+
+/**
+ * A timestamp in a specific IANA zone, with the zone's short name — for times
+ * that mean something in a zone other than the viewer's (a cron's next run).
+ * Falls back to the viewer's zone if the name is unknown to this browser.
+ */
+export function formatInTimezone(
+  date: string | Date,
+  timeZone: string,
+): string {
+  const opts: Intl.DateTimeFormatOptions = {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZoneName: "short",
+  };
+  try {
+    return new Date(date).toLocaleString("en-GB", { ...opts, timeZone });
+  } catch {
+    return new Date(date).toLocaleString("en-GB", opts);
+  }
+}

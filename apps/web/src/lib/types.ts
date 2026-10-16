@@ -139,6 +139,7 @@ export interface VolumeBackupConfig {
   destination_id: string;
   prefix: string;
   schedule: string;
+  timezone: string;
   keep_latest?: number;
   enabled: boolean;
   quiesce: boolean;
@@ -441,6 +442,7 @@ export interface DatabaseBackupConfig {
   destination_id: string;
   prefix: string;
   schedule: string;
+  timezone: string;
   keep_latest?: number;
   enabled: boolean;
   databases: string[]; // specific databases to back up; empty = all
@@ -653,6 +655,8 @@ export interface Stats {
     failed_deploys: number;
     error_services: number;
     failed_backups: number;
+    // Scheduled tasks whose latest run failed — tasks, not runs.
+    failed_tasks: number;
     total: number;
   };
   host: HostResources | null;
@@ -806,4 +810,40 @@ export interface DockerNetwork {
   managed: boolean;
   containers: DockerNetworkContainer[] | null;
   created_at: string;
+}
+
+export type ScheduledTaskRunStatus =
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "skipped"
+  | "timed_out";
+
+export interface ScheduledTaskRun {
+  id: string;
+  trigger: "schedule" | "manual";
+  status: ScheduledTaskRunStatus;
+  exit_code?: number;
+  output?: string;
+  skip_reason?: string;
+  started_at: string;
+  finished_at?: string;
+}
+
+export interface ScheduledTask {
+  id: string;
+  application_id: string;
+  name: string;
+  command: string;
+  cron: string;
+  timezone: string;
+  enabled: boolean;
+  timeout_seconds: number;
+  keep_runs: number;
+  last_run_at?: string;
+  // RFC 3339 with the task's own UTC offset.
+  next_run_at?: string;
+  latest_run?: ScheduledTaskRun;
+  created_at: string;
+  updated_at: string;
 }

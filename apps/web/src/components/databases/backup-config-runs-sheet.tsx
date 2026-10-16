@@ -57,7 +57,12 @@ function statusTone(status: string): string {
     case "succeeded":
       return "text-status-ready";
     case "failed":
+    case "timed_out":
       return "text-status-error";
+    // Neutral, not red: a skip is normal operation. Named here so it cannot
+    // fall into the in-progress default below.
+    case "skipped":
+      return "text-text-faint";
     default:
       return "text-status-building";
   }

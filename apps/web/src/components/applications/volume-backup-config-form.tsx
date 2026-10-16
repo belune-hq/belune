@@ -1,3 +1,8 @@
+import {
+  TimezoneInput,
+  browserTimezone,
+  isKnownTimezone,
+} from "@/components/ui/timezone-input";
 import { useDialogBody } from "@/lib/hooks/use-dialog-body";
 import { useState } from "react";
 import { useForm, useStore } from "@tanstack/react-form";
@@ -99,6 +104,7 @@ function ConfigForm({
       destinationId: config?.destination_id ?? "",
       prefix: config?.prefix ?? "",
       schedule: config?.schedule ?? "",
+      timezone: config?.timezone ?? browserTimezone(),
       keepLatest: config?.keep_latest != null ? String(config.keep_latest) : "",
       quiesce: config?.quiesce ?? false,
       enabled: config?.enabled ?? true,
@@ -110,6 +116,7 @@ function ConfigForm({
         destination_id: value.destinationId,
         prefix: value.prefix.trim(),
         schedule: value.schedule.trim(),
+        timezone: value.timezone.trim(),
         keep_latest: keep,
         quiesce: value.quiesce,
         enabled: value.enabled,
@@ -353,6 +360,38 @@ function ConfigForm({
                   <p className="text-muted-foreground text-xs">
                     Standard 5-field cron expression. Empty = back up on demand
                     only.
+                  </p>
+                )}
+              </Field>
+            );
+          }}
+        />
+
+        <form.Field
+          name="timezone"
+          validators={{
+            onChange: z
+              .string()
+              .trim()
+              .refine(isKnownTimezone, "Unknown timezone"),
+          }}
+          children={(field) => {
+            const error = fieldError(field.state.meta.errors);
+            return (
+              <Field data-invalid={!!error}>
+                <FieldLabel htmlFor="vbc-tz">Timezone</FieldLabel>
+                <TimezoneInput
+                  id="vbc-tz"
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  aria-invalid={!!error}
+                />
+                {error ? (
+                  <FieldError>{error}</FieldError>
+                ) : (
+                  <p className="text-muted-foreground text-xs">
+                    The schedule above is read in this timezone.
                   </p>
                 )}
               </Field>

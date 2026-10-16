@@ -57,6 +57,26 @@ export const queryKeys = {
         "volumes",
       ] as const,
   },
+  scheduledTasks: {
+    all: (projectId: string, applicationId: string) =>
+      [
+        "projects",
+        projectId,
+        "applications",
+        applicationId,
+        "scheduled-tasks",
+      ] as const,
+    runs: (projectId: string, applicationId: string, taskId: string) =>
+      [
+        "projects",
+        projectId,
+        "applications",
+        applicationId,
+        "scheduled-tasks",
+        taskId,
+        "runs",
+      ] as const,
+  },
   fileMounts: {
     all: (projectId: string, applicationId: string) =>
       [

@@ -46,6 +46,7 @@ import {
   Activity,
   SquareTerminal,
   HardDrive,
+  CalendarClock,
   Settings,
 } from "lucide-react";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -166,6 +167,7 @@ function ApplicationLayout() {
     { to: `${basePath}/metrics`, label: "Metrics", icon: Activity },
     { to: `${basePath}/terminal`, label: "Terminal", icon: SquareTerminal },
     { to: `${basePath}/mounts`, label: "Mounts", icon: HardDrive },
+    { to: `${basePath}/tasks`, label: "Tasks", icon: CalendarClock },
     { to: `${basePath}/settings`, label: "Settings", icon: Settings },
   ];
 

@@ -60,3 +60,9 @@ coverage/
 .paas-data/
 belune-trial.tgz
 .env.smoke
+
+# An npm/npx invocation from the repo ROOT writes an empty lockfile here, beside
+# no package.json. The leading slash is load-bearing: an unanchored
+# `package-lock.json` matches at any depth and would ignore apps/web's and
+# apps/site's real, tracked lockfiles too.
+/package-lock.json

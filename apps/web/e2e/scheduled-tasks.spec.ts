@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { rendered, settled } from "./support/settled";
+import { settled } from "./support/settled";
 
 /**
  * The Scheduled Tasks tab, in a real browser.

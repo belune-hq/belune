@@ -36,6 +36,34 @@ Nothing here changes your install's topology or asks anything of your host: run
 `update.sh` and you are done. There is one migration; it is additive and takes
 no downtime beyond the usual restart.
 
+A backup schedule can no longer carry its timezone inside the cron expression,
+described below. Your existing schedules are migrated for you and keep firing at
+exactly the same moment; this reaches scripts only — never the dashboard, never
+your data.
+
+### ⚠️ Breaking changes
+
+**A backup schedule can no longer carry its timezone inside the cron
+expression.** `CRON_TZ=Asia/Tokyo 0 3 * * *` is now rejected with a `400` on:
+
+- `POST /api/projects/{projectId}/databases/{databaseId}/backup-configs`
+- `PUT /api/projects/{projectId}/databases/{databaseId}/backup-configs/{configId}`
+- `POST /api/projects/{projectId}/applications/{applicationId}/volumes/{volumeId}/backup-configs`
+- `PUT .../volumes/{volumeId}/backup-configs/{configId}`
+
+Send the schedule and the timezone as separate fields instead — `"schedule":
+"0 3 * * *", "timezone": "Asia/Tokyo"` — which is what the new field is for.
+
+**Your stored schedules are migrated automatically** and keep firing at exactly
+the same moment, so nothing you have configured stops working. Only a script
+that re-sends the old form is affected. The dashboard never produced it.
+
+The prefix was never a documented schedule format; it worked because the cron
+parser underneath happened to accept it, and the design notes named it as the
+workaround for the timezone field that now exists. A schedule whose prefix names
+a timezone the server does not recognise is left exactly as it is — those were
+already failing to parse and were not running.
+
 ### Added
 
 - **Scheduled tasks for applications.** On an application's new **Tasks** tab,
@@ -86,12 +114,9 @@ no downtime beyond the usual restart.
 ### Changed
 
 - **A backup schedule that carried its timezone inside the cron expression is
-  migrated automatically.** Before schedules had a timezone field, the only way
-  to express one was a `CRON_TZ=Asia/Tokyo 0 3 * * *` prefix. The upgrade lifts
-  that prefix into the new timezone field, leaving the schedule firing at
-  exactly the same moment. If you never used that form, nothing changes. A
-  prefix naming a timezone the server does not recognise is left alone — those
-  schedules were already failing to parse and were not running.
+  migrated automatically**, leaving it firing at exactly the same moment. See
+  **⚠️ Breaking changes** above for what this means for a script that writes
+  schedules through the API.
 
 ## [0.1.21]
 

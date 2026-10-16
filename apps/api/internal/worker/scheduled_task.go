@@ -56,6 +56,12 @@ func (h *TaskHandler) killTaggedProcesses(ctx context.Context, rt runtime.Contai
 // timedOut reports whether exit means timeout(1) fired. 143 is also what a
 // command SIGTERMed by something else exits with, so it only counts when the run
 // lasted the whole limit.
+//
+// ⚠️ This is complete only because the exec builds a bare `timeout <n>`. Adding
+// -k would make a command that ignores SIGTERM exit 137 (128+SIGKILL), which
+// nothing here classifies, and the run would be filed as a plain failure with a
+// confusing exit code rather than as a timeout. Add 137 under the same
+// elapsed-time condition if that flag is ever introduced.
 func timedOut(exit int, elapsed, limit time.Duration) bool {
 	if exit == timeoutExitCode {
 		return true

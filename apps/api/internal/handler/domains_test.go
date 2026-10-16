@@ -212,3 +212,59 @@ func TestDomainContainerPort_RangeAndZero(t *testing.T) {
 	require.NotNil(t, port)
 	assert.EqualValues(t, 3001, *port)
 }
+
+// An omitting PUT must carry the stored port override forward. UpdateDomain
+// writes container_port unconditionally, so before the fallback a request that
+// only meant to change the TLS mode cleared the override and the route silently
+// started pointing at the application's own port. The same wipe ssl_mode had.
+func TestUpdateDomain_OmittedContainerPortIsPreserved(t *testing.T) {
+	resetDB(t)
+	token := env.SetupAdmin(t, "admin@test.com", "password123")
+	project := env.CreateProject(t, token, "Test Project", "test-project")
+	projectID := extractID(project["id"])
+	app := env.CreateApplication(t, token, projectID, map[string]any{
+		"name": "Domain App", "type": "git", "build_type": "dockerfile", "source_repo": "https://github.com/test/repo",
+	})
+	appID := extractID(app["id"])
+	base := fmt.Sprintf("/api/projects/%s/applications/%s/domains", projectID, appID)
+
+	resp := env.DoRequest(t, "POST", base, map[string]any{
+		"hostname": "port.example.com", "container_port": 3000,
+	}, testutil.AuthHeader(token))
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	domainID := extractID(testutil.ReadJSON(t, resp)["id"])
+	url := base + "/" + domainID
+
+	storedPort := func(t *testing.T) *int32 {
+		t.Helper()
+		var port *int32
+		require.NoError(t, env.Pool.QueryRow(context.Background(),
+			`SELECT container_port FROM domains WHERE id = $1`, domainID).Scan(&port))
+		return port
+	}
+
+	// A PUT about something else entirely, with container_port absent.
+	resp = env.DoRequest(t, "PUT", url, map[string]any{
+		"hostname": "port.example.com", "ssl_mode": "off",
+	}, testutil.AuthHeader(token))
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
+	port := storedPort(t)
+	require.NotNil(t, port, "an omitting PUT cleared the port override")
+	assert.EqualValues(t, 3000, *port)
+
+	// The response body must agree with the database; a stale body here is how
+	// the dashboard would re-send the wipe on the next save.
+	resp = env.DoRequest(t, "GET", url, nil, testutil.AuthHeader(token))
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.EqualValues(t, 3000, testutil.ReadJSON(t, resp)["container_port"])
+
+	// An explicit 0 still clears it: absent and zero must stay distinguishable,
+	// since zero is the only way a caller can remove an override.
+	resp = env.DoRequest(t, "PUT", url, map[string]any{
+		"hostname": "port.example.com", "container_port": 0,
+	}, testutil.AuthHeader(token))
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
+	assert.Nil(t, storedPort(t), "an explicit 0 no longer clears the override")
+}

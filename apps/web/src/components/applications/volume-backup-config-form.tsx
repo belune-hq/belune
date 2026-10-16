@@ -20,6 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
+import { cronError } from "@/lib/utils/schedule";
 import { fieldError } from "@/lib/utils/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -148,6 +149,7 @@ function ConfigForm({
   );
 
   const pending = create.isPending || update.isPending;
+  const attempted = useStore(form.store, (s) => s.submissionAttempts > 0);
   const noDestinations = destinations?.length === 0;
   const noVolumes = volumes?.length === 0;
 
@@ -289,15 +291,19 @@ function ConfigForm({
           validators={{
             onChange: z
               .string()
-              .refine(
-                (v) =>
-                  v.trim() === "" ||
-                  /^\S+\s+\S+\s+\S+\s+\S+\s+\S+$/.test(v.trim()),
-                "Must be a 5-field cron expression",
-              ),
+              .superRefine((v, ctx) => {
+                const msg = cronError(v);
+                if (msg) ctx.addIssue({ code: "custom", message: msg });
+              }),
           }}
           children={(field) => {
-            const error = fieldError(field.state.meta.errors);
+            // Gated on isBlurred (or a submit attempt), not isTouched: TanStack sets
+            // isTouched on every change, so it would flash red while a valid
+            // expression is still being typed (the v0.1.21 failure mode).
+            const error =
+              field.state.meta.isBlurred || attempted
+                ? fieldError(field.state.meta.errors)
+                : undefined;
             const presetValue = customMode
               ? "custom"
               : field.state.value === ""

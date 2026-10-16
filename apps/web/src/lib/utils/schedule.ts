@@ -52,3 +52,55 @@ export function describeCronOrNull(expr: string): string | null {
 export function describeCron(expr: string): string {
   return describeCronOrNull(expr) ?? expr;
 }
+
+// Go-style duration ("1h30m", "90s", "500ms") in seconds, or null if malformed.
+function everySeconds(d: string): number | null {
+  const unit: Record<string, number> = {
+    h: 3600,
+    m: 60,
+    s: 1,
+    ms: 0.001,
+    us: 1e-6,
+    µs: 1e-6,
+    ns: 1e-9,
+  };
+  const re = /(\d+(?:\.\d+)?)(ms|us|µs|ns|h|m|s)/y;
+  let total = 0;
+  let pos = 0;
+  while (pos < d.length) {
+    re.lastIndex = pos;
+    const m = re.exec(d);
+    if (!m) return null;
+    total += Number(m[1]) * unit[m[2]];
+    pos = re.lastIndex;
+  }
+  return pos > 0 ? total : null;
+}
+
+// cronError is the form-validation counterpart of describeCronOrNull: undefined
+// when expr is acceptable (empty is left to the caller, which decides whether a
+// schedule is required), otherwise the message to show. A shape check alone
+// ("five tokens") let `0 99 * * *` through to fail only on Save. The server stays
+// the authority; this just agrees with it. cronstrue also accepts 6/7-field
+// forms the backend rejects, hence the explicit field count.
+// minMinute mirrors the task schedule's "at least a minute apart" rule.
+export function cronError(
+  expr: string,
+  opts: { minMinute?: boolean } = {},
+): string | undefined {
+  const e = expr.trim();
+  if (!e) return undefined;
+  if (e.startsWith("@")) {
+    const every = /^@every\s+(\S+)$/.exec(e);
+    if (every) {
+      const secs = everySeconds(every[1]);
+      if (secs === null) return "Not a valid duration, e.g. @every 1h30m";
+      if (opts.minMinute && secs < 60)
+        return "Schedules must be at least one minute apart";
+      return undefined;
+    }
+    return describeCronOrNull(e) ? undefined : "Not a valid cron expression";
+  }
+  if (e.split(/\s+/).length !== 5) return "Use a 5-field cron expression";
+  return describeCronOrNull(e) ? undefined : "Not a valid cron expression";
+}

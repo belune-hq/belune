@@ -1,4 +1,4 @@
-import { useForm } from "@tanstack/react-form";
+import { useForm, useStore } from "@tanstack/react-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import {
@@ -25,7 +25,7 @@ import {
   useCreateScheduledTask,
   useUpdateScheduledTask,
 } from "@/lib/hooks/use-scheduled-tasks";
-import { describeCronOrNull } from "@/lib/utils/schedule";
+import { cronError, describeCronOrNull } from "@/lib/utils/schedule";
 import { fieldError } from "@/lib/utils/field-error";
 import type { ScheduledTask } from "@/lib/types";
 
@@ -60,8 +60,6 @@ export function ScheduledTaskForm({
     </Dialog>
   );
 }
-
-const fiveFieldCron = /^\S+\s+\S+\s+\S+\s+\S+\s+\S+$/;
 
 function TaskForm({
   projectId,
@@ -111,6 +109,7 @@ function TaskForm({
   });
 
   const pending = create.isPending || update.isPending;
+  const attempted = useStore(form.store, (st) => st.submissionAttempts > 0);
 
   return (
     <>
@@ -203,15 +202,19 @@ function TaskForm({
               .string()
               .trim()
               .min(1, "Schedule is required")
-              .refine(
-                (v) => fiveFieldCron.test(v) || v.startsWith("@"),
-                "Use a 5-field cron expression",
-              ),
+              .superRefine((v, ctx) => {
+                const msg = cronError(v, { minMinute: true });
+                if (msg) ctx.addIssue({ code: "custom", message: msg });
+              }),
           }}
         >
           {(field) => {
             const error = fieldError(field.state.meta.errors);
-            const invalid = !!error && field.state.meta.isTouched;
+            // isBlurred, not isTouched: TanStack sets isTouched on every change,
+            // so it would flash an error while a valid expression is still being
+            // typed. A submit attempt also reveals it.
+            const invalid =
+              !!error && (field.state.meta.isBlurred || attempted);
             return (
               <Field data-invalid={invalid}>
                 <FieldLabel htmlFor="task-cron">Schedule</FieldLabel>

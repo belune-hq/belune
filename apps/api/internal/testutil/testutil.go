@@ -95,9 +95,16 @@ func runMigrations(pool *pgxpool.Pool) {
 }
 
 // TruncateAll truncates all tables for test isolation.
+//
+// ⚠️ quotas is listed EXPLICITLY and must stay listed: quotas.scope_id is
+// polymorphic (a user id or a project id, no foreign key), so CASCADE from
+// users or projects cannot reach it. Omitted, a quota written by one test
+// outlived it as an orphan row and every later test in the package ran against
+// a cap it never set — which is how a test asserting the full quota list saw
+// two extra rows and failed only when run after its neighbours.
 func TruncateAll(ctx context.Context, pool *pgxpool.Pool) error {
 	_, err := pool.Exec(ctx, `
-		TRUNCATE users, projects, applications, deployments, databases, domains, env_vars, container_logs, request_logs, git_integrations, git_provider_configs, domain_route_features, audit_logs, refresh_tokens, login_attempts, password_reset_tokens, invitations, alert_preferences, quota_alert_state, backup_runs CASCADE
+		TRUNCATE users, projects, applications, deployments, databases, domains, env_vars, container_logs, request_logs, git_integrations, git_provider_configs, domain_route_features, audit_logs, refresh_tokens, login_attempts, password_reset_tokens, invitations, alert_preferences, quotas, quota_alert_state, backup_runs CASCADE
 	`)
 	return err
 }

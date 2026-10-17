@@ -496,12 +496,24 @@ func (h *Handler) UpdateDomain(w http.ResponseWriter, r *http.Request) {
 		StripPath:    stripPath,
 		InternalPath: internalPath,
 	}
-	domainPort, err := service.ValidateDomainContainerPort(req.ContainerPort)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
+	// ⚠️ The same fallback rule as path and ssl_mode above, and for the same
+	// reason: UpdateDomain writes container_port unconditionally, so an
+	// omitting PUT must carry the stored override forward. Defaulting here
+	// sent the domain back to the resolved port, so editing a domain's TLS
+	// mode silently dropped a per-domain port and the route started pointing
+	// at the application's own port instead.
+	//
+	// nil means absent and keeps the stored value; an explicit 0 still
+	// clears, which is how a caller removes an override.
+	params.ContainerPort = oldDomain.ContainerPort
+	if req.ContainerPort != nil {
+		domainPort, err := service.ValidateDomainContainerPort(req.ContainerPort)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		params.ContainerPort = domainPort
 	}
-	params.ContainerPort = domainPort
 
 	domain, err := h.queries.UpdateDomain(r.Context(), params)
 	if err != nil {

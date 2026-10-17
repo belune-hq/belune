@@ -190,6 +190,7 @@ func New(
 		Quotas:    quotaSvc,
 		DBs:       dbSvc,
 		Databases: h,
+		Alerts:    h,
 	})
 	return h
 }

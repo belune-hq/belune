@@ -163,14 +163,22 @@ func TestRealStackTLS_PendingWithoutCertificate(t *testing.T) {
 	got, err = testQueries.GetDomain(ctx, domain.ID)
 	require.NoError(t, err)
 	assert.Equal(t, worker.TLSStatusFailed, got.TlsStatus)
-	assert.Contains(t, got.TlsError.String, "rateLimited")
+	// ⚠️ The CA's sentence, NOT the ACME problem URN. cleanACMEReason strips
+	// everything up to and including "urn:…:error:rateLimited - " on purpose
+	// (4a228d8) because the wrapping is not what an operator can act on. This
+	// assertion asked for the wrapping, and had done since the day before that
+	// landed — it went unnoticed for three months because this suite is gated
+	// behind BELUNE_CADDY_INTEGRATION and runs only when someone remembers.
+	assert.Contains(t, got.TlsError.String, "too many certificates already issued")
+	assert.NotContains(t, got.TlsError.String, "urn:ietf:params:acme:error",
+		"the protocol wrapping is meant to be stripped, not shown")
 
 	// And the next sweep keeps the reason rather than resetting to a bare pending.
 	h.HandleTLSStatusSweep(ctx)
 	got, err = testQueries.GetDomain(ctx, domain.ID)
 	require.NoError(t, err)
 	assert.Equal(t, worker.TLSStatusFailed, got.TlsStatus)
-	assert.Contains(t, got.TlsError.String, "rateLimited")
+	assert.Contains(t, got.TlsError.String, "too many certificates already issued")
 }
 
 func probeCertPair(t *testing.T, hostname string) (certPEM, keyPEM string) {

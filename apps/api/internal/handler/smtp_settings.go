@@ -29,7 +29,7 @@ type smtpSettingsRequest struct {
 func (h *Handler) GetSMTPSettings(w http.ResponseWriter, r *http.Request) {
 	view, err := h.smtpSettingsSvc.Get(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to load SMTP settings")
+		writeServerError(w, r, "failed to load SMTP settings", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, view)

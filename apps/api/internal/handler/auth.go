@@ -101,7 +101,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 	csrfToken, err := middleware.GenerateCSRFToken()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to generate csrf token")
+		writeServerError(w, r, "failed to generate csrf token", err)
 		return
 	}
 
@@ -136,7 +136,7 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 
 	csrfToken, err := middleware.GenerateCSRFToken()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to generate csrf token")
+		writeServerError(w, r, "failed to generate csrf token", err)
 		return
 	}
 
@@ -339,13 +339,13 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 
 	var userUUID pgtype.UUID
 	if err := userUUID.Scan(userID); err != nil {
-		writeError(w, http.StatusInternalServerError, "invalid user id")
+		writeServerError(w, r, "invalid user id", err)
 		return
 	}
 
 	user, err := h.queries.GetUserByID(r.Context(), userUUID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to get user")
+		writeServerError(w, r, "failed to get user", err)
 		return
 	}
 
@@ -371,7 +371,7 @@ func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.UserIDFromContext(r.Context())
 	var userUUID pgtype.UUID
 	if err := userUUID.Scan(userID); err != nil {
-		writeError(w, http.StatusInternalServerError, "invalid user id")
+		writeServerError(w, r, "invalid user id", err)
 		return
 	}
 
@@ -388,7 +388,7 @@ func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		LastName:  req.LastName,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update profile")
+		writeServerError(w, r, "failed to update profile", err)
 		return
 	}
 
@@ -423,7 +423,7 @@ func (h *Handler) ChangeOwnPassword(w http.ResponseWriter, r *http.Request) {
 
 	user, err := h.queries.GetUserByID(r.Context(), userID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to get user")
+		writeServerError(w, r, "failed to get user", err)
 		return
 	}
 
@@ -434,7 +434,7 @@ func (h *Handler) ChangeOwnPassword(w http.ResponseWriter, r *http.Request) {
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to hash password")
+		writeServerError(w, r, "failed to hash password", err)
 		return
 	}
 
@@ -442,7 +442,7 @@ func (h *Handler) ChangeOwnPassword(w http.ResponseWriter, r *http.Request) {
 		ID:           userID,
 		PasswordHash: string(hash),
 	}); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update password")
+		writeServerError(w, r, "failed to update password", err)
 		return
 	}
 
@@ -468,7 +468,7 @@ type setupRequest struct {
 func (h *Handler) Setup(w http.ResponseWriter, r *http.Request) {
 	required, err := h.auth.IsSetupRequired(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to check setup status")
+		writeServerError(w, r, "failed to check setup status", err)
 		return
 	}
 
@@ -500,7 +500,7 @@ func (h *Handler) Setup(w http.ResponseWriter, r *http.Request) {
 
 	user, err := h.auth.Register(r.Context(), req.Email, req.Password, "admin", req.Username)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create admin user")
+		writeServerError(w, r, "failed to create admin user", err)
 		return
 	}
 

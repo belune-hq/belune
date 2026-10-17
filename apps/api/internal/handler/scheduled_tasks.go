@@ -171,12 +171,12 @@ func (h *Handler) ListScheduledTasks(w http.ResponseWriter, r *http.Request) {
 	}
 	tasks, err := h.queries.ListScheduledTasksForApplication(r.Context(), appUUID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list scheduled tasks")
+		writeServerError(w, r, "failed to list scheduled tasks", err)
 		return
 	}
 	latestRows, err := h.queries.LatestScheduledTaskRuns(r.Context(), appUUID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list scheduled tasks")
+		writeServerError(w, r, "failed to list scheduled tasks", err)
 		return
 	}
 	latest := make(map[pgtype.UUID]generated.ApplicationScheduledTaskRun, len(latestRows))
@@ -300,7 +300,7 @@ func (h *Handler) CreateScheduledTask(w http.ResponseWriter, r *http.Request) {
 		Enabled: f.enabled, TimeoutSeconds: f.timeoutSeconds, KeepRuns: f.keepRuns,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create scheduled task")
+		writeServerError(w, r, "failed to create scheduled task", err)
 		return
 	}
 	h.audit(r, "create_scheduled_task", "application_scheduled_task", uuidToString(task.ID), map[string]any{
@@ -335,7 +335,7 @@ func (h *Handler) UpdateScheduledTask(w http.ResponseWriter, r *http.Request) {
 		Enabled: f.enabled, TimeoutSeconds: f.timeoutSeconds, KeepRuns: f.keepRuns,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update scheduled task")
+		writeServerError(w, r, "failed to update scheduled task", err)
 		return
 	}
 	h.audit(r, "update_scheduled_task", "application_scheduled_task", uuidToString(task.ID), map[string]any{
@@ -353,7 +353,7 @@ func (h *Handler) DeleteScheduledTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.queries.DeleteScheduledTask(r.Context(), task.ID); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to delete scheduled task")
+		writeServerError(w, r, "failed to delete scheduled task", err)
 		return
 	}
 	h.audit(r, "delete_scheduled_task", "application_scheduled_task", uuidToString(task.ID), map[string]any{
@@ -378,7 +378,7 @@ func (h *Handler) RunScheduledTask(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, nr.Reason)
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "failed to start scheduled task")
+		writeServerError(w, r, "failed to start scheduled task", err)
 		return
 	}
 	h.audit(r, "run_scheduled_task", "application_scheduled_task", uuidToString(task.ID), map[string]any{
@@ -406,7 +406,7 @@ func (h *Handler) ListScheduledTaskRuns(w http.ResponseWriter, r *http.Request) 
 	}
 	runs, err := h.queries.ListScheduledTaskRuns(r.Context(), generated.ListScheduledTaskRunsParams{TaskID: task.ID, Limit: limit})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list runs")
+		writeServerError(w, r, "failed to list runs", err)
 		return
 	}
 	out := make([]scheduledTaskRunResponse, 0, len(runs))

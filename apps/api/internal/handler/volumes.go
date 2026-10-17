@@ -107,7 +107,7 @@ func (h *Handler) ListApplicationVolumes(w http.ResponseWriter, r *http.Request)
 
 	volumes, err := h.queries.ListApplicationVolumes(r.Context(), applicationUUID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list volumes")
+		writeServerError(w, r, "failed to list volumes", err)
 		return
 	}
 
@@ -191,7 +191,7 @@ func (h *Handler) CreateApplicationVolume(w http.ResponseWriter, r *http.Request
 			writeError(w, http.StatusConflict, "a volume with this name or mount path already exists on this application")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "failed to create volume")
+		writeServerError(w, r, "failed to create volume", err)
 		return
 	}
 
@@ -247,7 +247,7 @@ func (h *Handler) DeleteApplicationVolume(w http.ResponseWriter, r *http.Request
 	}
 
 	if err := h.queries.DeleteApplicationVolume(r.Context(), volumeUUID); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to delete volume")
+		writeServerError(w, r, "failed to delete volume", err)
 		return
 	}
 

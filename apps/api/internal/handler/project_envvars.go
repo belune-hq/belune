@@ -30,7 +30,7 @@ func (h *Handler) ListProjectEnvVars(w http.ResponseWriter, r *http.Request) {
 
 	envVars, err := h.queries.ListProjectEnvVars(r.Context(), projectUUID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list project env vars")
+		writeServerError(w, r, "failed to list project env vars", err)
 		return
 	}
 
@@ -98,7 +98,7 @@ func (h *Handler) RevealProjectEnvVar(w http.ResponseWriter, r *http.Request) {
 
 	decrypted, err := h.cfg.Keyring.Decrypt(ev.ValueEncrypted)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to decrypt value")
+		writeServerError(w, r, "failed to decrypt value", err)
 		return
 	}
 
@@ -134,7 +134,7 @@ func (h *Handler) UpdateProjectEnvVars(w http.ResponseWriter, r *http.Request) {
 
 	existingVars, err := h.queries.ListProjectEnvVars(r.Context(), projectUUID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to load existing project env vars")
+		writeServerError(w, r, "failed to load existing project env vars", err)
 		return
 	}
 	existing := make(map[string][]byte, len(existingVars))
@@ -169,7 +169,7 @@ func (h *Handler) UpdateProjectEnvVars(w http.ResponseWriter, r *http.Request) {
 			Keys:      keysOf(prepared),
 		})
 	}); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to save project env vars")
+		writeServerError(w, r, "failed to save project env vars", err)
 		return
 	}
 

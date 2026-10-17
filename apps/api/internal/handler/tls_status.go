@@ -67,7 +67,7 @@ func (h *Handler) ListDomainTLSStatus(w http.ResponseWriter, r *http.Request) {
 	// nil means unpinned; non-nil (even empty) means "only these ids."
 	pinnedIDs, err := pinnedProjectUUIDs(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "invalid pinned project")
+		writeServerError(w, r, "invalid pinned project", err)
 		return
 	}
 
@@ -76,7 +76,7 @@ func (h *Handler) ListDomainTLSStatus(w http.ResponseWriter, r *http.Request) {
 		ProjectIds: pinnedIDs,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list domain TLS status")
+		writeServerError(w, r, "failed to list domain TLS status", err)
 		return
 	}
 

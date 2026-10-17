@@ -143,7 +143,7 @@ func (h *Handler) RevealFileMount(w http.ResponseWriter, r *http.Request) {
 
 	content, err := h.cfg.Keyring.Decrypt(fm.ContentEncrypted)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to decrypt content")
+		writeServerError(w, r, "failed to decrypt content", err)
 		return
 	}
 
@@ -173,7 +173,7 @@ func (h *Handler) ListFileMounts(w http.ResponseWriter, r *http.Request) {
 
 	mounts, err := h.queries.ListApplicationFileMounts(r.Context(), applicationUUID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list file mounts")
+		writeServerError(w, r, "failed to list file mounts", err)
 		return
 	}
 
@@ -225,7 +225,7 @@ func (h *Handler) CreateFileMount(w http.ResponseWriter, r *http.Request) {
 
 	encrypted, err := h.cfg.Keyring.Encrypt([]byte(req.Content))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to encrypt content")
+		writeServerError(w, r, "failed to encrypt content", err)
 		return
 	}
 
@@ -242,7 +242,7 @@ func (h *Handler) CreateFileMount(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, "a file mount already exists at this path")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "failed to create file mount")
+		writeServerError(w, r, "failed to create file mount", err)
 		return
 	}
 
@@ -316,7 +316,7 @@ func (h *Handler) UpdateFileMount(w http.ResponseWriter, r *http.Request) {
 	if req.Content != nil {
 		encrypted, err = h.cfg.Keyring.Encrypt([]byte(*req.Content))
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to encrypt content")
+			writeServerError(w, r, "failed to encrypt content", err)
 			return
 		}
 	}
@@ -328,7 +328,7 @@ func (h *Handler) UpdateFileMount(w http.ResponseWriter, r *http.Request) {
 		FileMode:         mode,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update file mount")
+		writeServerError(w, r, "failed to update file mount", err)
 		return
 	}
 
@@ -376,7 +376,7 @@ func (h *Handler) DeleteFileMount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.queries.DeleteApplicationFileMount(r.Context(), fileMountUUID); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to delete file mount")
+		writeServerError(w, r, "failed to delete file mount", err)
 		return
 	}
 

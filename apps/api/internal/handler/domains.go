@@ -194,7 +194,7 @@ func (h *Handler) ListDomains(w http.ResponseWriter, r *http.Request) {
 
 	domains, err := h.queries.ListDomainsByApplicationWithFeatures(r.Context(), applicationUUID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list domains")
+		writeServerError(w, r, "failed to list domains", err)
 		return
 	}
 
@@ -345,14 +345,14 @@ func (h *Handler) AddDomain(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, errDomainProxyFailed) {
-			writeError(w, http.StatusInternalServerError, "failed to configure proxy for domain")
+			writeServerError(w, r, "failed to configure proxy for domain", err)
 			return
 		}
 		if errors.Is(err, errDomainResolveFailed) {
-			writeError(w, http.StatusInternalServerError, "failed to resolve project")
+			writeServerError(w, r, "failed to resolve project", err)
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "failed to add domain")
+		writeServerError(w, r, "failed to add domain", err)
 		return
 	}
 
@@ -517,7 +517,7 @@ func (h *Handler) UpdateDomain(w http.ResponseWriter, r *http.Request) {
 
 	domain, err := h.queries.UpdateDomain(r.Context(), params)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update domain")
+		writeServerError(w, r, "failed to update domain", err)
 		return
 	}
 
@@ -633,7 +633,7 @@ func (h *Handler) ListRouteFeatures(w http.ResponseWriter, r *http.Request) {
 
 	features, err := h.queries.ListRouteFeaturesByDomain(r.Context(), domainUUID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list route features")
+		writeServerError(w, r, "failed to list route features", err)
 		return
 	}
 
@@ -688,7 +688,7 @@ func (h *Handler) UpsertRouteFeature(w http.ResponseWriter, r *http.Request) {
 		Enabled:     req.Enabled,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to upsert route feature")
+		writeServerError(w, r, "failed to upsert route feature", err)
 		return
 	}
 
@@ -735,7 +735,7 @@ func (h *Handler) DeleteRouteFeature(w http.ResponseWriter, r *http.Request) {
 		DomainID: domainUUID,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to delete route feature")
+		writeServerError(w, r, "failed to delete route feature", err)
 		return
 	}
 	if deleted == 0 {
@@ -824,7 +824,7 @@ func (h *Handler) RemoveDomain(w http.ResponseWriter, r *http.Request) {
 
 	// Delete from database
 	if err := h.queries.DeleteDomain(r.Context(), domainUUID); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to remove domain")
+		writeServerError(w, r, "failed to remove domain", err)
 		return
 	}
 

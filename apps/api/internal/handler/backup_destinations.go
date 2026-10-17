@@ -190,7 +190,7 @@ func (h *Handler) ListBackupDestinations(w http.ResponseWriter, r *http.Request)
 	}
 	rows, err := h.backupDestSvc.ListByProject(r.Context(), projectUUID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list destinations")
+		writeServerError(w, r, "failed to list destinations", err)
 		return
 	}
 	resp := make([]backupDestinationResponse, 0, len(rows))
@@ -222,7 +222,7 @@ func (h *Handler) CreateBackupDestination(w http.ResponseWriter, r *http.Request
 	}
 	dest, err := h.backupDestSvc.Create(r.Context(), params)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create destination")
+		writeServerError(w, r, "failed to create destination", err)
 		return
 	}
 	h.audit(r, "create_backup_destination", "project", uuidToString(projectUUID), map[string]any{"destination_id": uuidToString(dest.ID)})
@@ -264,7 +264,7 @@ func (h *Handler) UpdateBackupDestination(w http.ResponseWriter, r *http.Request
 				locked.BackupCount))
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "failed to update destination")
+		writeServerError(w, r, "failed to update destination", err)
 		return
 	}
 	h.audit(r, "update_backup_destination", "project", uuidToString(projectUUID), map[string]any{"destination_id": uuidToString(dest.ID)})

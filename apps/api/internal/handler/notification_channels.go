@@ -130,7 +130,7 @@ func (h *Handler) ListNotificationEvents(w http.ResponseWriter, r *http.Request)
 func (h *Handler) ListNotificationChannels(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.notifyChannelSvc.List(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list notification channels")
+		writeServerError(w, r, "failed to list notification channels", err)
 		return
 	}
 	resp := make([]notificationChannelResponse, 0, len(rows))
@@ -160,7 +160,7 @@ func (h *Handler) CreateNotificationChannel(w http.ResponseWriter, r *http.Reque
 
 	ch, err := h.notifyChannelSvc.Create(r.Context(), middleware.UserIDFromContext(r.Context()), req.toSaveParams())
 	if err != nil {
-		writeChannelError(w, err)
+		writeChannelError(w, r, err)
 		return
 	}
 	h.audit(r, "create_notification_channel", "notification_channel", uuidToString(ch.ID), map[string]any{
@@ -192,7 +192,7 @@ func (h *Handler) UpdateNotificationChannel(w http.ResponseWriter, r *http.Reque
 
 	ch, err := h.notifyChannelSvc.Update(r.Context(), id, req.toSaveParams())
 	if err != nil {
-		writeChannelError(w, err)
+		writeChannelError(w, r, err)
 		return
 	}
 	h.audit(r, "update_notification_channel", "notification_channel", uuidToString(id), map[string]any{
@@ -227,7 +227,7 @@ func (h *Handler) SetNotificationChannelEnabled(w http.ResponseWriter, r *http.R
 			writeError(w, http.StatusNotFound, "notification channel not found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "failed to update channel")
+		writeServerError(w, r, "failed to update channel", err)
 		return
 	}
 	h.audit(r, "set_notification_channel_enabled", "notification_channel", uuidToString(id), map[string]any{
@@ -247,7 +247,7 @@ func (h *Handler) DeleteNotificationChannel(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if err := h.notifyChannelSvc.Delete(r.Context(), id); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to delete channel")
+		writeServerError(w, r, "failed to delete channel", err)
 		return
 	}
 	h.audit(r, "delete_notification_channel", "notification_channel", uuidToString(id), nil)
@@ -325,7 +325,7 @@ func (h *Handler) channelIDFromPath(w http.ResponseWriter, r *http.Request) (pgt
 // UI-friendly message: validation problems and unknown types/events are the
 // operator's to fix (400), a duplicate name is a conflict (409), a missing row
 // is 404, everything else is a generic 500.
-func writeChannelError(w http.ResponseWriter, err error) {
+func writeChannelError(w http.ResponseWriter, r *http.Request, err error) {
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "notification channel not found")
 		return
@@ -342,6 +342,6 @@ func writeChannelError(w http.ResponseWriter, err error) {
 		strings.Contains(msg, "invalid config"):
 		writeError(w, http.StatusBadRequest, msg)
 	default:
-		writeError(w, http.StatusInternalServerError, "failed to save notification channel")
+		writeServerError(w, r, "failed to save notification channel", err)
 	}
 }

@@ -23,7 +23,7 @@ import (
 func (h *Handler) ListCertificates(w http.ResponseWriter, r *http.Request) {
 	certs, err := h.certSvc.ListCertificates(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list certificates")
+		writeServerError(w, r, "failed to list certificates", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, certs)
@@ -65,7 +65,7 @@ func (h *Handler) ListUsableCertificates(w http.ResponseWriter, r *http.Request)
 
 	certs, err := h.certSvc.CertificatesForHostname(r.Context(), hostname)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list certificates")
+		writeServerError(w, r, "failed to list certificates", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, certs)
@@ -135,7 +135,7 @@ func (h *Handler) DeleteCertificate(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, err.Error())
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "failed to delete certificate")
+		writeServerError(w, r, "failed to delete certificate", err)
 		return
 	}
 

@@ -63,7 +63,7 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		ServerID: serverID,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create project")
+		writeServerError(w, r, "failed to create project", err)
 		return
 	}
 
@@ -137,7 +137,7 @@ func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {
 	if role == "admin" {
 		projects, err := h.queries.ListAllProjects(r.Context())
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to list projects")
+			writeServerError(w, r, "failed to list projects", err)
 			return
 		}
 		writeJSON(w, http.StatusOK, filterProjectsByPin(projects, pinnedIDs, func(p generated.ListAllProjectsRow) pgtype.UUID { return p.ID }))
@@ -149,7 +149,7 @@ func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {
 
 	projects, err := h.queries.ListProjectsByUser(r.Context(), userID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list projects")
+		writeServerError(w, r, "failed to list projects", err)
 		return
 	}
 
@@ -217,7 +217,7 @@ func (h *Handler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 		Name: req.Name,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update project")
+		writeServerError(w, r, "failed to update project", err)
 		return
 	}
 
@@ -241,7 +241,7 @@ func (h *Handler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.projService.Delete(r.Context(), uuid); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to delete project")
+		writeServerError(w, r, "failed to delete project", err)
 		return
 	}
 
@@ -297,7 +297,7 @@ func (h *Handler) TransferProject(w http.ResponseWriter, r *http.Request) {
 		UserID: newOwnerID,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to transfer project")
+		writeServerError(w, r, "failed to transfer project", err)
 		return
 	}
 
@@ -337,7 +337,7 @@ func (h *Handler) UpdateProjectSharing(w http.ResponseWriter, r *http.Request) {
 		Shared: req.Shared,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update project sharing")
+		writeServerError(w, r, "failed to update project sharing", err)
 		return
 	}
 

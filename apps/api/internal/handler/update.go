@@ -113,7 +113,7 @@ func (h *Handler) TriggerSelfUpdate(w http.ResponseWriter, r *http.Request) {
 
 	workingDir, err := h.selfWorkingDir(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, r, err.Error(), err)
 		return
 	}
 
@@ -270,7 +270,7 @@ func (h *Handler) TriggerUpdateCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := h.asynq.Enqueue(asynq.NewTask(worker.TypeUpdateCheck, nil), asynq.Queue("low")); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to queue the update check")
+		writeServerError(w, r, "failed to queue the update check", err)
 		return
 	}
 	// 202, not 200: the worker fetches the manifest after this returns, so the

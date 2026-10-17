@@ -121,13 +121,13 @@ func (h *Handler) ListAuditLogs(w http.ResponseWriter, r *http.Request) {
 
 	logs, err := h.queries.ListAuditLogsFiltered(r.Context(), f.listParams(limit, offset))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list audit logs")
+		writeServerError(w, r, "failed to list audit logs", err)
 		return
 	}
 
 	count, err := h.queries.CountAuditLogsFiltered(r.Context(), f.countParams())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to count audit logs")
+		writeServerError(w, r, "failed to count audit logs", err)
 		return
 	}
 
@@ -146,7 +146,7 @@ func (h *Handler) ListAuditLogs(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListAuditActions(w http.ResponseWriter, r *http.Request) {
 	actions, err := h.queries.ListDistinctAuditActions(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list audit actions")
+		writeServerError(w, r, "failed to list audit actions", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, actions)
@@ -168,7 +168,7 @@ func (h *Handler) ExportAuditLogs(w http.ResponseWriter, r *http.Request) {
 	// Bound the export rather than streaming unboundedly.
 	logs, err := h.queries.ListAuditLogsFiltered(r.Context(), f.listParams(10000, 0))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to export audit logs")
+		writeServerError(w, r, "failed to export audit logs", err)
 		return
 	}
 

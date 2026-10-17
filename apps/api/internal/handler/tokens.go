@@ -88,7 +88,7 @@ func (h *Handler) ListAPITokens(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := h.queries.ListAPITokensByUser(r.Context(), userUUID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list tokens")
+		writeServerError(w, r, "failed to list tokens", err)
 		return
 	}
 
@@ -253,7 +253,7 @@ func (h *Handler) CreateAPIToken(w http.ResponseWriter, r *http.Request) {
 		ProjectIDs:  pinnedIDs,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create token")
+		writeServerError(w, r, "failed to create token", err)
 		return
 	}
 
@@ -308,7 +308,7 @@ func (h *Handler) DeleteAPIToken(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "token not found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "failed to delete token")
+		writeServerError(w, r, "failed to delete token", err)
 		return
 	}
 

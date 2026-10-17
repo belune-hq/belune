@@ -34,12 +34,12 @@ func (h *Handler) ListQuotas(w http.ResponseWriter, r *http.Request) {
 	// NULL and sees everything.
 	pinnedIDs, err := pinnedProjectUUIDs(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "invalid pinned project")
+		writeServerError(w, r, "invalid pinned project", err)
 		return
 	}
 	rows, err := h.queries.ListQuotas(r.Context(), pinnedIDs)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list quotas")
+		writeServerError(w, r, "failed to list quotas", err)
 		return
 	}
 
@@ -47,7 +47,7 @@ func (h *Handler) ListQuotas(w http.ResponseWriter, r *http.Request) {
 	for _, row := range rows {
 		v, err := h.buildQuotaView(r, row.Scope, row.ScopeID, quota.LimitsFromRow(row))
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to compute quota usage")
+			writeServerError(w, r, "failed to compute quota usage", err)
 			return
 		}
 		views = append(views, v)
@@ -77,12 +77,12 @@ func (h *Handler) GetQuota(w http.ResponseWriter, r *http.Request) {
 	}
 	limits, err := h.quotaSvc.LimitsFor(r.Context(), scope, scopeID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to get quota")
+		writeServerError(w, r, "failed to get quota", err)
 		return
 	}
 	view, err := h.buildQuotaView(r, scope, scopeID, limits)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to compute quota usage")
+		writeServerError(w, r, "failed to compute quota usage", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, view)
@@ -140,7 +140,7 @@ func (h *Handler) UpsertQuota(w http.ResponseWriter, r *http.Request) {
 		MaxMemoryMb:     mem,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to save quota")
+		writeServerError(w, r, "failed to save quota", err)
 		return
 	}
 	h.audit(r, "upsert_quota", "quota", uuidToString(row.ID), map[string]any{
@@ -152,7 +152,7 @@ func (h *Handler) UpsertQuota(w http.ResponseWriter, r *http.Request) {
 
 	view, err := h.buildQuotaView(r, scope, scopeID, quota.LimitsFromRow(row))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to compute quota usage")
+		writeServerError(w, r, "failed to compute quota usage", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, view)
@@ -183,7 +183,7 @@ func (h *Handler) DeleteQuota(w http.ResponseWriter, r *http.Request) {
 	prior, _ := h.quotaSvc.LimitsFor(r.Context(), scope, scopeID)
 
 	if err := h.queries.DeleteQuota(r.Context(), generated.DeleteQuotaParams{Scope: scope, ScopeID: scopeID}); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to delete quota")
+		writeServerError(w, r, "failed to delete quota", err)
 		return
 	}
 	h.audit(r, "delete_quota", "quota", uuidToString(scopeID), map[string]any{

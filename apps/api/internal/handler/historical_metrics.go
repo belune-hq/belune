@@ -70,7 +70,7 @@ func (h *Handler) GetHostHistoricalMetrics(w http.ResponseWriter, r *http.Reques
 		rows, err = h.queries.GetHostMetrics(r.Context(), pgtype.Timestamptz{Time: since, Valid: true})
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to fetch host metrics")
+		writeServerError(w, r, "failed to fetch host metrics", err)
 		return
 	}
 

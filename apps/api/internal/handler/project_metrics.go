@@ -55,7 +55,7 @@ func (h *Handler) GetProjectMetrics(w http.ResponseWriter, r *http.Request) {
 
 	apps, err := h.queries.ListApplicationsByProject(ctx, projectUUID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list applications")
+		writeServerError(w, r, "failed to list applications", err)
 		return
 	}
 

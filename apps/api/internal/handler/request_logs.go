@@ -40,7 +40,7 @@ func (h *Handler) ListRequestLogs(w http.ResponseWriter, r *http.Request) {
 		Offset:        offset,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list request logs")
+		writeServerError(w, r, "failed to list request logs", err)
 		return
 	}
 
@@ -67,7 +67,7 @@ func (h *Handler) StreamRequestLogs(w http.ResponseWriter, r *http.Request) {
 
 	writer, err := sse.NewWriter(w)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "streaming not supported")
+		writeServerError(w, r, "streaming not supported", err)
 		return
 	}
 
@@ -172,7 +172,7 @@ func (h *Handler) ListAllRequestLogs(w http.ResponseWriter, r *http.Request) {
 	// what the WebSocket has refused since v0.1.12.
 	pinnedIDs, err := pinnedProjectUUIDs(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "invalid pinned project")
+		writeServerError(w, r, "invalid pinned project", err)
 		return
 	}
 
@@ -234,7 +234,7 @@ func (h *Handler) GetAllRequestsSummary(w http.ResponseWriter, r *http.Request) 
 	// but can still count them, time them and watch them by the minute.
 	pinnedIDs, err := pinnedProjectUUIDs(ctx)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "invalid pinned project")
+		writeServerError(w, r, "invalid pinned project", err)
 		return
 	}
 
@@ -335,7 +335,7 @@ func (h *Handler) StreamAllRequestLogs(w http.ResponseWriter, r *http.Request) {
 
 	writer, err := sse.NewWriter(w)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "streaming not supported")
+		writeServerError(w, r, "streaming not supported", err)
 		return
 	}
 

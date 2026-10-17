@@ -56,7 +56,7 @@ func (h *Handler) SetResources(w http.ResponseWriter, r *http.Request) {
 		MemoryLimit: req.MemoryLimit,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update resources")
+		writeServerError(w, r, "failed to update resources", err)
 		return
 	}
 

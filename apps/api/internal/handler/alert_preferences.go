@@ -50,7 +50,7 @@ func (h *Handler) GetAlertPreferences(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, defaultAlertPreferences())
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "failed to fetch alert preferences")
+		writeServerError(w, r, "failed to fetch alert preferences", err)
 		return
 	}
 
@@ -104,7 +104,7 @@ func (h *Handler) UpdateAlertPreferences(w http.ResponseWriter, r *http.Request)
 		QuotaThresholdPercent: req.QuotaThresholdPercent,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update alert preferences")
+		writeServerError(w, r, "failed to update alert preferences", err)
 		return
 	}
 

@@ -21,7 +21,7 @@ import (
 func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	users, err := h.queries.ListUsers(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list users")
+		writeServerError(w, r, "failed to list users", err)
 		return
 	}
 
@@ -71,7 +71,7 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, "user already exists")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "failed to create user")
+		writeServerError(w, r, "failed to create user", err)
 		return
 	}
 
@@ -122,7 +122,7 @@ func (h *Handler) UpdateUserRole(w http.ResponseWriter, r *http.Request) {
 	if target.Role == "admin" && req.Role != "admin" {
 		count, err := h.queries.CountAdmins(r.Context())
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to check admin count")
+			writeServerError(w, r, "failed to check admin count", err)
 			return
 		}
 		if count <= 1 {
@@ -136,7 +136,7 @@ func (h *Handler) UpdateUserRole(w http.ResponseWriter, r *http.Request) {
 		Role: req.Role,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update user role")
+		writeServerError(w, r, "failed to update user role", err)
 		return
 	}
 
@@ -178,7 +178,7 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	if target.Role == "admin" {
 		count, err := h.queries.CountAdmins(r.Context())
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to check admin count")
+			writeServerError(w, r, "failed to check admin count", err)
 			return
 		}
 		if count <= 1 {
@@ -188,7 +188,7 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.queries.DeleteUser(r.Context(), uuid); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to delete user")
+		writeServerError(w, r, "failed to delete user", err)
 		return
 	}
 
@@ -232,7 +232,7 @@ func (h *Handler) ResetUserPassword(w http.ResponseWriter, r *http.Request) {
 	callerID.Scan(middleware.UserIDFromContext(r.Context()))
 	caller, err := h.queries.GetUserByID(r.Context(), callerID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to get caller")
+		writeServerError(w, r, "failed to get caller", err)
 		return
 	}
 	if bcrypt.CompareHashAndPassword([]byte(caller.PasswordHash), []byte(req.CurrentPassword)) != nil {
@@ -242,7 +242,7 @@ func (h *Handler) ResetUserPassword(w http.ResponseWriter, r *http.Request) {
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to hash password")
+		writeServerError(w, r, "failed to hash password", err)
 		return
 	}
 
@@ -250,7 +250,7 @@ func (h *Handler) ResetUserPassword(w http.ResponseWriter, r *http.Request) {
 		ID:           uuid,
 		PasswordHash: string(hash),
 	}); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to reset password")
+		writeServerError(w, r, "failed to reset password", err)
 		return
 	}
 

@@ -39,7 +39,7 @@ func (h *Handler) StreamLogs(w http.ResponseWriter, r *http.Request) {
 
 	writer, err := sse.NewWriter(w)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "streaming not supported")
+		writeServerError(w, r, "streaming not supported", err)
 		return
 	}
 
@@ -166,7 +166,7 @@ func (h *Handler) listContainerLogSessions(w http.ResponseWriter, r *http.Reques
 		Limit:      maxLogSessions,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list log sessions")
+		writeServerError(w, r, "failed to list log sessions", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, sessions)
@@ -227,7 +227,7 @@ func (h *Handler) listContainerLogs(w http.ResponseWriter, r *http.Request, sour
 
 	logs, err := h.queries.SearchContainerLogs(r.Context(), params)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list logs")
+		writeServerError(w, r, "failed to list logs", err)
 		return
 	}
 

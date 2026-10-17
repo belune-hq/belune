@@ -150,7 +150,7 @@ func (h *Handler) InviteUser(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListPendingInvitations(w http.ResponseWriter, r *http.Request) {
 	invs, err := h.queries.ListPendingInvitations(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list invitations")
+		writeServerError(w, r, "failed to list invitations", err)
 		return
 	}
 	out := make([]invitationResponse, len(invs))
@@ -325,7 +325,7 @@ func (h *Handler) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
 
 	csrfToken, err := middleware.GenerateCSRFToken()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to generate csrf token")
+		writeServerError(w, r, "failed to generate csrf token", err)
 		return
 	}
 

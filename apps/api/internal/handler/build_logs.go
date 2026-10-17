@@ -58,7 +58,7 @@ func (h *Handler) StreamBuildLogs(w http.ResponseWriter, r *http.Request) {
 
 	writer, err := sse.NewWriter(w)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "streaming not supported")
+		writeServerError(w, r, "streaming not supported", err)
 		return
 	}
 

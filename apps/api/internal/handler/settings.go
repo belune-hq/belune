@@ -44,7 +44,7 @@ func (h *Handler) instanceName(ctx context.Context) string {
 func (h *Handler) ListSettings(w http.ResponseWriter, r *http.Request) {
 	settings, err := h.queries.ListSettings(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list settings")
+		writeServerError(w, r, "failed to list settings", err)
 		return
 	}
 
@@ -230,7 +230,7 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 			Key:   s.Key,
 			Value: s.Value,
 		}); err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to update setting")
+			writeServerError(w, r, "failed to update setting", err)
 			return
 		}
 	}

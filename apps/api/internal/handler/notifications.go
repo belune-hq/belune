@@ -43,13 +43,13 @@ func (h *Handler) ListNotifications(w http.ResponseWriter, r *http.Request) {
 		Offset: offset,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list notifications")
+		writeServerError(w, r, "failed to list notifications", err)
 		return
 	}
 
 	unread, err := h.queries.CountUnreadNotifications(r.Context(), userUUID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to count notifications")
+		writeServerError(w, r, "failed to count notifications", err)
 		return
 	}
 
@@ -74,7 +74,7 @@ func (h *Handler) UnreadNotificationCount(w http.ResponseWriter, r *http.Request
 	}
 	unread, err := h.queries.CountUnreadNotifications(r.Context(), userUUID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to count notifications")
+		writeServerError(w, r, "failed to count notifications", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"unread": unread})
@@ -124,7 +124,7 @@ func (h *Handler) MarkAllNotificationsRead(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err := h.queries.MarkAllNotificationsRead(r.Context(), userUUID); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to mark notifications read")
+		writeServerError(w, r, "failed to mark notifications read", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -146,7 +146,7 @@ func (h *Handler) StreamNotifications(w http.ResponseWriter, r *http.Request) {
 
 	writer, err := sse.NewWriter(w)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "streaming not supported")
+		writeServerError(w, r, "streaming not supported", err)
 		return
 	}
 

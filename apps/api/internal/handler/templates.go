@@ -94,7 +94,7 @@ type dbSpec struct {
 func (h *Handler) ListTemplates(w http.ResponseWriter, r *http.Request) {
 	cat, err := template.Default()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "template catalog unavailable")
+		writeServerError(w, r, "template catalog unavailable", err)
 		return
 	}
 	list := cat.List()
@@ -113,7 +113,7 @@ func (h *Handler) ListTemplates(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetTemplate(w http.ResponseWriter, r *http.Request) {
 	cat, err := template.Default()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "template catalog unavailable")
+		writeServerError(w, r, "template catalog unavailable", err)
 		return
 	}
 	m, ok := cat.Get(chi.URLParam(r, "templateId"))
@@ -160,7 +160,7 @@ type instantiateTemplateResponse struct {
 func (h *Handler) InstantiateTemplate(w http.ResponseWriter, r *http.Request) {
 	cat, err := template.Default()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "template catalog unavailable")
+		writeServerError(w, r, "template catalog unavailable", err)
 		return
 	}
 	m, ok := cat.Get(chi.URLParam(r, "templateId"))
@@ -324,7 +324,7 @@ func (h *Handler) InstantiateTemplate(w http.ResponseWriter, r *http.Request) {
 			encrypted, err := h.cfg.Keyring.Encrypt([]byte(val))
 			if err != nil {
 				rollback()
-				writeError(w, http.StatusInternalServerError, "failed to encrypt env var")
+				writeServerError(w, r, "failed to encrypt env var", err)
 				return
 			}
 			if _, err := h.queries.UpsertEnvVar(ctx, generated.UpsertEnvVarParams{
@@ -334,7 +334,7 @@ func (h *Handler) InstantiateTemplate(w http.ResponseWriter, r *http.Request) {
 				IsSecret:       true,
 			}); err != nil {
 				rollback()
-				writeError(w, http.StatusInternalServerError, "failed to save env var")
+				writeServerError(w, r, "failed to save env var", err)
 				return
 			}
 		}
@@ -433,7 +433,7 @@ func (h *Handler) UpdateApplicationRuntime(w http.ResponseWriter, r *http.Reques
 		ReadonlyRootfs: req.ReadonlyRootfs,
 		ContainerCaps:  req.ContainerCaps,
 	}); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update runtime profile")
+		writeServerError(w, r, "failed to update runtime profile", err)
 		return
 	}
 

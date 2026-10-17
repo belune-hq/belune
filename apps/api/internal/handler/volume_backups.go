@@ -95,7 +95,7 @@ func (h *Handler) ListBackupConfigsForVolume(w http.ResponseWriter, r *http.Requ
 	}
 	configs, err := h.queries.ListApplicationVolumeBackupConfigs(r.Context(), vol.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list backup configs")
+		writeServerError(w, r, "failed to list backup configs", err)
 		return
 	}
 	out := make([]volumeBackupConfigResponse, 0, len(configs))
@@ -137,7 +137,7 @@ func (h *Handler) ListBackupConfigsForApplication(w http.ResponseWriter, r *http
 	}
 	rows, err := h.queries.ListApplicationVolumeBackupConfigsForApp(r.Context(), appUUID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list backup configs")
+		writeServerError(w, r, "failed to list backup configs", err)
 		return
 	}
 	out := make([]appVolumeBackupConfigResponse, 0, len(rows))
@@ -241,7 +241,7 @@ func (h *Handler) CreateVolumeBackupConfig(w http.ResponseWriter, r *http.Reques
 		Timezone:            tz,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create backup config")
+		writeServerError(w, r, "failed to create backup config", err)
 		return
 	}
 	h.audit(r, "create_volume_backup_config", "application_volume_backup_config", uuidToString(cfg.ID), map[string]any{
@@ -297,7 +297,7 @@ func (h *Handler) UpdateVolumeBackupConfig(w http.ResponseWriter, r *http.Reques
 		Timezone:      tz,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update backup config")
+		writeServerError(w, r, "failed to update backup config", err)
 		return
 	}
 	h.audit(r, "update_volume_backup_config", "application_volume_backup_config", uuidToString(cfg.ID), nil)
@@ -333,13 +333,13 @@ func (h *Handler) DeleteVolumeBackupConfig(w http.ResponseWriter, r *http.Reques
 			}
 		}
 		if err := h.backupDestSvc.PurgeVolumeBackupObjects(r.Context(), owned, cfg.ID); err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to remove backup objects from destination")
+			writeServerError(w, r, "failed to remove backup objects from destination", err)
 			return
 		}
 	}
 
 	if err := h.queries.DeleteApplicationVolumeBackupConfig(r.Context(), cfg.ID); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to delete backup config")
+		writeServerError(w, r, "failed to delete backup config", err)
 		return
 	}
 	h.audit(r, "delete_volume_backup_config", "application_volume_backup_config", uuidToString(cfg.ID), nil)
@@ -366,7 +366,7 @@ func (h *Handler) RunVolumeBackupConfig(w http.ResponseWriter, r *http.Request) 
 		"backup_config_id":      uuidToString(cfg.ID),
 	})
 	if _, err := h.asynq.Enqueue(asynq.NewTask(worker.TypeBackupVolume, payload), asynq.Queue("default"), asynq.MaxRetry(1)); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to enqueue backup")
+		writeServerError(w, r, "failed to enqueue backup", err)
 		return
 	}
 	h.audit(r, "run_volume_backup", "application_volume", uuidToString(vol.ID), map[string]any{"config_id": uuidToString(cfg.ID)})
@@ -398,7 +398,7 @@ func (h *Handler) ListVolumeBackups(w http.ResponseWriter, r *http.Request) {
 		Limit:               50,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list backups")
+		writeServerError(w, r, "failed to list backups", err)
 		return
 	}
 	out := make([]volumeBackupResponse, 0, len(runs))
@@ -456,7 +456,7 @@ func (h *Handler) RestoreVolumeBackup(w http.ResponseWriter, r *http.Request) {
 		"backup_id":             uuidToString(bk.ID),
 	})
 	if _, err := h.asynq.Enqueue(asynq.NewTask(worker.TypeRestoreVolume, payload), asynq.Queue("critical")); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to enqueue restore")
+		writeServerError(w, r, "failed to enqueue restore", err)
 		return
 	}
 	h.audit(r, "restore_volume", "application_volume", uuidToString(vol.ID), map[string]any{"backup_id": uuidToString(bk.ID)})
@@ -488,7 +488,7 @@ func (h *Handler) ListVolumeRestores(w http.ResponseWriter, r *http.Request) {
 		Limit:               50,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list restores")
+		writeServerError(w, r, "failed to list restores", err)
 		return
 	}
 	out := make([]volumeRestoreResponse, 0, len(runs))

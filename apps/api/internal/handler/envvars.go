@@ -145,7 +145,7 @@ func (h *Handler) ListEnvVars(w http.ResponseWriter, r *http.Request) {
 
 	envVars, err := h.queries.ListEnvVarsByApplication(r.Context(), applicationUUID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list env vars")
+		writeServerError(w, r, "failed to list env vars", err)
 		return
 	}
 
@@ -213,7 +213,7 @@ func (h *Handler) RevealEnvVar(w http.ResponseWriter, r *http.Request) {
 
 	decrypted, err := h.cfg.Keyring.Decrypt(ev.ValueEncrypted)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to decrypt value")
+		writeServerError(w, r, "failed to decrypt value", err)
 		return
 	}
 
@@ -264,7 +264,7 @@ func (h *Handler) UpdateEnvVars(w http.ResponseWriter, r *http.Request) {
 
 	existingVars, err := h.queries.ListEnvVarsByApplication(r.Context(), applicationUUID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to load existing env vars")
+		writeServerError(w, r, "failed to load existing env vars", err)
 		return
 	}
 	existing := make(map[string][]byte, len(existingVars))
@@ -302,7 +302,7 @@ func (h *Handler) UpdateEnvVars(w http.ResponseWriter, r *http.Request) {
 			Keys:          keysOf(prepared),
 		})
 	}); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to save env vars")
+		writeServerError(w, r, "failed to save env vars", err)
 		return
 	}
 

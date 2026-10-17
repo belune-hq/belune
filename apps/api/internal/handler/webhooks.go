@@ -172,7 +172,7 @@ func (h *Handler) UpdateApplicationWebhook(w http.ResponseWriter, r *http.Reques
 		AutoDeployBranch:       branch,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update webhook settings")
+		writeServerError(w, r, "failed to update webhook settings", err)
 		return
 	}
 

@@ -116,7 +116,7 @@ func (h *Handler) SetHealthCheck(w http.ResponseWriter, r *http.Request) {
 			ContainerPort: port,
 		})
 	}); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update health check")
+		writeServerError(w, r, "failed to update health check", err)
 		return
 	}
 
@@ -134,7 +134,7 @@ func (h *Handler) SetHealthCheck(w http.ResponseWriter, r *http.Request) {
 	// Re-read: the health-check statement's returned row predates the port write.
 	app, err := h.queries.GetApplication(r.Context(), applicationUUID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to read the updated application")
+		writeServerError(w, r, "failed to read the updated application", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toApplicationResponse(app))

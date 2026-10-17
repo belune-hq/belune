@@ -153,7 +153,7 @@ func (h *Handler) TriggerCleanup(w http.ResponseWriter, r *http.Request) {
 	payload, _ := json.Marshal(req)
 	task := asynq.NewTask("cleanup", payload)
 	if _, err := h.asynq.Enqueue(task, asynq.Queue("low")); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to enqueue cleanup task")
+		writeServerError(w, r, "failed to enqueue cleanup task", err)
 		return
 	}
 

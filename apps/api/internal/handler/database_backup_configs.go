@@ -158,7 +158,7 @@ func (h *Handler) ListDatabaseBackupConfigs(w http.ResponseWriter, r *http.Reque
 	}
 	rows, err := h.queries.ListDatabaseBackupConfigs(r.Context(), db.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list backup configs")
+		writeServerError(w, r, "failed to list backup configs", err)
 		return
 	}
 	resp := make([]databaseBackupConfigResponse, 0, len(rows))
@@ -209,7 +209,7 @@ func (h *Handler) CreateDatabaseBackupConfig(w http.ResponseWriter, r *http.Requ
 		Timezone:       tz,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create backup config")
+		writeServerError(w, r, "failed to create backup config", err)
 		return
 	}
 	h.audit(r, "create_backup_config", "database", uuidToString(db.ID), map[string]any{"config_id": uuidToString(cfg.ID)})
@@ -276,7 +276,7 @@ func (h *Handler) UpdateDatabaseBackupConfig(w http.ResponseWriter, r *http.Requ
 		Timezone:       tz,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update backup config")
+		writeServerError(w, r, "failed to update backup config", err)
 		return
 	}
 	h.audit(r, "update_backup_config", "database", uuidToString(db.ID), map[string]any{"config_id": uuidToString(cfg.ID)})
@@ -316,7 +316,7 @@ func (h *Handler) DeleteDatabaseBackupConfig(w http.ResponseWriter, r *http.Requ
 	}
 
 	if err := h.queries.DeleteDatabaseBackupConfig(r.Context(), cfg.ID); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to delete backup config")
+		writeServerError(w, r, "failed to delete backup config", err)
 		return
 	}
 	h.audit(r, "delete_backup_config", "database", uuidToString(db.ID), map[string]any{"config_id": uuidToString(cfg.ID)})
@@ -356,11 +356,11 @@ func (h *Handler) RunDatabaseBackupConfig(w http.ResponseWriter, r *http.Request
 		"backup_config_id": uuidToString(cfg.ID),
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create backup task")
+		writeServerError(w, r, "failed to create backup task", err)
 		return
 	}
 	if _, err := h.asynq.Enqueue(asynq.NewTask(worker.TypeBackupDB, payload), asynq.Queue("default"), asynq.MaxRetry(1)); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to enqueue backup task")
+		writeServerError(w, r, "failed to enqueue backup task", err)
 		return
 	}
 	h.audit(r, "run_backup_config", "database", uuidToString(db.ID), map[string]any{"config_id": uuidToString(cfg.ID)})
@@ -392,7 +392,7 @@ func (h *Handler) ListProjectBackups(w http.ResponseWriter, r *http.Request) {
 		Limit:     50,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list backups")
+		writeServerError(w, r, "failed to list backups", err)
 		return
 	}
 	resp := make([]projectBackupActivityResponse, 0, len(rows))

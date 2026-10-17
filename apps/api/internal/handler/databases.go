@@ -380,7 +380,7 @@ func (h *Handler) ListDatabases(w http.ResponseWriter, r *http.Request) {
 
 	databases, err := h.queries.ListDatabasesByProject(r.Context(), projectUUID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list databases")
+		writeServerError(w, r, "failed to list databases", err)
 		return
 	}
 
@@ -519,12 +519,12 @@ func (h *Handler) RevealDatabaseCredentials(w http.ResponseWriter, r *http.Reque
 	if len(db.CredentialsEncrypted) > 0 {
 		credsJSON, err := h.cfg.Keyring.Decrypt(db.CredentialsEncrypted)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to decrypt credentials")
+			writeServerError(w, r, "failed to decrypt credentials", err)
 			return
 		}
 		var creds map[string]string
 		if err := json.Unmarshal(credsJSON, &creds); err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to decrypt credentials")
+			writeServerError(w, r, "failed to decrypt credentials", err)
 			return
 		}
 		resp.Credentials = creds
@@ -636,17 +636,17 @@ func (h *Handler) SetDatabaseExternalAccess(w http.ResponseWriter, r *http.Reque
 		ID:     dbUUID,
 		Status: status.DatabaseCreating,
 	}); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update database")
+		writeServerError(w, r, "failed to update database", err)
 		return
 	}
 
 	payload, err := json.Marshal(map[string]any{"database_id": databaseID, "enable": req.Enabled})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create reconfigure task")
+		writeServerError(w, r, "failed to create reconfigure task", err)
 		return
 	}
 	if _, err := h.asynq.Enqueue(asynq.NewTask("reconfigure_db", payload), asynq.Queue("critical")); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to enqueue reconfigure task")
+		writeServerError(w, r, "failed to enqueue reconfigure task", err)
 		return
 	}
 
@@ -704,7 +704,7 @@ func (h *Handler) SetDatabaseResources(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "failed to update database")
+		writeServerError(w, r, "failed to update database", err)
 		return
 	}
 
@@ -792,7 +792,7 @@ func (h *Handler) ListDatabaseBackups(w http.ResponseWriter, r *http.Request) {
 		Limit:      50,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list backups")
+		writeServerError(w, r, "failed to list backups", err)
 		return
 	}
 
@@ -835,7 +835,7 @@ func (h *Handler) ListDatabaseRestores(w http.ResponseWriter, r *http.Request) {
 		Limit:      50,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list restores")
+		writeServerError(w, r, "failed to list restores", err)
 		return
 	}
 	out := make([]databaseRestoreResponse, 0, len(runs))
@@ -928,13 +928,13 @@ func (h *Handler) BackupDatabase(w http.ResponseWriter, r *http.Request) {
 
 	payload, err := json.Marshal(map[string]any{"database_id": databaseID})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create backup task")
+		writeServerError(w, r, "failed to create backup task", err)
 		return
 	}
 	// MaxRetry(1): a backup is user-triggered and records a run row on each
 	// attempt, so avoid asynq's default 25 retries spraying failed rows.
 	if _, err := h.asynq.Enqueue(asynq.NewTask("backup_db", payload), asynq.Queue("default"), asynq.MaxRetry(1)); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to enqueue backup task")
+		writeServerError(w, r, "failed to enqueue backup task", err)
 		return
 	}
 
@@ -1002,11 +1002,11 @@ func (h *Handler) RestoreDatabase(w http.ResponseWriter, r *http.Request) {
 
 	payload, err := json.Marshal(map[string]any{"database_id": databaseID, "backup_id": req.BackupID})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create restore task")
+		writeServerError(w, r, "failed to create restore task", err)
 		return
 	}
 	if _, err := h.asynq.Enqueue(asynq.NewTask("restore_db", payload), asynq.Queue("critical")); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to enqueue restore task")
+		writeServerError(w, r, "failed to enqueue restore task", err)
 		return
 	}
 
@@ -1075,19 +1075,19 @@ func (h *Handler) UpgradeDatabase(w http.ResponseWriter, r *http.Request) {
 		ID:     dbUUID,
 		Status: status.DatabaseUpgrading,
 	}); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update database")
+		writeServerError(w, r, "failed to update database", err)
 		return
 	}
 
 	payload, err := json.Marshal(map[string]any{"database_id": databaseID, "target_version": req.TargetVersion})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create upgrade task")
+		writeServerError(w, r, "failed to create upgrade task", err)
 		return
 	}
 	// No auto-retry: the worker performs its own dump-and-rollback; a blind retry
 	// could re-run a destructive step.
 	if _, err := h.asynq.Enqueue(asynq.NewTask("upgrade_db", payload), asynq.Queue("critical"), asynq.MaxRetry(0)); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to enqueue upgrade task")
+		writeServerError(w, r, "failed to enqueue upgrade task", err)
 		return
 	}
 
@@ -1123,7 +1123,7 @@ func (h *Handler) StopDatabase(w http.ResponseWriter, r *http.Request) {
 
 	rt, err := h.runtimeForDatabase(r.Context(), dbUUID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to reach the database's server")
+		writeServerError(w, r, "failed to reach the database's server", err)
 		return
 	}
 
@@ -1139,7 +1139,7 @@ func (h *Handler) StopDatabase(w http.ResponseWriter, r *http.Request) {
 		Status: status.DatabaseStopped,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update database status")
+		writeServerError(w, r, "failed to update database status", err)
 		return
 	}
 
@@ -1173,7 +1173,7 @@ func (h *Handler) StartDatabase(w http.ResponseWriter, r *http.Request) {
 
 	rt, err := h.runtimeForDatabase(r.Context(), dbUUID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to reach the database's server")
+		writeServerError(w, r, "failed to reach the database's server", err)
 		return
 	}
 
@@ -1188,7 +1188,7 @@ func (h *Handler) StartDatabase(w http.ResponseWriter, r *http.Request) {
 		Status: status.DatabaseRunning,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update database status")
+		writeServerError(w, r, "failed to update database status", err)
 		return
 	}
 
@@ -1222,7 +1222,7 @@ func (h *Handler) RestartDatabase(w http.ResponseWriter, r *http.Request) {
 
 	rt, err := h.runtimeForDatabase(r.Context(), dbUUID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to reach the database's server")
+		writeServerError(w, r, "failed to reach the database's server", err)
 		return
 	}
 
@@ -1242,7 +1242,7 @@ func (h *Handler) RestartDatabase(w http.ResponseWriter, r *http.Request) {
 		Status: status.DatabaseRunning,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update database status")
+		writeServerError(w, r, "failed to update database status", err)
 		return
 	}
 
@@ -1295,17 +1295,17 @@ func (h *Handler) ReloadDatabase(w http.ResponseWriter, r *http.Request) {
 		ID:     dbUUID,
 		Status: status.DatabaseCreating,
 	}); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update database")
+		writeServerError(w, r, "failed to update database", err)
 		return
 	}
 
 	payload, err := json.Marshal(map[string]string{"database_id": databaseID})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create reload task")
+		writeServerError(w, r, "failed to create reload task", err)
 		return
 	}
 	if _, err := h.asynq.Enqueue(asynq.NewTask("reload_db", payload), asynq.Queue("critical")); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to enqueue reload task")
+		writeServerError(w, r, "failed to enqueue reload task", err)
 		return
 	}
 
@@ -1385,7 +1385,7 @@ func (h *Handler) GetDatabaseDeletionImpact(w http.ResponseWriter, r *http.Reque
 	}
 	impact, err := h.dbService.DeletionImpact(r.Context(), dbUUID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to determine deletion impact")
+		writeServerError(w, r, "failed to determine deletion impact", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -1493,7 +1493,7 @@ func (h *Handler) RestoreDatabaseFromTombstone(w http.ResponseWriter, r *http.Re
 		"backup_id":   backupID,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to schedule the restore")
+		writeServerError(w, r, "failed to schedule the restore", err)
 		return
 	}
 	if _, err := h.asynq.Enqueue(asynq.NewTask(worker.TypeReplaceDatabase, payload), asynq.Queue("critical")); err != nil {
@@ -1545,7 +1545,7 @@ func (h *Handler) ListProjectOrphanedDatabaseBackups(w http.ResponseWriter, r *h
 
 	rows, err := h.queries.ListOrphanedBackupsByProject(r.Context(), projectUUID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list backups")
+		writeServerError(w, r, "failed to list backups", err)
 		return
 	}
 
@@ -1621,7 +1621,7 @@ func (h *Handler) DeleteOrphanedDatabaseBackup(w http.ResponseWriter, r *http.Re
 	}
 
 	if err := h.dbService.DeleteOrphanedBackup(r.Context(), backupUUID); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to delete the backup")
+		writeServerError(w, r, "failed to delete the backup", err)
 		return
 	}
 

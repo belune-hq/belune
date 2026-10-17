@@ -24,7 +24,7 @@ import (
 func (h *Handler) StreamHostMetrics(w http.ResponseWriter, r *http.Request) {
 	writer, err := sse.NewWriter(w)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "streaming not supported")
+		writeServerError(w, r, "streaming not supported", err)
 		return
 	}
 
@@ -101,7 +101,7 @@ func (h *Handler) StreamApplicationMetrics(w http.ResponseWriter, r *http.Reques
 
 	writer, sseErr := sse.NewWriter(w)
 	if sseErr != nil {
-		writeError(w, http.StatusInternalServerError, "streaming not supported")
+		writeServerError(w, r, "streaming not supported", sseErr)
 		return
 	}
 

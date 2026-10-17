@@ -40,12 +40,12 @@ type gitIntegrationResponse struct {
 func (h *Handler) ListGitIntegrations(w http.ResponseWriter, r *http.Request) {
 	var userID pgtype.UUID
 	if err := userID.Scan(middleware.UserIDFromContext(r.Context())); err != nil {
-		writeError(w, http.StatusInternalServerError, "invalid user id")
+		writeServerError(w, r, "invalid user id", err)
 		return
 	}
 	rows, err := h.gitIntegrationSvc.ListByUser(r.Context(), userID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list connections")
+		writeServerError(w, r, "failed to list connections", err)
 		return
 	}
 	result := make([]gitIntegrationResponse, 0, len(rows))
@@ -74,7 +74,7 @@ type availableProviderResponse struct {
 func (h *Handler) ListAvailableProviders(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.gitProviderSvc.List(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list providers")
+		writeServerError(w, r, "failed to list providers", err)
 		return
 	}
 	userID := middleware.UserIDFromContext(r.Context())
@@ -162,7 +162,7 @@ func (h *Handler) StartGitIntegrationConnect(w http.ResponseWriter, r *http.Requ
 
 	state, err := crypto.GenerateWebhookSecret()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to generate state")
+		writeServerError(w, r, "failed to generate state", err)
 		return
 	}
 	payload, _ := json.Marshal(connectState{
@@ -171,7 +171,7 @@ func (h *Handler) StartGitIntegrationConnect(w http.ResponseWriter, r *http.Requ
 		BaseURL:  baseURL,
 	})
 	if err := h.rdb.Set(r.Context(), gitConnectStatePrefix+state, payload, connectStateTTL).Err(); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to persist state")
+		writeServerError(w, r, "failed to persist state", err)
 		return
 	}
 
@@ -231,12 +231,12 @@ func (h *Handler) HandleGitIntegrationCallback(w http.ResponseWriter, r *http.Re
 	}
 	var st connectState
 	if err := json.Unmarshal([]byte(raw), &st); err != nil {
-		writeError(w, http.StatusInternalServerError, "corrupt state")
+		writeServerError(w, r, "corrupt state", err)
 		return
 	}
 	var userID pgtype.UUID
 	if err := userID.Scan(st.UserID); err != nil {
-		writeError(w, http.StatusInternalServerError, "invalid user id")
+		writeServerError(w, r, "invalid user id", err)
 		return
 	}
 
@@ -245,7 +245,7 @@ func (h *Handler) HandleGitIntegrationCallback(w http.ResponseWriter, r *http.Re
 	// two: the source is operator config, not the request.
 	base, err := h.publicBaseURL(r)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "cannot resolve callback base URL")
+		writeServerError(w, r, "cannot resolve callback base URL", err)
 		return
 	}
 	redirectURI := base + "/api/git/integrations/callback"
@@ -273,7 +273,7 @@ func (h *Handler) DeleteGitIntegration(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.gitIntegrationSvc.Delete(r.Context(), uuid); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to delete connection")
+		writeServerError(w, r, "failed to delete connection", err)
 		return
 	}
 	h.audit(r, "delete_git_integration", "git_integration", id, nil)

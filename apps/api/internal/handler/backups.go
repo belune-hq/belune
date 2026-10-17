@@ -90,7 +90,7 @@ func (h *Handler) ListBackupRuns(w http.ResponseWriter, r *http.Request) {
 		Offset: offset,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list backup runs")
+		writeServerError(w, r, "failed to list backup runs", err)
 		return
 	}
 
@@ -173,7 +173,7 @@ func (h *Handler) GetBackupStatus(w http.ResponseWriter, r *http.Request) {
 			status.LastError = &last.Error.String
 		}
 	} else if !errors.Is(err, pgx.ErrNoRows) {
-		writeError(w, http.StatusInternalServerError, "failed to query backup status")
+		writeServerError(w, r, "failed to query backup status", err)
 		return
 	}
 
@@ -183,7 +183,7 @@ func (h *Handler) GetBackupStatus(w http.ResponseWriter, r *http.Request) {
 			status.LastSucceededAt = &s
 		}
 	} else if !errors.Is(err, pgx.ErrNoRows) {
-		writeError(w, http.StatusInternalServerError, "failed to query backup status")
+		writeServerError(w, r, "failed to query backup status", err)
 		return
 	}
 
@@ -199,7 +199,7 @@ func (h *Handler) TriggerBackupRun(w http.ResponseWriter, r *http.Request) {
 	// Reject if a backup is already in progress to avoid concurrent archive writes.
 	last, err := h.queries.GetLastBackupRun(r.Context())
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		writeError(w, http.StatusInternalServerError, "failed to check backup status")
+		writeServerError(w, r, "failed to check backup status", err)
 		return
 	}
 	if err == nil && last.Status == "running" {
@@ -209,7 +209,7 @@ func (h *Handler) TriggerBackupRun(w http.ResponseWriter, r *http.Request) {
 
 	task := asynq.NewTask(worker.TypeBackupNow, nil)
 	if _, err := h.asynq.Enqueue(task, asynq.Queue("low")); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to enqueue backup task")
+		writeServerError(w, r, "failed to enqueue backup task", err)
 		return
 	}
 
@@ -354,7 +354,7 @@ func (h *Handler) UpdateBackupRemote(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := backup.SaveRemoteConfig(h.cfg.BackupRemoteConfigPath, next); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to save remote storage config")
+		writeServerError(w, r, "failed to save remote storage config", err)
 		return
 	}
 

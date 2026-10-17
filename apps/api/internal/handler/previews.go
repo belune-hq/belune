@@ -76,7 +76,7 @@ func (h *Handler) UpdatePreviewConfig(w http.ResponseWriter, r *http.Request) {
 		PreviewDomainTemplate: template,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update preview config")
+		writeServerError(w, r, "failed to update preview config", err)
 		return
 	}
 	h.audit(r, "update_preview_config", "application", applicationID, map[string]any{
@@ -115,7 +115,7 @@ func (h *Handler) ListPreviews(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := h.queries.ListPreviewsByParent(r.Context(), applicationUUID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list previews")
+		writeServerError(w, r, "failed to list previews", err)
 		return
 	}
 
@@ -171,7 +171,7 @@ func (h *Handler) GetPreview(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "preview not found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "failed to fetch preview")
+		writeServerError(w, r, "failed to fetch preview", err)
 		return
 	}
 	if !row.ParentApplicationID.Valid {
@@ -219,7 +219,7 @@ func (h *Handler) DeletePreview(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "preview not found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "failed to fetch preview")
+		writeServerError(w, r, "failed to fetch preview", err)
 		return
 	}
 	if !row.ParentApplicationID.Valid {
@@ -228,7 +228,7 @@ func (h *Handler) DeletePreview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.appService.Delete(r.Context(), previewUUID, row.ProjectSlug, row.Slug); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to delete preview")
+		writeServerError(w, r, "failed to delete preview", err)
 		return
 	}
 	h.audit(r, "delete_preview", "application", previewID, map[string]any{"branch": row.Branch.String})

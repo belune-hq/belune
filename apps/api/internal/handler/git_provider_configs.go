@@ -45,7 +45,7 @@ type providerConfigResponse struct {
 func (h *Handler) ListGitProviderConfigs(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.gitProviderSvc.List(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list provider configs")
+		writeServerError(w, r, "failed to list provider configs", err)
 		return
 	}
 	userID := middleware.UserIDFromContext(r.Context())
@@ -110,7 +110,7 @@ func (h *Handler) SaveGitProviderConfig(w http.ResponseWriter, r *http.Request) 
 		IsPublic: req.IsPublic,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to save provider config")
+		writeServerError(w, r, "failed to save provider config", err)
 		return
 	}
 
@@ -164,7 +164,7 @@ func (h *Handler) DeleteGitProviderConfig(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if err := h.gitProviderSvc.Delete(r.Context(), uuid); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to delete provider config")
+		writeServerError(w, r, "failed to delete provider config", err)
 		return
 	}
 	h.audit(r, "delete_git_provider_config", "git_provider_config", id, nil)
@@ -205,7 +205,7 @@ func (h *Handler) GetGitHubAppManifest(w http.ResponseWriter, r *http.Request) {
 
 	state, err := crypto.GenerateWebhookSecret()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to generate state")
+		writeServerError(w, r, "failed to generate state", err)
 		return
 	}
 	// Carry the initiating admin and chosen visibility through the (public)
@@ -215,7 +215,7 @@ func (h *Handler) GetGitHubAppManifest(w http.ResponseWriter, r *http.Request) {
 		IsPublic: isPublic,
 	})
 	if err := h.rdb.Set(r.Context(), githubManifestStatePrefix+state, statePayload, manifestStateTTL).Err(); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to persist state")
+		writeServerError(w, r, "failed to persist state", err)
 		return
 	}
 
@@ -366,7 +366,7 @@ func (h *Handler) HandleGitHubAppManifestCallback(w http.ResponseWriter, r *http
 		OwnerID:  owner,
 		IsPublic: st.IsPublic,
 	}); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to store provider config")
+		writeServerError(w, r, "failed to store provider config", err)
 		return
 	}
 

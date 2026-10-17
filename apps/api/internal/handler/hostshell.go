@@ -67,7 +67,7 @@ func (h *Handler) CreateHostShellSession(w http.ResponseWriter, r *http.Request)
 	// is already local, so there is nothing to pull.
 	image := h.selfImage(r.Context())
 	if image == "" {
-		writeError(w, http.StatusInternalServerError, "could not determine host-shell helper image")
+		writeServerError(w, r, "could not determine host-shell helper image", nil)
 		return
 	}
 

@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/weiliang79/belune/internal/config"
 	"github.com/weiliang79/belune/internal/mcpserver"
+	"github.com/weiliang79/belune/internal/pkg/redact"
 	"github.com/weiliang79/belune/internal/proxy"
 	"github.com/weiliang79/belune/internal/quota"
 	"github.com/weiliang79/belune/internal/runtime"
@@ -243,6 +245,45 @@ func writeJSON(w http.ResponseWriter, status int, data any) {
 // writeError writes a JSON error response.
 func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, map[string]string{"error": message})
+}
+
+// writeServerError answers a 500 AND logs the cause, which writeError cannot
+// do because it never receives one.
+//
+// Most 500s here used to discard their reason at the point it was known: the
+// operator saw "failed to list scheduled tasks" and the server log held
+// nothing at all, so a dropped database column was indistinguishable from a
+// dead connection. Diagnosing one such 500 took a schema diff against a
+// freshly migrated database, because the cause had simply been thrown away.
+//
+// The caller's message stays the response body — it is all a client should
+// see — and the cause goes to the log with the request id, so it can be tied
+// to the access-log line for the same request.
+//
+// ⛔ This is for a site that logs NOTHING. A handler that already logs its own
+// error with a more specific message than the one the client gets should keep
+// doing that and call writeError: one log line per 500, and the better one
+// wins.
+func writeServerError(w http.ResponseWriter, r *http.Request, message string, err error) {
+	attrs := []any{
+		"method", r.Method,
+		"path", redact.Path(r.URL.Path),
+		"request_id", chiMiddleware.GetReqID(r.Context()),
+	}
+	// Not every 500 has an error to carry; a handler may refuse for a reason it
+	// computed itself. Log it either way — which handler answered 500 was not
+	// knowable from the log before.
+	if err != nil {
+		// Belt and braces: logger.RedactHandler scrubs records in production,
+		// but this package's own convention is to redact before logging, and a
+		// differently-configured handler must not change what reaches disk.
+		attrs = append(attrs, "error", redact.Error(err.Error()))
+	}
+	slog.ErrorContext(r.Context(), message, attrs...)
+	// ⛔ writeError, never writeServerError — this IS writeServerError. An
+	// automated rewrite of the call sites once turned this line into a call to
+	// its own function, which recursed until the stack ran out.
+	writeError(w, http.StatusInternalServerError, message)
 }
 
 // WriteRateLimited answers a rate-limited request in the API's own shape.

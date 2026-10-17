@@ -142,7 +142,7 @@ func (h *Handler) CreateApplication(w http.ResponseWriter, r *http.Request) {
 				writeError(w, qe.HTTPStatus(), qe.Error())
 				return
 			}
-			writeError(w, http.StatusInternalServerError, "quota check failed")
+			writeServerError(w, r, "quota check failed", err)
 			return
 		}
 	}
@@ -171,7 +171,7 @@ func (h *Handler) CreateApplication(w http.ResponseWriter, r *http.Request) {
 		RootDirectory:    req.RootDirectory,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create application")
+		writeServerError(w, r, "failed to create application", err)
 		return
 	}
 
@@ -278,7 +278,7 @@ func (h *Handler) ListApplications(w http.ResponseWriter, r *http.Request) {
 
 	applications, err := h.queries.ListApplicationsByProject(r.Context(), projectUUID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list applications")
+		writeServerError(w, r, "failed to list applications", err)
 		return
 	}
 
@@ -350,11 +350,11 @@ func (h *Handler) StopApplication(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, service.ErrApplicationNotFound):
 			writeError(w, http.StatusNotFound, "application not found")
 		case errors.Is(err, service.ErrServerUnreachable):
-			writeError(w, http.StatusInternalServerError, "failed to reach the application's server")
+			writeServerError(w, r, "failed to reach the application's server", err)
 		case errors.Is(err, service.ErrContainerAction):
-			writeError(w, http.StatusInternalServerError, "failed to stop application")
+			writeServerError(w, r, "failed to stop application", err)
 		default:
-			writeError(w, http.StatusInternalServerError, "failed to update application status")
+			writeServerError(w, r, "failed to update application status", err)
 		}
 		return
 	}
@@ -386,11 +386,11 @@ func (h *Handler) StartApplication(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, service.ErrApplicationNotFound):
 			writeError(w, http.StatusNotFound, "application not found")
 		case errors.Is(err, service.ErrServerUnreachable):
-			writeError(w, http.StatusInternalServerError, "failed to reach the application's server")
+			writeServerError(w, r, "failed to reach the application's server", err)
 		case errors.Is(err, service.ErrContainerAction):
-			writeError(w, http.StatusInternalServerError, "failed to start application")
+			writeServerError(w, r, "failed to start application", err)
 		default:
-			writeError(w, http.StatusInternalServerError, "failed to update application status")
+			writeServerError(w, r, "failed to update application status", err)
 		}
 		return
 	}
@@ -424,7 +424,7 @@ func (h *Handler) RestartApplication(w http.ResponseWriter, r *http.Request) {
 
 	rt, err := h.runtimes.For(r.Context(), row.ServerID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to reach the application's server")
+		writeServerError(w, r, "failed to reach the application's server", err)
 		return
 	}
 
@@ -446,7 +446,7 @@ func (h *Handler) RestartApplication(w http.ResponseWriter, r *http.Request) {
 		Status: status.ApplicationRunning,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update application status")
+		writeServerError(w, r, "failed to update application status", err)
 		return
 	}
 
@@ -732,7 +732,7 @@ func (h *Handler) UpdateApplication(w http.ResponseWriter, r *http.Request) {
 		RootDirectory:     rootDirectory,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update application")
+		writeServerError(w, r, "failed to update application", err)
 		return
 	}
 
@@ -766,7 +766,7 @@ func (h *Handler) DeleteApplication(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.appService.Delete(r.Context(), applicationUUID, row.ProjectSlug, row.Slug); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to delete application")
+		writeServerError(w, r, "failed to delete application", err)
 		return
 	}
 
@@ -803,7 +803,7 @@ func (h *Handler) GetBuildCache(w http.ResponseWriter, r *http.Request) {
 
 	rt, err := h.runtimes.For(r.Context(), row.ServerID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to reach the application's server")
+		writeServerError(w, r, "failed to reach the application's server", err)
 		return
 	}
 
@@ -853,7 +853,7 @@ func (h *Handler) ClearBuildCache(w http.ResponseWriter, r *http.Request) {
 
 	rt, err := h.runtimes.For(r.Context(), row.ServerID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to reach the application's server")
+		writeServerError(w, r, "failed to reach the application's server", err)
 		return
 	}
 
@@ -901,7 +901,7 @@ func (h *Handler) BuildApplication(w http.ResponseWriter, r *http.Request) {
 		TriggeredBy:   "manual",
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create deployment")
+		writeServerError(w, r, "failed to create deployment", err)
 		return
 	}
 
@@ -918,7 +918,7 @@ func (h *Handler) BuildApplication(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, "a deployment is already in progress for this application")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "failed to enqueue build task")
+		writeServerError(w, r, "failed to enqueue build task", err)
 		return
 	}
 

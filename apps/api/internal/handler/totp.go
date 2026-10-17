@@ -84,7 +84,7 @@ func (h *Handler) GetTOTPStatus(w http.ResponseWriter, r *http.Request) {
 
 	remaining, err := h.totpSvc.RemainingRecoveryCodes(r.Context(), uid)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to read two-factor status")
+		writeServerError(w, r, "failed to read two-factor status", err)
 		return
 	}
 
@@ -334,7 +334,7 @@ func (h *Handler) VerifyLogin(w http.ResponseWriter, r *http.Request) {
 
 	csrfToken, err := middleware.GenerateCSRFToken()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to generate csrf token")
+		writeServerError(w, r, "failed to generate csrf token", err)
 		return
 	}
 	h.setSessionCookies(w, r, result, csrfToken)
@@ -385,7 +385,7 @@ func (h *Handler) AdminResetUserTOTP(w http.ResponseWriter, r *http.Request) {
 	callerID.Scan(middleware.UserIDFromContext(r.Context()))
 	caller, err := h.queries.GetUserByID(r.Context(), callerID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to get caller")
+		writeServerError(w, r, "failed to get caller", err)
 		return
 	}
 	if bcrypt.CompareHashAndPassword([]byte(caller.PasswordHash), []byte(req.CurrentPassword)) != nil {

@@ -36,7 +36,7 @@ func (h *Handler) ListDeployments(w http.ResponseWriter, r *http.Request) {
 
 	deployments, err := h.queries.ListDeploymentsByApplication(r.Context(), applicationUUID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list deployments")
+		writeServerError(w, r, "failed to list deployments", err)
 		return
 	}
 
@@ -154,7 +154,7 @@ func (h *Handler) GetGlobalDeployments(w http.ResponseWriter, r *http.Request) {
 	// through to every project the token's owner can otherwise reach.
 	pinnedIDs, err := pinnedProjectUUIDs(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "invalid pinned project")
+		writeServerError(w, r, "invalid pinned project", err)
 		return
 	}
 	switch {
@@ -263,7 +263,7 @@ func (h *Handler) RollbackDeployment(w http.ResponseWriter, r *http.Request) {
 	// backstop, rather than block a rollback the image may well support.
 	rt, err := h.runtimeForApplication(r.Context(), appUUID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to reach the application's server")
+		writeServerError(w, r, "failed to reach the application's server", err)
 		return
 	}
 	if exists, err := rt.ImageExists(r.Context(), target.ImageTag.String); err != nil {

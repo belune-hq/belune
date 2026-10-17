@@ -110,6 +110,10 @@ tasks:
     dir: '{{.API_DIR}}'
     cmd: migrate -path internal/migrations -database "${DATABASE_URL}" up
 
+  db:verify:
+    desc: Check the live database against what the migrations actually produce
+    cmd: ./scripts/verify-schema.sh {{.CLI_ARGS}}
+
   db:migrate:down:
     desc: Rollback last migration
     dir: '{{.API_DIR}}'

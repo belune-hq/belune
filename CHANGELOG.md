@@ -24,6 +24,38 @@ Belune is pre-1.0. The versioning contract while it stays there:
 Release notes for each version are also published on the
 [Releases page](https://github.com/weiliang79/belune/releases).
 
+## [0.1.23]
+
+**Two fixes, one of which was quietly losing configuration.** A domain's port
+override could be erased by an edit that never mentioned it, and applications
+created through MCP reached their quota without the warning email the dashboard
+would have sent.
+
+Nothing here changes your install's topology or asks anything of your host: run
+`update.sh` and you are done. There are no migrations.
+
+### Fixed
+
+- **A domain's port override now survives an edit that does not mention it.**
+  `PUT /api/projects/{projectId}/applications/{applicationId}/domains/{domainId}`
+  writes every column, so a request that left `container_port` out cleared it —
+  changing a domain's TLS mode through the API silently dropped its port and the
+  route began pointing at the application's own port instead. This reached API
+  clients sending partial updates; the dashboard always sent the field, so
+  domains edited there were never affected.
+
+  An omitted `container_port` now keeps the stored value, the same rule `path`,
+  `strip_path` and `ssl_mode` already followed. **Send `0` to remove an
+  override** — `null` reads as "not sent" and keeps what is there, because the
+  two are indistinguishable once decoded.
+
+- **Applications created through MCP now warn before the quota runs out.**
+  `create_application` enforced the project's application limit but never sent
+  the threshold warning, so an assistant creating applications walked an owner
+  up to their cap in silence and the first they heard of it was being refused at
+  it. The REST endpoint had been sending that email all along; both paths now
+  behave identically.
+
 ## [0.1.22]
 
 **Applications can now run commands on a schedule.** A Tasks tab, a cron

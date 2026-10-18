@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/weiliang79/belune/internal/runtime"
@@ -37,11 +39,33 @@ type fakeRuntime struct {
 	execErr  error
 	execs    int
 	notFound bool
+	// unlabelled: the container carries no belune-system label, so it is
+	// missing from ListSystemContainers but present in ListAllContainers.
+	unlabelled bool
+	allErr     error
 }
 
 func (f *fakeRuntime) ListSystemContainers(context.Context) ([]runtime.ContainerInfo, error) {
 	if f.listErr != nil {
 		return nil, f.listErr
+	}
+	// An unlabelled container is BY DEFINITION missing from this list — that is
+	// what the label filter means. Returning it here anyway would make the
+	// fallback untestable, and the test would pass without exercising it.
+	if f.notFound || f.unlabelled {
+		return []runtime.ContainerInfo{{ID: "x", Name: "other"}}, nil
+	}
+	return []runtime.ContainerInfo{{ID: f.id, Name: "caddy"}}, nil
+}
+
+// ListAllContainers is the unfiltered list. unlabelled containers appear only
+// here, which is the bring-your-own-Caddy case.
+func (f *fakeRuntime) ListAllContainers(context.Context) ([]runtime.ContainerInfo, error) {
+	if f.allErr != nil {
+		return nil, f.allErr
+	}
+	if f.unlabelled {
+		return []runtime.ContainerInfo{{ID: f.id, Name: "caddy"}}, nil
 	}
 	if f.notFound {
 		return []runtime.ContainerInfo{{ID: "x", Name: "other"}}, nil
@@ -146,5 +170,69 @@ func TestNilAndZeroSetAreEmpty(t *testing.T) {
 	var s Set
 	if s.Has("layer4") || s.DNS01() {
 		t.Fatal("zero Set must be empty")
+	}
+}
+
+// ── Real output, captured from the images themselves ────────────────────────
+//
+// The parser above is checked against output shaped like `caddy list-modules`.
+// These fixtures are the real thing, captured by running the command in both
+// images, so a change to Caddy's output format fails here and not in
+// production.
+
+func fixture(t *testing.T, name string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("testdata", name))
+	if err != nil {
+		t.Fatalf("reading fixture: %v", err)
+	}
+	return string(b)
+}
+
+func TestParseModules_RealBeluneCaddyOutput(t *testing.T) {
+	s := parseModules(fixture(t, "belune-caddy-2.11.7.txt"))
+
+	if !s.RateLimit() || !s.WAF() || !s.CrowdSec() || !s.Layer4() || !s.DNS01() {
+		t.Fatalf("the image provides all five capabilities: %+v", s)
+	}
+	// The footers read "Standard modules: 135" and "Non-standard modules: 53",
+	// so 188 is the count that proves nothing was dropped and no footer leaked.
+	if got := len(s.modules); got != 188 {
+		t.Fatalf("parsed %d modules, want 188", got)
+	}
+	if s.Has("Standard") {
+		t.Fatal("a footer leaked in as a module")
+	}
+}
+
+// The supported FLOOR, and the negative control for the test above: without
+// this, those assertions would pass against any output at all. Stock Caddy must
+// report every optional capability ABSENT — that is what makes "not configured"
+// the normal handled state rather than a degraded one.
+func TestParseModules_StockCaddyHasNoOptionalModules(t *testing.T) {
+	s := parseModules(fixture(t, "stock-caddy-2-alpine.txt"))
+
+	if len(s.modules) == 0 {
+		t.Fatal("stock Caddy still has ~130 modules")
+	}
+	if s.RateLimit() || s.WAF() || s.CrowdSec() || s.Layer4() || s.DNS01() {
+		t.Fatalf("stock reported an optional capability: %+v", s)
+	}
+	// ...while still being a working Caddy, so the absence is about the
+	// optional modules only.
+	if !s.Has("http.handlers.reverse_proxy") {
+		t.Fatal("stock Caddy has reverse_proxy")
+	}
+}
+
+// ⚠️ CADDY_CONTAINER_NAME is the documented escape hatch for a Caddy without
+// the belune-system label, and app.go:374 returns before the label is ever
+// consulted — so such a container is missing from ListSystemContainers. It must
+// still be probed: routing works by name, and reporting every module absent
+// would be the silent kind of wrong.
+func TestProbeFindsAnUnlabelledContainer(t *testing.T) {
+	rt := &fakeRuntime{id: "abc", unlabelled: true, out: "http.handlers.rate_limit\nhttp.handlers.reverse_proxy\n"}
+	if s := NewProber(rt, "caddy").Capabilities(context.Background()); !s.RateLimit() {
+		t.Fatal("an unlabelled Caddy reported no capabilities")
 	}
 }

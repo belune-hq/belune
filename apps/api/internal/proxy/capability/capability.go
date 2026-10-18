@@ -88,6 +88,7 @@ type Provider interface {
 // Runtime is the slice of the container runtime the probe needs.
 type Runtime interface {
 	ListSystemContainers(ctx context.Context) ([]runtime.ContainerInfo, error)
+	ListAllContainers(ctx context.Context) ([]runtime.ContainerInfo, error)
 	ContainerExec(ctx context.Context, containerName string, cmd []string, stdin io.Reader, stdout, stderr io.Writer) (int, error)
 }
 
@@ -164,16 +165,38 @@ func (p *Prober) probe(ctx context.Context) (Set, error) {
 }
 
 func (p *Prober) containerID(ctx context.Context) (string, error) {
+	// The labelled list first: it is the normal case and the cheap query.
 	containers, err := p.rt.ListSystemContainers(ctx)
 	if err != nil {
 		return "", fmt.Errorf("listing system containers: %w", err)
 	}
-	for _, c := range containers {
-		if c.Name == p.containerName && c.ID != "" {
-			return c.ID, nil
-		}
+	if id := findID(containers, p.containerName); id != "" {
+		return id, nil
+	}
+
+	// ⚠️ Then every container, because ListSystemContainers filters on the
+	// belune-system label and CADDY_CONTAINER_NAME is the documented escape
+	// hatch for a Caddy that does not carry it (app.go:374 returns before the
+	// label is ever consulted). Without this fallback a bring-your-own Caddy
+	// named explicitly would route fine and report every optional module
+	// absent — the silent half of a failure is the half that costs time.
+	all, err := p.rt.ListAllContainers(ctx)
+	if err != nil {
+		return "", fmt.Errorf("listing all containers: %w", err)
+	}
+	if id := findID(all, p.containerName); id != "" {
+		return id, nil
 	}
 	return "", fmt.Errorf("no container named %q", p.containerName)
+}
+
+func findID(containers []runtime.ContainerInfo, name string) string {
+	for _, c := range containers {
+		if c.Name == name && c.ID != "" {
+			return c.ID
+		}
+	}
+	return ""
 }
 
 var moduleIDPattern = regexp.MustCompile(`^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$`)

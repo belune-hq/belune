@@ -14173,6 +14173,23 @@
         },
         "type": "object"
       },
+      "Degradation": {
+        "properties": {
+          "feature": {
+            "type": "string"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "module": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "Deployment": {
         "properties": {
           "application_id": {
@@ -15400,6 +15417,12 @@
       },
       "ReconcilerStatus": {
         "properties": {
+          "degraded": {
+            "items": {
+              "$ref": "#/components/schemas/Degradation"
+            },
+            "type": "array"
+          },
           "interval_seconds": {
             "type": "integer"
           },

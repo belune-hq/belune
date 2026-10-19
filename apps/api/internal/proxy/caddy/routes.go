@@ -598,6 +598,13 @@ func (c *Client) ListRoutes(ctx context.Context) (result []proxy.RouteConfig, er
 // the wrong order — and creation order is just whatever the operator did first —
 // the root route silently swallows every request meant for the API, which looks
 // exactly like the API app being broken.
+//
+// The array is read back from Caddy, never rebuilt from the database, and that is
+// load-bearing. The PATCH below is atomic: measured on stock caddy:2-alpine, one
+// route naming an absent module (http.handlers.rate_limit) gets the WHOLE patch
+// rejected with HTTP 500. Caddy only holds routes it already accepted, so this
+// array is always loadable; an array assembled from stored rows is not, and
+// would turn one unsatisfiable domain into a reconcile that can never land.
 func (c *Client) reorderRoutes(ctx context.Context) error {
 	rawRoutes, err := c.fetchRawRoutes(ctx)
 	if err != nil {

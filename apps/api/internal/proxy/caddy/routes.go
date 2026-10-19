@@ -642,11 +642,27 @@ func (c *Client) reorderRoutes(ctx context.Context) error {
 	var catchAll json.RawMessage
 	for _, r := range rawRoutes {
 		var probe struct {
-			ID string `json:"@id"`
+			ID    string `json:"@id"`
+			Match []struct {
+				Host []string `json:"host"`
+			} `json:"match"`
 		}
 		_ = json.Unmarshal(r, &probe)
 		if probe.ID == catchAllRouteID {
 			catchAll = r
+			continue
+		}
+		// A route with no host matcher is the Caddyfile's default site, which
+		// every Caddy start re-creates as an anonymous catch-all. InitCatchAll
+		// drops it, but only at API startup — so a Caddy restarted on its own left
+		// it in place, and because it matches no host it sorts AHEAD of every
+		// real hostname (key "" < any name): each reconcile restored the domain
+		// routes and then ordered the shadowing route back to index 0, so every
+		// domain served the dashboard. Dropping it here self-heals within the next
+		// add. Still read from Caddy, never rebuilt from the database (see above).
+		if len(probe.Match) == 0 || len(probe.Match[0].Host) == 0 {
+			slog.Warn("caddy: dropping a route with no host matcher that would shadow every domain",
+				"id", probe.ID)
 			continue
 		}
 		domainRoutes = append(domainRoutes, r)

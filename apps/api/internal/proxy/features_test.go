@@ -10,14 +10,48 @@ import (
 	"github.com/weiliang79/belune/internal/proxy"
 )
 
-// TestParseFeatureConfig_RejectsRateLimit: rate_limit was accepted, stored, and
-// then emitted no Caddy handler, so a domain looked rate-limited and was not.
-// Rejecting is the honest answer until the custom Caddy image ships.
-func TestParseFeatureConfig_RejectsRateLimit(t *testing.T) {
-	_, err := proxy.ParseFeatureConfig(proxy.FeatureRateLimit, json.RawMessage(`{"rate":"10/s"}`))
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not supported in this release")
-	assert.Contains(t, err.Error(), "0.2.0", "the message must say the feature is coming, not that it never will")
+func TestParseFeatureConfig_RateLimit(t *testing.T) {
+	ok := map[string]string{
+		"basic":   `{"window":"1s","max_events":10}`,
+		"minutes": `{"window":"1m","max_events":1}`,
+		"ceiling": `{"window":"1h","max_events":1000}`,
+	}
+	for name, raw := range ok {
+		t.Run("accepts "+name, func(t *testing.T) {
+			parsed, err := proxy.ParseFeatureConfig(proxy.FeatureRateLimit, json.RawMessage(raw))
+			require.NoError(t, err)
+			assert.IsType(t, &proxy.RateLimitConfig{}, parsed)
+		})
+	}
+
+	bad := map[string]string{
+		// 0 answers nothing at all on Caddy, and is what an omitted field becomes.
+		"max_events omitted":  `{"window":"1s"}`,
+		"max_events zero":     `{"window":"1s","max_events":0}`,
+		"max_events negative": `{"window":"1s","max_events":-1}`,
+		"window omitted":      `{"max_events":10}`,
+		"window unparseable":  `{"window":"soon","max_events":10}`,
+		"window below floor":  `{"window":"500ms","max_events":10}`,
+		"window above cap":    `{"window":"2h","max_events":10}`,
+		// Pre-0.1.3 rows must be refused, not translated.
+		"legacy rate/burst": `{"rate":"10/s","burst":5}`,
+		// Zone and key are not the operator's to set.
+		"zone supplied": `{"window":"1s","max_events":10,"zone":"shared"}`,
+		"key supplied":  `{"window":"1s","max_events":10,"key":"{http.request.header.X-Foo}"}`,
+	}
+	for name, raw := range bad {
+		t.Run("rejects "+name, func(t *testing.T) {
+			_, err := proxy.ParseFeatureConfig(proxy.FeatureRateLimit, json.RawMessage(raw))
+			require.Error(t, err)
+		})
+	}
+
+	t.Run("legacy rejection names the new shape", func(t *testing.T) {
+		_, err := proxy.ParseFeatureConfig(proxy.FeatureRateLimit, json.RawMessage(`{"rate":"10/s"}`))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "max_events")
+		assert.Contains(t, err.Error(), "window")
+	})
 }
 
 // The rejection must be targeted: the features the dashboard actually offers

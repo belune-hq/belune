@@ -33,7 +33,7 @@ func rateLimited(host string) proxy.RouteConfig {
 		Hostname: host,
 		Features: []proxy.RouteFeature{
 			{Type: proxy.FeatureHeaders, Enabled: true, Config: json.RawMessage(`{"response":{"set":{"X-A":["1"]}}}`)},
-			{Type: proxy.FeatureRateLimit, Enabled: true, Config: json.RawMessage(`{"rate":"10/s"}`)},
+			{Type: proxy.FeatureRateLimit, Enabled: true, Config: json.RawMessage(`{"window":"1s","max_events":10}`)},
 			{Type: proxy.FeatureBasicAuth, Enabled: true},
 		},
 	}
@@ -154,7 +154,7 @@ func upsertFeatureParams(domainID pgtype.UUID, feature string) generated.UpsertR
 	return generated.UpsertRouteFeatureParams{
 		DomainID:    domainID,
 		FeatureType: feature,
-		Config:      []byte(`{"rate":"10/s"}`),
+		Config:      []byte(`{"window":"1s","max_events":10}`),
 		Enabled:     true,
 	}
 }

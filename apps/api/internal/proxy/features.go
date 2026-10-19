@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"time"
 
 	"github.com/weiliang79/belune/internal/proxy/capability"
 )
@@ -65,13 +66,27 @@ type RedirectConfig struct {
 	StatusCode int    `json:"status_code,omitempty"`
 }
 
-// RateLimitConfig configures per-IP rate limiting (requires caddy-rate-limit).
+// RateLimitConfig configures per-client-IP rate limiting (needs the rate_limit
+// Caddy module). It is the module's own sliding-window vocabulary rather than a
+// "10/s" shorthand, so nothing between this struct and Caddy can misreport what
+// is enforced. The zone and the per-IP key are deliberately not configurable:
+// see the notes on the handler in caddy/routes.go.
 type RateLimitConfig struct {
-	Zone  string `json:"zone,omitempty"`
-	Rate  string `json:"rate"`
-	Burst int    `json:"burst,omitempty"`
-	Key   string `json:"key,omitempty"`
+	// Window is a Go duration, e.g. "1s", "1m".
+	Window string `json:"window"`
+	// MaxEvents is how many requests one client IP may make per Window.
+	MaxEvents int `json:"max_events"`
 }
+
+// Bounds on Window. The module itself accepts "500ms" and anything longer, but
+// a sub-second window is rarely intended and a multi-hour one would hold
+// per-client state for it.
+const (
+	rateLimitMinWindow = time.Second
+	rateLimitMaxWindow = time.Hour
+
+	rateLimitShape = `expected {"window":"1s","max_events":10}`
+)
 
 // ParseFeatureConfig validates raw JSON against the typed schema for the given
 // feature type. Returns a pointer to the parsed struct on success, or a user-
@@ -140,23 +155,31 @@ func ParseFeatureConfig(featureType string, raw json.RawMessage) (any, error) {
 		return &c, nil
 
 	case FeatureRateLimit:
-		// Accepting this stored a config that emitted no Caddy handler at all —
-		// the stock caddy image carries no ratelimit module — so a domain looked
-		// rate-limited and was not. Rejecting is the honest answer until 0.2.0
-		// ships the custom Caddy image. To restore it then, delete this branch
-		// and reinstate the parse this replaced:
-		//
-		//	var c RateLimitConfig
-		//	if err := strictUnmarshal(raw, &c); err != nil {
-		//		return nil, fmt.Errorf("%s: %w", featureType, err)
-		//	}
-		//	if c.Rate == "" {
-		//		return nil, fmt.Errorf("%s: rate is required (e.g. \"10/s\")", featureType)
-		//	}
-		//	return &c, nil
-		//
-		// along with the caddy route-builder case that emits the handler.
-		return nil, fmt.Errorf("%s: rate limiting is not supported in this release; it arrives with the custom Caddy image in 0.2.0", featureType)
+		var c RateLimitConfig
+		if err := strictUnmarshal(raw, &c); err != nil {
+			// Rows written before 0.1.3 use {rate, burst}. They are rejected, not
+			// translated: a sliding window has no burst, and dropping it silently
+			// would recreate the bug that got this feature withdrawn — a domain
+			// that looks rate-limited and is not.
+			return nil, fmt.Errorf("%s: %w (%s; the older rate/burst form is no longer accepted)", featureType, err, rateLimitShape)
+		}
+		// max_events is checked, not defaulted: 0 is Go's zero value for an
+		// omitted field, and Caddy accepts it — the route then answers nothing at
+		// all (empty reply, no status, no log line).
+		if c.MaxEvents < 1 {
+			return nil, fmt.Errorf("%s: max_events is required and must be at least 1 (%s)", featureType, rateLimitShape)
+		}
+		if c.Window == "" {
+			return nil, fmt.Errorf("%s: window is required (%s)", featureType, rateLimitShape)
+		}
+		d, err := time.ParseDuration(c.Window)
+		if err != nil {
+			return nil, fmt.Errorf("%s: window %q is not a duration such as \"1s\" or \"1m\"", featureType, c.Window)
+		}
+		if d < rateLimitMinWindow || d > rateLimitMaxWindow {
+			return nil, fmt.Errorf("%s: window must be between %s and %s", featureType, rateLimitMinWindow, rateLimitMaxWindow)
+		}
+		return &c, nil
 
 	default:
 		return nil, fmt.Errorf("unknown feature type: %s", featureType)

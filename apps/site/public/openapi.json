@@ -12081,6 +12081,46 @@
         ]
       }
     },
+    "/api/proxy/capabilities": {
+      "get": {
+        "operationId": "GetProxyCapabilities",
+        "summary": "Get Proxy Capabilities",
+        "tags": [
+          "Application Domains \u0026 TLS"
+        ],
+        "x-belune-order": 20,
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/proxyCapabilitiesResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "read": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/quotas": {
       "get": {
         "operationId": "ListQuotas",
@@ -17487,6 +17527,17 @@
         },
         "type": "object"
       },
+      "featureCapability": {
+        "properties": {
+          "module": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "fileMountResponse": {
         "properties": {
           "content": {
@@ -18091,6 +18142,20 @@
           },
           "provider": {
             "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "proxyCapabilitiesResponse": {
+        "properties": {
+          "features": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/featureCapability"
+            },
+            "type": "object"
+          },
+          "known": {
+            "type": "boolean"
           }
         },
         "type": "object"

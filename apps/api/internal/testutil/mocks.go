@@ -10,6 +10,7 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/weiliang79/belune/internal/proxy"
+	"github.com/weiliang79/belune/internal/proxy/capability"
 	"github.com/weiliang79/belune/internal/runtime"
 )
 
@@ -374,6 +375,27 @@ func (m *MockReconciler) ReconcileNow(_ context.Context) error {
 	defer m.mu.Unlock()
 	m.ReconcileNowCalls++
 	return m.ReconcileErr
+}
+
+// MockCapabilities implements capability.Provider. Its zero value is a probe
+// that could not see Caddy (a not-Known Set), which is also the default for a
+// handler with no provider — so existing tests are unaffected by the gate.
+type MockCapabilities struct {
+	mu  sync.Mutex
+	set capability.Set
+}
+
+// Set replaces what the probe reports.
+func (m *MockCapabilities) Set(s capability.Set) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.set = s
+}
+
+func (m *MockCapabilities) Capabilities(context.Context) capability.Set {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.set
 }
 
 // MockQueueInspector implements handler.QueueInspector for testing.

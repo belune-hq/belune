@@ -236,3 +236,38 @@ func TestProbeFindsAnUnlabelledContainer(t *testing.T) {
 		t.Fatal("an unlabelled Caddy reported no capabilities")
 	}
 }
+
+// Known is what separates "this Caddy lacks the module" from "we could not ask".
+func TestKnown_StockCaddyIsKnownWithNothingOptional(t *testing.T) {
+	s := parseModules(fixture(t, "stock-caddy-2-alpine.txt"))
+	if !s.Known() {
+		t.Fatal("a probed stock Caddy is known: its absences are real")
+	}
+	if s.RateLimit() {
+		t.Fatal("stock has no rate limiting")
+	}
+}
+
+func TestKnown_FailedProbeIsNotKnown(t *testing.T) {
+	failures := map[string]*fakeRuntime{
+		"exec error": {id: "a", execErr: errors.New("boom")},
+		"no caddy":   {notFound: true},
+		"empty out":  {id: "a", out: "\n"},
+	}
+	for name, rt := range failures {
+		t.Run(name, func(t *testing.T) {
+			if NewProber(rt, "caddy").Capabilities(context.Background()).Known() {
+				t.Fatal("a failed probe must not claim to know")
+			}
+		})
+	}
+	if (Set{}).Known() {
+		t.Fatal("the zero Set is not known")
+	}
+}
+
+func TestKnown_RealCaddyIsKnown(t *testing.T) {
+	if !NewProber(&fakeRuntime{id: "a", out: listModulesOutput}, "caddy").Capabilities(context.Background()).Known() {
+		t.Fatal("a successful probe is known")
+	}
+}

@@ -31,9 +31,11 @@ type TestEnv struct {
 	Asynq      *MockTaskEnqueuer
 	Inspector  *MockQueueInspector
 	Reconciler *MockReconciler
-	Config     *config.Config
-	Redis      *redis.Client
-	RedisSrv   *miniredis.Miniredis
+	// Capabilities is what the Caddy probe reports; the zero value is "unknown".
+	Capabilities *MockCapabilities
+	Config       *config.Config
+	Redis        *redis.Client
+	RedisSrv     *miniredis.Miniredis
 }
 
 // SetupTestServer creates a full HTTP test server with real DB and mock external deps.
@@ -56,6 +58,7 @@ func SetupTestServer(pool *pgxpool.Pool, queries *generated.Queries) *TestEnv {
 	mockAsynq := &MockTaskEnqueuer{}
 	mockInspector := &MockQueueInspector{}
 	mockReconciler := &MockReconciler{}
+	mockCaps := &MockCapabilities{}
 
 	// In-memory Redis so the auth service's revocation paths (per-JTI
 	// blacklist + per-user invalidated-after flag) actually exercise their
@@ -71,19 +74,21 @@ func SetupTestServer(pool *pgxpool.Pool, queries *generated.Queries) *TestEnv {
 	termMgr := terminal.NewManager(2)
 
 	srv := server.New(cfg, pool, queries, mockAsynq, mockInspector, runtime.NewLocalRuntimes(mockRuntime), mockProxy, mockReconciler, rdb, nil, nil, nil, termMgr, nil)
+	srv.SetCapabilities(mockCaps)
 	ts := httptest.NewServer(srv.Router())
 
 	return &TestEnv{
-		Server:     ts,
-		Pool:       pool,
-		Queries:    queries,
-		Runtime:    mockRuntime,
-		Proxy:      mockProxy,
-		Asynq:      mockAsynq,
-		Inspector:  mockInspector,
-		Reconciler: mockReconciler,
-		Config:     cfg,
-		Redis:      rdb,
-		RedisSrv:   mr,
+		Server:       ts,
+		Pool:         pool,
+		Queries:      queries,
+		Runtime:      mockRuntime,
+		Proxy:        mockProxy,
+		Asynq:        mockAsynq,
+		Inspector:    mockInspector,
+		Reconciler:   mockReconciler,
+		Capabilities: mockCaps,
+		Config:       cfg,
+		Redis:        rdb,
+		RedisSrv:     mr,
 	}
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/weiliang79/belune/internal/handler"
 	"github.com/weiliang79/belune/internal/pkg/metrics"
 	"github.com/weiliang79/belune/internal/proxy"
+	"github.com/weiliang79/belune/internal/proxy/capability"
 	"github.com/weiliang79/belune/internal/quota"
 	"github.com/weiliang79/belune/internal/runtime"
 	"github.com/weiliang79/belune/internal/server/middleware"
@@ -67,6 +68,12 @@ func New(cfg *config.Config, db *pgxpool.Pool, queries *generated.Queries, asynq
 
 	s.router = s.setupRouter()
 	return s
+}
+
+// SetCapabilities wires the Caddy capability probe into the handlers. Called
+// once at startup, before the server accepts requests.
+func (s *Server) SetCapabilities(p capability.Provider) {
+	s.handler.SetCapabilities(p)
 }
 
 func (s *Server) Router() chi.Router {

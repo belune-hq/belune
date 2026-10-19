@@ -2,6 +2,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import {
   ArrowRightIcon,
+  GaugeIcon,
   ListIcon,
   LockIcon,
   ShieldIcon,
@@ -37,6 +38,12 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Trash2Icon } from "lucide-react";
+import { useProxyCapabilities } from "@/lib/hooks/use-proxy-capabilities";
+import {
+  featureStatus,
+  inertExplanation,
+  type FeatureStatus,
+} from "@/lib/route-feature-status";
 import type { DomainExpanded, RouteFeature } from "@/lib/types";
 
 const FEATURE_TYPES = [
@@ -44,7 +51,14 @@ const FEATURE_TYPES = [
   { value: "headers", label: "Custom Headers", Icon: ListIcon },
   { value: "ip_allowlist", label: "IP Allowlist", Icon: ShieldIcon },
   { value: "redirect", label: "Redirect", Icon: ArrowRightIcon },
+  { value: "rate_limit", label: "Rate Limit", Icon: GaugeIcon },
 ] as const;
+
+// Prefilled when a type is picked, so nobody has to guess the shape. Only types
+// whose config is not obvious from "{}" need an entry.
+const CONFIG_EXAMPLES: Record<string, string> = {
+  rate_limit: '{"window":"1s","max_events":10}',
+};
 
 /**
  * Route features for one domain — middleware Caddy applies to the route.
@@ -78,6 +92,9 @@ export function DomainFeatures({
   const deleteFeature = useDeleteRouteFeature(projectId, applicationId);
   const [newFeatureType, setNewFeatureType] = useState("");
   const [newFeatureConfig, setNewFeatureConfig] = useState("{}");
+  // `undefined` while loading or if the request failed: both mean "unknown", and
+  // featureStatus makes no claim about the operator's Caddy in that case.
+  const { data: capabilities } = useProxyCapabilities();
 
   const handleAddFeature = () => {
     if (!newFeatureType) return;
@@ -118,6 +135,7 @@ export function DomainFeatures({
             <FeatureRow
               key={feature.id}
               feature={feature}
+              status={featureStatus(feature, capabilities)}
               onDelete={() => {
                 toast.promise(
                   deleteFeature.mutateAsync({
@@ -160,22 +178,42 @@ export function DomainFeatures({
           <Label className="text-xs">Type</Label>
           <Select
             value={newFeatureType}
-            onValueChange={(value) => setNewFeatureType(value ?? "")}
+            onValueChange={(value) => {
+              const next = value ?? "";
+              setNewFeatureType(next);
+              // Replace only the untouched placeholder, never something typed.
+              if (newFeatureConfig === "{}" || newFeatureConfig === "") {
+                setNewFeatureConfig(CONFIG_EXAMPLES[next] ?? "{}");
+              }
+            }}
           >
             <SelectTrigger className="w-full capitalize">
               <SelectValue placeholder="Select…" />
             </SelectTrigger>
             <SelectContent>
-              {FEATURE_TYPES.map((ft) => (
-                <SelectItem
-                  key={ft.value}
-                  value={ft.value}
-                  icon={<ft.Icon />}
-                  className="capitalize"
-                >
-                  {ft.label}
-                </SelectItem>
-              ))}
+              {FEATURE_TYPES.map((ft) => {
+                // Offered but disabled, with the reason: a type that vanished
+                // from the list would read as a bug in Belune. Only a probe that
+                // SAW the module set can disable it; unknown leaves it open.
+                const need = capabilities?.features[ft.value];
+                const missing = need?.state === "unavailable";
+                return (
+                  <SelectItem
+                    key={ft.value}
+                    value={ft.value}
+                    icon={<ft.Icon />}
+                    className="capitalize"
+                    disabled={missing}
+                  >
+                    {ft.label}
+                    {missing && (
+                      <span className="text-muted-foreground ml-2 text-xs normal-case">
+                        your Caddy does not have the {need.module} module
+                      </span>
+                    )}
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
         </div>
@@ -184,7 +222,7 @@ export function DomainFeatures({
           <Input
             value={newFeatureConfig}
             onChange={(e) => setNewFeatureConfig(e.target.value)}
-            placeholder='{"key": "value"}'
+            placeholder={CONFIG_EXAMPLES[newFeatureType] ?? '{"key": "value"}'}
             className="font-mono text-xs"
           />
         </div>
@@ -204,56 +242,82 @@ export function DomainFeatures({
 
 function FeatureRow({
   feature,
+  status,
   onDelete,
   onToggle,
 }: {
   feature: RouteFeature;
+  status: FeatureStatus;
   onDelete: () => void;
   onToggle: (enabled: boolean) => void;
 }) {
   const configStr = JSON.stringify(feature.config);
+  const inert = status.inert.length > 0;
   return (
     // min-w-0 the whole way down, or truncate does nothing: a flex item defaults
     // to min-width:auto and refuses to shrink below its content, so one long
     // unbreakable string (a bcrypt hash is exactly that) widens the row, the tab,
     // and the dialog with it.
-    <div className="flex w-full min-w-0 items-center justify-between gap-2 rounded border p-2 text-sm">
-      <div className="flex min-w-0 flex-1 items-center gap-2">
-        {/* A Switch, not a checkbox: flipping this saves the feature
-            immediately — there is no submit button on the row. */}
-        <Switch
-          className="shrink-0"
-          checked={feature.enabled}
-          onCheckedChange={(enabled) => onToggle(enabled)}
-          aria-label={`Enable ${feature.feature_type}`}
-        />
-        <Badge variant="outline" className="shrink-0">
-          {feature.feature_type}
-        </Badge>
-        <span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs">
-          {configStr}
-        </span>
+    <div className="w-full min-w-0 space-y-1.5 rounded border p-2 text-sm">
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          {/* A Switch, not a checkbox: flipping this saves the feature
+              immediately — there is no submit button on the row.
+
+              An inert feature reads OFF and cannot be flipped. Showing ON for
+              something nothing applies is the failure this whole row exists to
+              prevent: a domain that looks rate-limited and is not. */}
+          <Switch
+            className="shrink-0"
+            checked={feature.enabled && !inert}
+            disabled={inert}
+            onCheckedChange={(enabled) => onToggle(enabled)}
+            aria-label={`Enable ${feature.feature_type}`}
+          />
+          <Badge variant="outline" className="shrink-0">
+            {feature.feature_type}
+          </Badge>
+          {inert && (
+            <Badge className="shrink-0 border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400">
+              Not active
+            </Badge>
+          )}
+          <span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs">
+            {configStr}
+          </span>
+        </div>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                // aria-label, not just the tooltip: an icon-only button is unnamed
+                // to a screen reader, and the tooltip text is not a substitute.
+                aria-label="Remove feature"
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive shrink-0"
+                onClick={onDelete}
+              />
+            }
+          >
+            <Trash2Icon className="h-4 w-4" />
+          </TooltipTrigger>
+          <TooltipPositioner>
+            <TooltipContent>Remove Feature</TooltipContent>
+          </TooltipPositioner>
+        </Tooltip>
       </div>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              // aria-label, not just the tooltip: an icon-only button is unnamed
-              // to a screen reader, and the tooltip text is not a substitute.
-              aria-label="Remove feature"
-              className="text-destructive hover:bg-destructive/10 hover:text-destructive shrink-0"
-              onClick={onDelete}
-            />
-          }
+      {/* One line per reason, kept apart: a legacy row on a Caddy that has the
+          module needs "reconfigure this", not "your Caddy lacks the module". */}
+      {status.inert.map((reason) => (
+        <p
+          key={reason.kind}
+          className="text-muted-foreground text-xs"
+          data-testid={`feature-inert-${reason.kind}`}
         >
-          <Trash2Icon className="h-4 w-4" />
-        </TooltipTrigger>
-        <TooltipPositioner>
-          <TooltipContent>Remove Feature</TooltipContent>
-        </TooltipPositioner>
-      </Tooltip>
+          {inertExplanation(reason)}
+        </p>
+      ))}
     </div>
   );
 }

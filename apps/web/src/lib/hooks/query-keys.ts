@@ -243,6 +243,7 @@ export const queryKeys = {
   notificationEvents: ["notification-events"] as const,
   smtpSettings: ["smtp-settings"] as const,
   domainTLSStatus: ["domain-tls-status"] as const,
+  proxyCapabilities: ["proxy-capabilities"] as const,
   gitProviders: ["git-providers"] as const,
   gitIntegrations: ["git-integrations"] as const,
   gitAvailableProviders: ["git-available-providers"] as const,

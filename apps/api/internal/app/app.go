@@ -205,10 +205,14 @@ func New(cfg *config.Config) (*App, error) {
 	// it, a recreated Caddy container (any compose up, any upgrade) comes back
 	// having lost every network the deploy worker put it on, and every app domain
 	// answers 502 until the app is redeployed.
+	//
+	// ONE prober, shared with the capabilities endpoint below: two would mean two
+	// caches and two execs, and they could disagree about the same Caddy. Built
+	// after resolveCaddyContainer so it execs into the real container name.
+	caddyCaps := capability.NewProber(dockerClient, cfg.CaddyContainerName)
 	reconciler := proxy.NewReconciler(queries, caddyClient, cfg.Keyring, 30*time.Second).
 		WithNetworkAttacher(dockerClient, cfg.CaddyContainerName).
-		// After resolveCaddyContainer, so the probe execs into the real name.
-		WithCapabilities(capability.NewProber(dockerClient, cfg.CaddyContainerName))
+		WithCapabilities(caddyCaps)
 
 	// One-time move of plaintext webhook secrets into the keyring-encrypted
 	// column (migration 000051). Safe to run on every boot: it only touches
@@ -221,6 +225,7 @@ func New(cfg *config.Config) (*App, error) {
 
 	broadcaster := ws.NewContainerStatusBroadcaster(hub)
 	httpSrv := server.New(cfg, db, queries, asynqClient, asynqInspector, runtimes, caddyClient, reconciler, rdb, hub, auditSvc, notifySvc, termMgr, emailSvc)
+	httpSrv.SetCapabilities(caddyCaps)
 
 	// Optional Prometheus-friendly bind. Serves /metrics without auth on the
 	// configured address (typically loopback). Keeps the main /metrics route

@@ -12,6 +12,7 @@ import (
 	"math/big"
 	"net"
 	"os"
+	"os/exec"
 	"testing"
 	"time"
 
@@ -248,4 +249,69 @@ func dashboardRouteHostname(t *testing.T, c *caddy.Client) string {
 		}
 	}
 	return ""
+}
+
+// The recovery gap, measured against a real restart. The interval is an hour, so
+// the route can only come back through the probe.
+//
+//	docker run -d --name restart-drill -p 127.0.0.1:12019:2019 \
+//	  -v $PWD/infra/caddy/Caddyfile.template:/etc/caddy/Caddyfile:ro \
+//	  -v $PWD/infra/caddy/sites:/etc/caddy/sites:ro caddy:2-alpine
+//	CADDY_ADMIN_URL=http://localhost:12019 CADDY_RESTART_CONTAINER=restart-drill \
+//	  BELUNE_CADDY_INTEGRATION=1 go test -p 1 ./internal/proxy/ -run RestartRecovers -v
+//
+// Never point this at the dev stack's Caddy: that stack is devcontainer-managed.
+func TestRealStack_CaddyRestartRecoversWithoutTheTick(t *testing.T) {
+	if os.Getenv("BELUNE_CADDY_INTEGRATION") == "" {
+		t.Skip("set BELUNE_CADDY_INTEGRATION=1 to run against a real Caddy + Postgres")
+	}
+	container := os.Getenv("CADDY_RESTART_CONTAINER")
+	if container == "" {
+		t.Skip("set CADDY_RESTART_CONTAINER to a throwaway Caddy container this test may restart")
+	}
+	adminURL := os.Getenv("CADDY_ADMIN_URL")
+	require.NotEmpty(t, adminURL, "CADDY_ADMIN_URL must point at the throwaway container")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	pool, queries, teardown := testutil.SetupTestDB()
+	defer teardown()
+	t.Cleanup(func() { _ = testutil.TruncateAll(context.Background(), pool) })
+
+	const host = "restart-drill.belune.local"
+	app := seedRunningApp(t, ctx, queries)
+	_, err := queries.CreateDomain(ctx, createDomainParams(app.ID, host, proxy.SSLModeOff))
+	require.NoError(t, err)
+
+	client := caddy.New(adminURL)
+	require.NoError(t, client.Ping(ctx))
+	t.Cleanup(func() { _ = client.RemoveRoute(context.Background(), host, "/") })
+
+	hasRoute := func() bool {
+		routes, err := client.ListRoutes(ctx)
+		if err != nil {
+			return false
+		}
+		for _, r := range routes {
+			if r.Hostname == host {
+				return true
+			}
+		}
+		return false
+	}
+
+	r := proxy.NewReconciler(queries, client, nil, time.Hour)
+	go r.Run(ctx)
+	require.Eventually(t, hasRoute, 10*time.Second, 200*time.Millisecond, "the opening pass")
+
+	out, err := exec.Command("docker", "restart", container).CombinedOutput()
+	require.NoError(t, err, string(out))
+	restarted := time.Now()
+
+	// The route is gone the moment Caddy comes back with only its Caddyfile.
+	// Wait for it to answer, then for the probe to put the route back.
+	require.Eventually(t, func() bool { return client.Ping(ctx) == nil }, 15*time.Second, 100*time.Millisecond)
+	require.Eventually(t, hasRoute, 10*time.Second, 200*time.Millisecond,
+		"the route must come back through the probe; the tick is an hour away")
+	t.Logf("route restored %s after docker restart returned", time.Since(restarted).Round(100*time.Millisecond))
 }

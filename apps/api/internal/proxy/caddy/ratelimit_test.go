@@ -129,7 +129,11 @@ func keys(m map[string]any) []string {
 // the 429.
 //
 // Needs a Caddy carrying the rate_limit module — the dev stack's stock
-// caddy:2-alpine will skip, with a message — and the address of its :80:
+// caddy:2-alpine will skip, with a message — and the address of its :80.
+// CADDY_HTTP_ADDR must map to the container's port 80 specifically: InitCatchAll
+// forces the server's listen to [:80 :443], whatever the base config named, and
+// a mapping to any other port fails with a bare EOF — the same signature as
+// max_events=0.
 //
 //	CADDY_ADMIN_URL=http://localhost:12019 CADDY_HTTP_ADDR=localhost:18080 \
 //	  BELUNE_CADDY_INTEGRATION=1 go test -p 1 ./internal/proxy/caddy/ -run RealCaddy_RateLimit -v
@@ -173,6 +177,10 @@ func TestRealCaddy_RateLimitIsEnforcedPerDomain(t *testing.T) {
 		return resp
 	}
 
+	// Re-runnable back-to-back inside its own window only because AddRoute does
+	// DELETE + POST, and a re-POSTed route starts with an empty counter. Patching
+	// routes in place would make this test order-dependent.
+	//
 	// max_events 2: the upstream is dead, so allowed requests are 502s.
 	assert.NotEqual(t, http.StatusTooManyRequests, hit(hostA).StatusCode)
 	assert.NotEqual(t, http.StatusTooManyRequests, hit(hostA).StatusCode)

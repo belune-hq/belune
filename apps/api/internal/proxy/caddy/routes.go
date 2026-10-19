@@ -400,6 +400,11 @@ func buildFeatureHandlers(cfg proxy.RouteConfig) ([]caddyHandle, error) {
 			//    global bucket, which from one client looks identical to
 			//    per-IP working. (Behind another proxy, remote.host is that
 			//    proxy.)
+			// Caddy hands "window" back verbatim, not normalised to nanoseconds, so
+			// routeJSONEqual sees no drift and EnsureRoute does not re-POST. That
+			// matters: a re-POST resets every client's counter, so a re-POST per
+			// reconcile would make any window at or above the interval
+			// unenforceable. If a Caddy upgrade ever normalises it, this breaks.
 			// Nothing else from the module's handler is emitted: "distributed"
 			// would silently turn on distributed limiting with default storage.
 			handlers = append(handlers, caddyHandle{

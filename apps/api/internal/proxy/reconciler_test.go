@@ -15,6 +15,8 @@ type mockProxy struct {
 	added   []string
 	removed []string
 	routes  []proxy.RouteConfig // routes returned by ListRoutes
+	ensured []proxy.RouteConfig // what EnsureRoute was asked to make Caddy hold
+	skip    []string            // last auto-HTTPS skip list pushed
 }
 
 func (m *mockProxy) AddRoute(_ context.Context, cfg proxy.RouteConfig) error {
@@ -39,13 +41,21 @@ func (m *mockProxy) ListRoutes(_ context.Context) ([]proxy.RouteConfig, error) {
 
 func (m *mockProxy) SetupTLS(_ context.Context, _, _, _, _ string) error { return nil }
 
-func (m *mockProxy) SyncAutoHTTPS(_ context.Context, _, _ []string) error { return nil }
+func (m *mockProxy) SyncAutoHTTPS(_ context.Context, skip, _ []string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.skip = skip
+	return nil
+}
 
 func (m *mockProxy) SyncCertificates(_ context.Context, _ []proxy.HostCertificate) error { return nil }
 
 func (m *mockProxy) SetDashboardRoute(_ context.Context, _, _ string) error { return nil }
 
 func (m *mockProxy) EnsureRoute(ctx context.Context, cfg proxy.RouteConfig) (bool, error) {
+	m.mu.Lock()
+	m.ensured = append(m.ensured, cfg)
+	m.mu.Unlock()
 	return true, m.AddRoute(ctx, cfg)
 }
 func (m *mockProxy) UsesInternalIssuer(_ context.Context) (bool, error) { return false, nil }

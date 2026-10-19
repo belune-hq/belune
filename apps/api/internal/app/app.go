@@ -28,6 +28,7 @@ import (
 	"github.com/weiliang79/belune/internal/pkg/metrics"
 	"github.com/weiliang79/belune/internal/proxy"
 	"github.com/weiliang79/belune/internal/proxy/caddy"
+	"github.com/weiliang79/belune/internal/proxy/capability"
 	"github.com/weiliang79/belune/internal/quota"
 	"github.com/weiliang79/belune/internal/runtime"
 	"github.com/weiliang79/belune/internal/runtime/docker"
@@ -205,7 +206,9 @@ func New(cfg *config.Config) (*App, error) {
 	// having lost every network the deploy worker put it on, and every app domain
 	// answers 502 until the app is redeployed.
 	reconciler := proxy.NewReconciler(queries, caddyClient, cfg.Keyring, 30*time.Second).
-		WithNetworkAttacher(dockerClient, cfg.CaddyContainerName)
+		WithNetworkAttacher(dockerClient, cfg.CaddyContainerName).
+		// After resolveCaddyContainer, so the probe execs into the real name.
+		WithCapabilities(capability.NewProber(dockerClient, cfg.CaddyContainerName))
 
 	// One-time move of plaintext webhook secrets into the keyring-encrypted
 	// column (migration 000051). Safe to run on every boot: it only touches

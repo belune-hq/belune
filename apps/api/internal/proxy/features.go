@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net"
 	"strings"
+
+	"github.com/weiliang79/belune/internal/proxy/capability"
 )
 
 // Feature type identifiers. Must match the values stored in
@@ -17,6 +19,18 @@ const (
 	FeatureRedirect    = "redirect"
 	FeatureRateLimit   = "rate_limit"
 )
+
+// RequiredModule names the Caddy module a feature type needs to exist, or ""
+// for the features stock Caddy serves on its own. It is the single place that
+// ties a feature to a capability, so the reconciler's degradation and (later)
+// the write-time check cannot disagree about what needs what.
+func RequiredModule(featureType string) string {
+	switch featureType {
+	case FeatureRateLimit:
+		return capability.ModuleRateLimit
+	}
+	return ""
+}
 
 // BasicAuthConfig configures HTTP basic auth on a route.
 type BasicAuthConfig struct {

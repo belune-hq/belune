@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"slices"
 	"sort"
 	"strings"
 
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/weiliang79/belune/internal/naming"
+	"github.com/weiliang79/belune/internal/proxy/capability"
 	"github.com/weiliang79/belune/internal/status"
 	"github.com/weiliang79/belune/internal/store/generated"
 )
@@ -30,6 +32,11 @@ type Reconciler struct {
 	// case the attachment is somebody else's problem.
 	net            NetworkAttacher
 	proxyContainer string
+
+	// caps reports which optional Caddy modules exist. Nil means "do not gate",
+	// which is the behaviour before the probe was wired; once set, the
+	// Provider itself fails closed.
+	caps capability.Provider
 
 	// runMu serialises whole reconcile passes so a manual ReconcileNow can't
 	// overlap the periodic tick (reconcile is diff-based/idempotent but issues
@@ -57,6 +64,19 @@ type ReconcilerStatus struct {
 	// TotalDrift counts every route that had to be added or removed across
 	// all runs. Stable value over time means Caddy is in sync with the DB.
 	TotalDrift int64 `json:"total_drift"`
+	// Degraded lists the features served WITHOUT because the running Caddy lacks
+	// their module. Derived afresh every pass rather than stored, so it clears
+	// itself the moment the module appears or the feature is removed.
+	Degraded []Degradation `json:"degraded,omitempty"`
+}
+
+// Degradation records one feature a route is being served without.
+type Degradation struct {
+	Hostname string `json:"hostname"`
+	Path     string `json:"path"`
+	Feature  string `json:"feature"`
+	// Module is the Caddy module the feature needs and the running Caddy lacks.
+	Module string `json:"module"`
 }
 
 // NewReconciler creates a Reconciler with the given tick interval. dec unwraps
@@ -76,6 +96,13 @@ func NewReconciler(queries *generated.Queries, proxy ProxyManager, dec Decryptor
 func (r *Reconciler) WithNetworkAttacher(net NetworkAttacher, proxyContainer string) *Reconciler {
 	r.net = net
 	r.proxyContainer = proxyContainer
+	return r
+}
+
+// WithCapabilities makes the reconciler serve a route without any feature whose
+// Caddy module is absent, instead of pushing a config Caddy will reject.
+func (r *Reconciler) WithCapabilities(caps capability.Provider) *Reconciler {
+	r.caps = caps
 	return r
 }
 
@@ -127,6 +154,7 @@ func (r *Reconciler) reconcile(ctx context.Context) {
 
 	start := time.Now()
 	var added, removed, updated int
+	var degraded []Degradation
 	var firstErr error
 	recordErr := func(err error) {
 		if firstErr == nil {
@@ -143,6 +171,15 @@ func (r *Reconciler) reconcile(ctx context.Context) {
 		r.status.LastRemoved = removed
 		r.status.RunCount++
 		r.status.TotalDrift += int64(added + removed + updated)
+		// Only on change: this runs every pass, and a standing condition would
+		// otherwise repeat itself in the log every 30 seconds for ever.
+		if !slices.Equal(r.status.Degraded, degraded) {
+			for _, d := range degraded {
+				slog.Warn("proxy reconciler: serving route without a feature its Caddy lacks the module for",
+					"hostname", d.Hostname, "path", d.Path, "feature", d.Feature, "module", d.Module)
+			}
+		}
+		r.status.Degraded = degraded
 		if firstErr != nil {
 			r.status.LastError = firstErr.Error()
 		} else {
@@ -157,6 +194,13 @@ func (r *Reconciler) reconcile(ctx context.Context) {
 		recordErr(err)
 		return
 	}
+
+	// Degrade the feature, never drop the route. Skip and custom-cert sets below
+	// are computed from `expected`, so a route that stays in it stays in them —
+	// which is what keeps "a hostname is in Caddy's route table iff it is in the
+	// skip computation" true. Removing a route here would have to remove it from
+	// both, or an ssl_mode=off host would start attracting certificate attempts.
+	expected, degraded = r.degrade(ctx, expected)
 
 	// Before the routes: a route pointing at a container the proxy cannot resolve
 	// is a 502, and a recreated proxy container has lost every project network it
@@ -387,6 +431,83 @@ func (r *Reconciler) buildExpected(ctx context.Context) ([]RouteConfig, []string
 		names = append(names, n)
 	}
 	return configs, names, nil
+}
+
+// degrade removes, from the configs it returns, each enabled feature whose Caddy
+// module the running Caddy lacks, and reports what it removed.
+//
+// Left in, such a feature makes Caddy reject the route's POST (measured on stock
+// caddy:2-alpine: HTTP 500, "unknown module: http.handlers.rate_limit"). That
+// leaves the config untouched, so other routes are unaffected — but the domain
+// itself never gets a route and errors every pass for ever. Worse, AddRoute
+// removes any existing route first, so a domain that was serving loses its route
+// when an update names a module Caddy lacks. Serving without the feature, and
+// saying so, beats both.
+//
+// The database is not touched: the feature stays configured, and starts working
+// again when the module appears.
+func (r *Reconciler) degrade(ctx context.Context, expected []RouteConfig) ([]RouteConfig, []Degradation) {
+	if r.caps == nil {
+		return expected, nil
+	}
+
+	// Probe only when something needs it: an exec every pass would be wasted on
+	// installs using no module-backed feature.
+	needsProbe := false
+	for _, cfg := range expected {
+		for _, f := range cfg.Features {
+			if f.Enabled && RequiredModule(f.Type) != "" {
+				needsProbe = true
+			}
+		}
+	}
+	if !needsProbe {
+		return expected, nil
+	}
+	caps := r.caps.Capabilities(ctx)
+
+	var degraded []Degradation
+	out := make([]RouteConfig, len(expected))
+	copy(out, expected)
+	for i, cfg := range out {
+		// Copy-on-write: Features may share a backing array with the caller.
+		var kept []RouteFeature
+		changed := false
+		for j, f := range cfg.Features {
+			module := RequiredModule(f.Type)
+			if f.Enabled && module != "" && !caps.Has(module) {
+				if !changed {
+					kept = append(kept, cfg.Features[:j]...)
+					changed = true
+				}
+				degraded = append(degraded, Degradation{
+					Hostname: cfg.Hostname,
+					Path:     keyFor(cfg).path,
+					Feature:  f.Type,
+					Module:   module,
+				})
+				continue
+			}
+			if changed {
+				kept = append(kept, f)
+			}
+		}
+		if changed {
+			out[i].Features = kept
+		}
+	}
+
+	sort.Slice(degraded, func(a, b int) bool {
+		x, y := degraded[a], degraded[b]
+		if x.Hostname != y.Hostname {
+			return x.Hostname < y.Hostname
+		}
+		if x.Path != y.Path {
+			return x.Path < y.Path
+		}
+		return x.Feature < y.Feature
+	})
+	return out, degraded
 }
 
 // ensureNetworks re-joins the proxy container to every project network it needs.

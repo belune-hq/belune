@@ -26,10 +26,10 @@ import (
 // also registers `crowdsec` and `admin.api.crowdsec`, and layer4 a family of
 // `layer4.handlers.*`, none of which prove the handler we would emit exists.
 const (
-	moduleRateLimit = "http.handlers.rate_limit"
-	moduleWAF       = "http.handlers.waf"
-	moduleCrowdSec  = "http.handlers.crowdsec"
-	moduleLayer4    = "layer4"
+	ModuleRateLimit = "http.handlers.rate_limit"
+	ModuleWAF       = "http.handlers.waf"
+	ModuleCrowdSec  = "http.handlers.crowdsec"
+	ModuleLayer4    = "layer4"
 )
 
 var dnsProviderModules = []string{
@@ -63,10 +63,10 @@ func (s Set) Has(moduleID string) bool {
 	return ok
 }
 
-func (s Set) RateLimit() bool { return s.Has(moduleRateLimit) }
-func (s Set) WAF() bool       { return s.Has(moduleWAF) }
-func (s Set) CrowdSec() bool  { return s.Has(moduleCrowdSec) }
-func (s Set) Layer4() bool    { return s.Has(moduleLayer4) }
+func (s Set) RateLimit() bool { return s.Has(ModuleRateLimit) }
+func (s Set) WAF() bool       { return s.Has(ModuleWAF) }
+func (s Set) CrowdSec() bool  { return s.Has(ModuleCrowdSec) }
+func (s Set) Layer4() bool    { return s.Has(ModuleLayer4) }
 
 // DNS01 is true when any supported DNS provider is present; there is no single
 // module that means "DNS-01 works".

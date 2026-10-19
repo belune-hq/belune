@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 
@@ -101,6 +102,24 @@ func TestRealCaddy_RestartedCaddyDoesNotShadowDomains(t *testing.T) {
 
 	const host = "shadow-drill.belune.local"
 	t.Cleanup(func() { _ = c.RemoveRoute(ctx, host, "/") })
+
+	// Arm the drill with what a Caddy restart leaves behind: the default site, as
+	// the FIRST route. Without this a re-run against the same container finds
+	// nothing left to drop (the fix removed it) and passes asserting nothing.
+	// PUT at index 0 inserts; POST to .../routes/0 would append it after the
+	// catch-all, which is a different arrangement.
+	armReq, err := http.NewRequestWithContext(ctx, http.MethodPut,
+		c.adminURL+"/config/apps/http/servers/srv0/routes/0",
+		strings.NewReader(`{"handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"belune:8080"}]}]}`))
+	require.NoError(t, err)
+	armReq.Header.Set("Content-Type", "application/json")
+	armResp, err := c.httpClient.Do(armReq)
+	require.NoError(t, err)
+	armResp.Body.Close()
+	require.Less(t, armResp.StatusCode, 300)
+	before, err := c.fetchRawRoutes(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "", idsOf(t, before)[0], "the drill must start with a match-less route first")
 
 	// Deliberately no InitCatchAll: that runs at API startup only, which is
 	// exactly what a Caddy restart does not repeat.

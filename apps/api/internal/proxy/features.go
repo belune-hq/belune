@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"sort"
 	"strings"
 	"time"
 
@@ -21,16 +22,29 @@ const (
 	FeatureRateLimit   = "rate_limit"
 )
 
-// RequiredModule names the Caddy module a feature type needs to exist, or ""
-// for the features stock Caddy serves on its own. It is the single place that
-// ties a feature to a capability, so the reconciler's degradation and (later)
-// the write-time check cannot disagree about what needs what.
+// requiredModules maps each feature that stock Caddy cannot serve to the module
+// it needs. It is the single place that ties a feature to a capability, so the
+// reconciler's degradation, the write-time check and the capabilities endpoint
+// cannot disagree about what needs what.
+var requiredModules = map[string]string{
+	FeatureRateLimit: capability.ModuleRateLimit,
+}
+
+// RequiredModule names the Caddy module a feature type needs, or "" for the
+// features stock Caddy serves on its own.
 func RequiredModule(featureType string) string {
-	switch featureType {
-	case FeatureRateLimit:
-		return capability.ModuleRateLimit
+	return requiredModules[featureType]
+}
+
+// ModuleBackedFeatures lists the feature types that depend on an optional module,
+// in a stable order.
+func ModuleBackedFeatures() []string {
+	out := make([]string, 0, len(requiredModules))
+	for t := range requiredModules {
+		out = append(out, t)
 	}
-	return ""
+	sort.Strings(out)
+	return out
 }
 
 // BasicAuthConfig configures HTTP basic auth on a route.

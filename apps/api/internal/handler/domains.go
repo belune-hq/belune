@@ -678,6 +678,21 @@ func (h *Handler) UpsertRouteFeature(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Gate 1: refuse to enable a feature the running Caddy provably cannot serve.
+	// It is UX, not protection — the reconciler's degradation is what keeps a
+	// domain serving — so it fires only when the probe SAW the module set and the
+	// module is not in it. An unknown probe (Caddy restarting) allows the write:
+	// refusing legitimate work because Caddy blinked is worse than no gate.
+	// Disabling is never refused, and neither list nor delete is gated, so an
+	// operator who moves to a Caddy without the module can still clean up.
+	if module := proxy.RequiredModule(req.FeatureType); module != "" && req.Enabled {
+		if set := h.capabilitySet(r); set.Known() && !set.Has(module) {
+			writeError(w, http.StatusBadRequest, req.FeatureType+" needs the Caddy module "+module+
+				", which the running Caddy does not have, so it was not enabled. Settings already saved stay stored but are not applied until the module is available (use the Belune Caddy image)")
+			return
+		}
+	}
+
 	feature, err := h.queries.UpsertRouteFeature(r.Context(), generated.UpsertRouteFeatureParams{
 		DomainID:    domainUUID,
 		FeatureType: req.FeatureType,

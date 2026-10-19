@@ -19,6 +19,7 @@ import (
 	"github.com/weiliang79/belune/internal/mcpserver"
 	"github.com/weiliang79/belune/internal/pkg/redact"
 	"github.com/weiliang79/belune/internal/proxy"
+	"github.com/weiliang79/belune/internal/proxy/capability"
 	"github.com/weiliang79/belune/internal/quota"
 	"github.com/weiliang79/belune/internal/runtime"
 	"github.com/weiliang79/belune/internal/server/middleware"
@@ -65,16 +66,20 @@ type Handler struct {
 	updateStarting atomic.Bool
 	// updateBeganAt (unix nanos) is when updateStarting was last taken, for the
 	// public flag's elapsed time during the pull window.
-	updateBeganAt     atomic.Int64
-	updateProbe       updateProbe
-	cfg               *config.Config
-	db                *pgxpool.Pool
-	queries           *generated.Queries
-	asynq             TaskEnqueuer
-	inspector         QueueInspector
-	runtimes          runtime.Runtimes
-	proxy             proxy.ProxyManager
-	reconciler        ReconcilerStatusProvider
+	updateBeganAt atomic.Int64
+	updateProbe   updateProbe
+	cfg           *config.Config
+	db            *pgxpool.Pool
+	queries       *generated.Queries
+	asynq         TaskEnqueuer
+	inspector     QueueInspector
+	runtimes      runtime.Runtimes
+	proxy         proxy.ProxyManager
+	reconciler    ReconcilerStatusProvider
+	// capabilities reports which optional Caddy modules exist. Nil until wired
+	// (tests, a Caddy we do not manage) and then treated as "not known", never as
+	// "none present": see capabilitySet.
+	capabilities      capability.Provider
 	auth              *service.AuthService
 	rdb               *redis.Client
 	appService        *service.ApplicationService

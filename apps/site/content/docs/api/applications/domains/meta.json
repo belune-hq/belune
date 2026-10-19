@@ -9,6 +9,7 @@
     "list-usable-certificates",
     "list-route-features",
     "upsert-route-feature",
-    "delete-route-feature"
+    "delete-route-feature",
+    "get-proxy-capabilities"
   ]
 }

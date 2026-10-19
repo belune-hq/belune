@@ -449,6 +449,13 @@ func registerRoutes(r chi.Router, h *handler.Handler, auth *service.AuthService,
 				r.Put("/api/projects/{projectId}/applications/{applicationId}/domains/{domainId}", h.UpdateDomain)
 				r.With(middleware.RequireSession()).Delete("/api/projects/{projectId}/applications/{applicationId}/domains/{domainId}", h.RemoveDomain)
 
+				// Which optional route features the running Caddy can serve. In the
+				// bulk group on purpose: the domain features UI is open to anyone
+				// with project access, and a pinned token passes (no projectId in
+				// the path) because this describes the install's Caddy, which a
+				// project cannot narrow.
+				r.Get("/api/proxy/capabilities", h.GetProxyCapabilities)
+
 				// Domain route features
 				r.Post("/api/projects/{projectId}/applications/{applicationId}/domains/{domainId}/tls/recheck", h.RecheckDomainTLS)
 				r.Get("/api/projects/{projectId}/applications/{applicationId}/domains/{domainId}/features", h.ListRouteFeatures)

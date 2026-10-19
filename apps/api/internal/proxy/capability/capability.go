@@ -57,6 +57,18 @@ func NewSet(ids ...string) Set {
 	return s
 }
 
+// Known reports whether the probe actually saw a Caddy. A real Caddy always has
+// on the order of a hundred modules, so an empty Set means the probe failed, not
+// that Caddy has nothing.
+//
+// This is what lets a caller tell "this Caddy lacks the module" from "we could
+// not ask". Gate 2 (the reconciler) does not care and fails closed either way.
+// Anything that makes a CLAIM about the operator's Caddy — a refused write, a
+// warning in the UI — must check Known first: telling someone their Caddy lacks
+// a module while it is merely restarting sends them to rebuild an image that was
+// fine.
+func (s Set) Known() bool { return len(s.modules) > 0 }
+
 // Has reports whether the exact module ID is present.
 func (s Set) Has(moduleID string) bool {
 	_, ok := s.modules[moduleID]

@@ -33,6 +33,8 @@ import {
 import { ExpiryCell } from "@/components/certificates/expiry-cell";
 import { useRemoveDomain } from "@/lib/hooks/use-domains";
 import type { DomainExpanded, RouteFeature } from "@/lib/types";
+import { useProxyCapabilities } from "@/lib/hooks/use-proxy-capabilities";
+import { featureStatus, inertExplanation } from "@/lib/route-feature-status";
 import { useDomainTLSStatus } from "@/lib/hooks/use-certificates";
 import { DomainTLSBadge } from "./domain-tls-badge";
 
@@ -242,6 +244,7 @@ function ForceHTTPSCell({ domain }: { domain: DomainExpanded }) {
 }
 
 function FeatureCell({ features }: { features?: RouteFeature[] }) {
+  const { data: capabilities } = useProxyCapabilities();
   const list = features ?? [];
   if (list.length === 0) {
     return <span className="text-muted-foreground">—</span>;
@@ -252,10 +255,26 @@ function FeatureCell({ features }: { features?: RouteFeature[] }) {
 
   return (
     <div className="flex flex-wrap items-center gap-1">
-      {shown.map((f) =>
+      {shown.map((f) => {
+        const { inert } = featureStatus(f, capabilities);
+        // Enabled in the database but not applied: the worst badge to get wrong,
+        // since a "Rate Limit" badge on a domain with no rate limit is exactly
+        // what an operator comparing siblings would trust. Dashed amber, with the
+        // reason on hover, so it cannot pass for a live one.
+        if (inert.length > 0) {
+          return (
+            <Badge
+              key={f.id}
+              className="border-dashed border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+              title={inert.map(inertExplanation).join(" ")}
+            >
+              {featureLabel(f)} · not active
+            </Badge>
+          );
+        }
         // A disabled feature is the dangerous case: basic auth that is present
         // but switched off looks, at a glance, exactly like basic auth. Say so.
-        f.enabled ? (
+        return f.enabled ? (
           <Badge key={f.id} variant="light">
             {featureLabel(f)}
           </Badge>
@@ -263,8 +282,8 @@ function FeatureCell({ features }: { features?: RouteFeature[] }) {
           <Badge key={f.id} variant="outline" className="text-muted-foreground">
             {featureLabel(f)}
           </Badge>
-        ),
-      )}
+        );
+      })}
       {hidden.length > 0 && (
         // Name the hidden ones on hover. A bare "+2 more" tells you that you are
         // being kept from something without telling you what, which is the worst

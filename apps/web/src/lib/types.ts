@@ -788,6 +788,17 @@ export interface ReconcilerStatus {
   total_drift: number;
 }
 
+/** Whether the running Caddy has the module a route feature needs. "unknown"
+ *  means the probe could not ask — not that the module is missing. */
+export type FeatureAvailability = "available" | "unavailable" | "unknown";
+
+export interface ProxyCapabilities {
+  /** False when the probe could not read the running Caddy's modules. */
+  known: boolean;
+  /** Only the feature types that need an optional module appear here. */
+  features: Record<string, { module: string; state: FeatureAvailability }>;
+}
+
 export interface QueueDepth {
   queue: string;
   pending: number;

@@ -6,11 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -89,9 +86,13 @@ func TestReorderRoutes_KeepsHostRoutesAndSynthesisesTheCatchAll(t *testing.T) {
 // AddRoute. Reproduces a Caddy restart without an API restart (no InitCatchAll).
 //
 //	docker run -d --name shadow-drill -p 127.0.0.1:12019:2019 \
-//	  -v $PWD/infra/caddy/Caddyfile.template:/etc/caddy/Caddyfile:ro caddy:2-alpine
+//	  -v $PWD/infra/caddy/Caddyfile.template:/etc/caddy/Caddyfile:ro \
+//	  -v $PWD/infra/caddy/sites:/etc/caddy/sites:ro caddy:2-alpine
 //	CADDY_ADMIN_URL=http://localhost:12019 BELUNE_CADDY_INTEGRATION=1 \
 //	  go test -p 1 ./internal/proxy/caddy/ -run RealCaddy_RestartedCaddy -v
+//
+// It asserts the route ARRAY only, over the admin API: no request is sent, so it
+// needs no :80 mapping and cannot be satisfied by an unrelated listener.
 //
 // Never point this at the dev stack's Caddy: that stack is devcontainer-managed.
 func TestRealCaddy_RestartedCaddyDoesNotShadowDomains(t *testing.T) {
@@ -128,22 +129,4 @@ func TestRealCaddy_RestartedCaddyDoesNotShadowDomains(t *testing.T) {
 		require.NotEmpty(t, p.Match, "a match-less route other than the catch-all would answer for every host: %s", r)
 		require.NotEmpty(t, p.Match[0].Host)
 	}
-
-	// And it is the domain's route, not the dashboard, that answers its host.
-	addr := os.Getenv("CADDY_HTTP_ADDR")
-	if addr == "" {
-		addr = "localhost:80"
-	}
-	req, err := http.NewRequest(http.MethodGet, "http://"+addr+"/", nil)
-	require.NoError(t, err)
-	req.Host = host
-	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
-	require.NoError(t, err)
-	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	// The upstream (127.0.0.1:9) is dead, so the domain route answers 502. The
-	// default site proxies to a dashboard upstream that also does not exist in
-	// this drill, so the route ORDER above is the real assertion; this only
-	// confirms the request reached something.
-	assert.NotEmpty(t, resp.Status, strings.TrimSpace(string(body)))
 }

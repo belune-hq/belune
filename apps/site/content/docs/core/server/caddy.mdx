@@ -1,0 +1,42 @@
+---
+title: Caddy
+description: The Caddy image Belune ships, which features need extra modules, and what Belune requires of a Caddy you run yourself.
+---
+
+Belune puts every domain behind Caddy and configures it through Caddy's admin API. Which Caddy you run decides which optional features are available. Nothing else changes.
+
+## The Default Image
+
+Belune's stack runs `ghcr.io/belune-hq/belune-caddy:2`: upstream Caddy plus seven optional modules (rate limiting, the Cloudflare, Route 53 and DigitalOcean DNS providers, a WAF, CrowdSec, and layer 4 proxying). Today only rate limiting is something you can use from the dashboard; the rest ship ahead of their features so that turning them on later doesn't mean replacing the proxy again.
+
+You don't have to use it. Stock upstream `caddy:2-alpine` is a supported setup, not a degraded one: every core function (routing, automatic and custom TLS, basic auth, headers, IP allowlists, redirects, path routing) works the same. Set `BELUNE_CADDY_IMAGE` in `.env` to switch, and run `update.sh` (or `docker compose up -d`) to recreate the proxy. See the [configuration reference](https://github.com/weiliang79/belune/blob/main/docs/configuration.md) for the variable.
+
+<Callout type="info">
+Recreating the Caddy container, which is also what upgrading to 0.2.0 does, makes your domains briefly unreachable while the new container starts.
+</Callout>
+
+## Features That Need a Module
+
+Belune asks the running Caddy which modules it has (`caddy list-modules`, run inside its container) and checks again whenever the container is recreated. It never guesses from the image name.
+
+| Feature | Module it needs |
+|---|---|
+| Rate Limit | `http.handlers.rate_limit` |
+
+When the module is missing the feature is **not configured**, never an error:
+
+- You can't enable it, and the type is shown disabled in the domain's route features with the reason.
+- A feature you saved earlier stays stored but shows as **Not active**, and the domain keeps serving without it. Switch back to an image with the module and it applies on the next reconcile, with no re-entry.
+- If Belune can't reach Caddy to ask (for instance while it restarts), it makes no claim either way: you can still save the feature, and a domain is only ever served with a feature the running Caddy is known to have.
+
+## Bring Your Own Caddy
+
+Belune manages Caddy entirely through its admin API; it never writes a Caddyfile. A Caddy that works with Belune needs:
+
+1. **The admin API reachable from Belune**, at `CADDY_ADMIN_URL` (default `http://localhost:2019`; the bundled stack sets `http://caddy:2019`). Keep it off public interfaces: it can reconfigure everything.
+2. **A single HTTP server named `srv0`.** Every route is written to `srv0` by name. A Caddyfile with one `:80` site block produces it; a `:80, :443` block would split into `srv0` and `srv1` and strand the routes on the wrong one. Belune sets the listeners to `:80` and `:443`, the automatic-HTTPS policy and the TLS connection policy itself.
+3. **A Docker container Belune can find.** It looks for the label `belune-system=caddy`, or the name in `CADDY_CONTAINER_NAME` (default `infra-caddy-1`), which is the way to name one that doesn't carry the label. Belune runs `caddy list-modules` inside it and joins it to each project's Docker network so it can reach your apps. A Caddy outside Docker can still be routed to, but you take over the networking, and because Belune can't ask it for its modules, module-backed features are left off.
+4. **The standard handlers Belune emits**, all part of upstream Caddy: `reverse_proxy`, `rewrite`, `static_response`, `subroute`, `headers` and `authentication` (HTTP basic), with the host, path and remote IP matchers; the `load_pem` certificate loader; and the file log writer with the filter encoder. Any upstream build has them.
+5. **The access log volume.** Belune writes a JSON access log to `/var/log/caddy/access.log` inside the Caddy container and reads it from its own, so both mount the same volume there.
+
+Belune treats its own routes as the source of truth and re-asserts them every 30 seconds, so a host route you add to Caddy by hand will be removed. Optional modules are a bonus, never a requirement.

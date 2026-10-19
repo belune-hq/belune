@@ -9,6 +9,7 @@
     "quotas",
     "audit-log",
     "docker",
+    "caddy",
     "configurations"
   ]
 }

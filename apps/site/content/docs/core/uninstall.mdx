@@ -67,7 +67,7 @@ This removes `docker-compose.yml`, the Caddy/BuildKit config, the `scripts/` hel
 
 ## What's Left Behind
 
-- **Pulled Docker images** — `ghcr.io/weiliang79/belune`, `postgres:16-alpine`, `redis:7-alpine`, `moby/buildkit`, `caddy:2-alpine`, and any image your apps used. Reclaim the space with `docker image prune -a`.
+- **Pulled Docker images** — `ghcr.io/weiliang79/belune`, `postgres:16-alpine`, `redis:7-alpine`, `moby/buildkit`, `ghcr.io/belune-hq/belune-caddy` (or `caddy:2-alpine` if you set `BELUNE_CADDY_IMAGE` to it), and any image your apps used. Reclaim the space with `docker image prune -a`.
 - **The `docker` group membership** the installer may have granted — harmless to leave, or remove with `sudo gpasswd -d <user> docker` if you're decommissioning the host entirely.
 - **Anything deployed outside the compose stack** — Belune doesn't touch containers, volumes, or networks it didn't create, so unrelated Docker workloads on the same host are untouched by any of the steps above.
 - **DNS records** pointing at this host — Belune doesn't manage DNS, so any `A` records you created during [install](/docs/core/install) will keep resolving here until you remove them yourself.

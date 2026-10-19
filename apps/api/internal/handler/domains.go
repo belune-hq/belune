@@ -687,8 +687,8 @@ func (h *Handler) UpsertRouteFeature(w http.ResponseWriter, r *http.Request) {
 	// operator who moves to a Caddy without the module can still clean up.
 	if module := proxy.RequiredModule(req.FeatureType); module != "" && req.Enabled {
 		if set := h.capabilitySet(r); set.Known() && !set.Has(module) {
-			writeError(w, http.StatusBadRequest, req.FeatureType+" needs the Caddy module "+module+
-				", which the running Caddy does not have, so it was not enabled. Settings already saved stay stored but are not applied until the module is available (use the Belune Caddy image)")
+			writeError(w, http.StatusBadRequest, req.FeatureType+" cannot be enabled: it needs the Caddy module "+module+
+				", which the running Caddy does not have. Any "+req.FeatureType+" settings already saved for this or other domains stay stored and apply once the module is available (use the Belune Caddy image)")
 			return
 		}
 	}

@@ -170,7 +170,13 @@ services:
         max-file: "5"
 
   caddy:
-    image: caddy:2-alpine
+    # belune-caddy is upstream Caddy plus seven optional modules (rate limiting,
+    # three DNS providers, WAF, CrowdSec, layer4). Belune probes the running Caddy
+    # for them and reports a feature whose module is absent as "not configured",
+    # so stock caddy:2-alpine stays a fully supported configuration, not a
+    # degraded one. BELUNE_CADDY_IMAGE is the bring-your-own escape hatch: point
+    # it back at upstream and every core function keeps working.
+    image: ${BELUNE_CADDY_IMAGE:-ghcr.io/belune-hq/belune-caddy:2}
     ports:
       - "80:80"
       - "443:443"

@@ -220,6 +220,7 @@ Not read by the Go binary — consumed by Docker Compose and the install scripts
 | Variable | Notes |
 |---|---|
 | `BELUNE_IMAGE` | Image tag the stack runs |
+| `BELUNE_CADDY_IMAGE` | Caddy image. Defaults to `ghcr.io/belune-hq/belune-caddy:2` (upstream Caddy plus optional modules); set `caddy:2-alpine` to run stock Caddy, where module-backed features show as "not configured" |
 | `DOCKER_GID` | Host docker group ID, so the container can reach the socket |
 | `POSTGRES_USER` · `POSTGRES_DB` | Database bootstrap |
 | `POSTGRES_PASSWORD` | Secret. Generated at install |

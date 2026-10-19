@@ -188,33 +188,49 @@ func (r *Reconciler) probeLostConfig(ctx context.Context) {
 	current, err := r.proxy.ListRoutes(ctx)
 
 	r.mu.Lock()
-	next := caddyHealthy
-	switch {
-	case err != nil:
-		next = caddyUnreachable
-	case len(current) == 0 && r.lastExpected > 0:
-		next = caddyLostConfig
-	}
+	next := nextCaddyState(current, err, r.lastExpected)
 	prev := r.probe
 	r.probe = next
-	// Unknown -> healthy only counts when the opening pass failed; otherwise
-	// the first probe would reconcile a Caddy that was never in trouble.
-	recovered := next == caddyHealthy &&
-		(prev == caddyUnreachable || (prev == caddyUnknown && r.status.LastError != ""))
-	lost := next == caddyLostConfig && prev != caddyLostConfig
+	fire := probeShouldReconcile(prev, next, r.status.LastError != "")
 	r.mu.Unlock()
 
 	switch {
 	case next == caddyUnreachable && prev != caddyUnreachable:
 		slog.Warn("proxy reconciler: caddy admin API is not answering", "error", err)
-	case lost:
+	case fire && next == caddyLostConfig:
 		slog.Warn("proxy reconciler: caddy has lost its routes (restarted?); reconciling now")
-	case recovered:
+	case fire:
 		slog.Info("proxy reconciler: caddy is reachable again; reconciling now")
 	}
-	if lost || recovered {
+	if fire {
 		r.reconcile(ctx)
 	}
+}
+
+// nextCaddyState classifies one ListRoutes answer. Pure, so the decision that
+// is most likely to regress can be tested without a database or a Caddy.
+func nextCaddyState(routes []RouteConfig, err error, lastExpected int) caddyState {
+	switch {
+	case err != nil:
+		return caddyUnreachable
+	case len(routes) == 0 && lastExpected > 0:
+		return caddyLostConfig
+	}
+	return caddyHealthy
+}
+
+// probeShouldReconcile is the edge trigger: entering lost-config, or leaving
+// unreachable. Never the state itself. Unknown -> healthy only counts when the
+// opening pass failed; otherwise the first probe would reconcile a Caddy that
+// was never in trouble.
+func probeShouldReconcile(prev, next caddyState, lastPassErrored bool) bool {
+	switch next {
+	case caddyLostConfig:
+		return prev != caddyLostConfig
+	case caddyHealthy:
+		return prev == caddyUnreachable || (prev == caddyUnknown && lastPassErrored)
+	}
+	return false
 }
 
 // reconcile performs one reconciliation pass. Errors are logged and retried on

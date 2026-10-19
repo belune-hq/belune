@@ -12,3 +12,21 @@ func (r *Reconciler) ProbeLostConfig(ctx context.Context) { r.probeLostConfig(ct
 
 // CaddyProbeInterval lets a test wait in units of the real probe cadence.
 const CaddyProbeInterval = caddyProbeInterval
+
+// States and the two pure probe decisions, for a table test that needs no Docker.
+const (
+	CaddyUnknown     = caddyUnknown
+	CaddyUnreachable = caddyUnreachable
+	CaddyHealthy     = caddyHealthy
+	CaddyLostConfig  = caddyLostConfig
+)
+
+type CaddyState = caddyState
+
+func NextCaddyState(routes []RouteConfig, err error, lastExpected int) CaddyState {
+	return nextCaddyState(routes, err, lastExpected)
+}
+
+func ProbeShouldReconcile(prev, next CaddyState, lastPassErrored bool) bool {
+	return probeShouldReconcile(prev, next, lastPassErrored)
+}

@@ -209,6 +209,44 @@ services:
         max-size: "50m"
         max-file: "5"
 
+  # Bundled Docker registry — DEFINED here but INERT. This is the only service in
+  # the file with `profiles`, and a service whose profile is not active is skipped
+  # by every plain `docker compose up -d`: no container, no published port, no
+  # volume. An operator opts in with
+  #
+  #   COMPOSE_PROFILES=registry
+  #
+  # in .env. Nothing in the API references it yet.
+  #
+  # It is here ahead of need because the "Local Folder" deploy source (0.2.x) will
+  # push built images to it, and any edit to this file is what makes a release
+  # requires_host_update. Defining it in 0.2.0, which pays that cost anyway, turns
+  # enabling it later into an env flag instead of a second topology change.
+  registry:
+    image: registry:3
+    profiles:
+      - registry
+    ports:
+      # Loopback only. App containers are started by the HOST's Docker daemon, so
+      # that daemon has to reach the registry; it trusts 127.0.0.0/8 as an insecure
+      # registry by default, so localhost:5000 needs no daemon.json change. Never
+      # publish this on a public interface: it has no auth, and anything pushed to
+      # it is an image Belune will run.
+      - "127.0.0.1:5000:5000"
+    volumes:
+      - registrydata:/var/lib/registry
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "${REGISTRY_CPU_LIMIT:-0.5}"
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
 volumes:
   pgdata:
   redisdata:
@@ -217,3 +255,4 @@ volumes:
   caddylogs:
   belunedata:
   buildkitcache:
+  registrydata:

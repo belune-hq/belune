@@ -27,9 +27,9 @@ Before adding a domain for the application, add an **A** or **AAAA** record on t
 Force HTTPS is unavailable when TLS is off, for the obvious reason: there's nothing to redirect to.
 
 <Callout type="info">
-  The DNS-01 challenge isn't offered on any domain, including wildcards, because the stock Caddy image has no DNS provider modules — a domain relying on it would only ever sit at *Pending*.
+  The DNS-01 challenge isn't offered on any domain, including wildcards. It needs an API token for your DNS provider, and Belune has nowhere to store one yet — so a domain relying on it would only ever sit at *Pending*. The Caddy image Belune ships already carries the Cloudflare, Route 53 and DigitalOcean DNS modules, so adding DNS-01 later won't need a new image.
 
-  So to use a wildcard domain, upload a custom certificate instead.
+  To use a wildcard domain today, upload a custom certificate instead.
 </Callout>
 
 ## Routing Hostnames to Different Ports
@@ -61,6 +61,15 @@ Beyond routing and TLS, a domain can carry **Route Features** — Caddy middlewa
 - **Custom Headers** — set request and/or response headers on traffic through this domain.
 - **IP Allowlist** — permit only the CIDR ranges you list; every other client gets a `403`.
 - **Redirect** — send matching requests on to another URL.
+- **Rate Limit** — cap how many requests one client may make in a window. Configured as `{"window":"1s","max_events":10}`: at most 10 requests per second from each client IP, and the 11th gets a `429` with a `Retry-After` header. `max_events` must be at least 1 and `window` between one second and one hour.
+
+### About Rate Limiting
+
+- The limit is **per client IP and per domain path**. Two domains each set to `10` per second don't share a budget, and neither do two paths on the same host.
+- It needs the `http.handlers.rate_limit` Caddy module. The default Caddy image has it; on stock `caddy:2-alpine` the feature shows as **Not active** in the dashboard instead of failing, and the domain keeps serving without it. See [Caddy](/docs/core/server/caddy).
+- **Editing the domain, or any of its route features, rebuilds its route and resets every client's count.** Clients who were at the limit can send again straight away.
+- Behind another proxy or CDN, the client IP Caddy sees is that proxy's, so every visitor shares one budget.
+- Rate limiting was accepted in 0.1.0 through 0.1.2 and refused from 0.1.3 until 0.2.0, in a different format (`rate` and `burst`). A row saved from that era is still stored but does nothing, and is shown as **Not active** with a note to remove it and add it again in the format above.
 
 These live in their own dialog off the domain's actions menu. See [Caddy's directives documentation](https://caddyserver.com/docs/caddyfile/directives) for the underlying behavior of each.
 

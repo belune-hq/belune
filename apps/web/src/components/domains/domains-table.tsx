@@ -265,7 +265,7 @@ function FeatureCell({ features }: { features?: RouteFeature[] }) {
           return (
             <Badge
               key={f.id}
-              className="border-dashed border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+              className="border-dashed border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400"
               title={inert.map(inertExplanation).join(" ")}
             >
               {featureLabel(f)} · not active

@@ -24,6 +24,67 @@ Belune is pre-1.0. The versioning contract while it stays there:
 Release notes for each version are also published on the
 [Releases page](https://github.com/weiliang79/belune/releases).
 
+## [0.2.0]
+
+**Belune now ships its own Caddy, and rate limiting works again.** The default
+proxy image is `ghcr.io/belune-hq/belune-caddy:2` — upstream Caddy plus a set of
+optional modules — and the first of those to reach the dashboard is rate
+limiting. Stock `caddy:2-alpine` stays fully supported: a feature whose module is
+missing is shown as not active, never as an error.
+
+**This release replaces the Caddy container, and that needs a host action:** run
+`update.sh`, which reconciles the compose file and recreates the proxy. **Your
+domains are briefly unreachable while the new Caddy container starts** — a
+restart-length gap, not a migration. Take your usual backup first. There are no
+database migrations.
+
+If you would rather keep running stock Caddy, set `BELUNE_CADDY_IMAGE=caddy:2-alpine`
+in `.env` before you update.
+
+### Added
+
+- **A custom Caddy image is the new default.** `BELUNE_CADDY_IMAGE` chooses the
+  image and is the escape hatch back to upstream. Belune asks the running Caddy
+  which modules it has (`caddy list-modules`, inside its container, rechecked
+  whenever the container is recreated) and never infers it from the image name,
+  so a Caddy you bring yourself works the same way. See the new
+  [Caddy](https://belune.dev/docs/core/server/caddy) page for what Belune
+  requires of one.
+- **Rate limiting is back.** Add a **Rate Limit** route feature to a domain and
+  each client IP is held to `max_events` requests per `window`; the next one gets
+  a `429` with `Retry-After`. The format is `{"window":"1s","max_events":10}`.
+  The limit is per client IP and per domain path, so two domains never share a
+  budget. Editing a domain rebuilds its route and resets every client's count.
+- **A feature whose module is missing is shown as not active.** On a Caddy
+  without the module, a stored rate limit reads as **Not active** — switched off,
+  with the reason, and a dashed badge in the domains table — rather than looking
+  live. The domain keeps serving. `GET /api/proxy/capabilities` reports, per
+  feature, whether the running Caddy can serve it, and whether Belune could tell.
+- **Groundwork for later releases.** The compose file now defines a bundled image
+  registry behind a profile. It is off, nothing uses it, and enabling it will be a
+  setting rather than another topology change.
+
+### Fixed
+
+- **A domain no longer loses its route when a feature its Caddy cannot serve is
+  saved.** Updating a route removes the old one before adding the new one, so a
+  feature naming a module Caddy lacks was rejected after the working route had
+  already been deleted — the domain went dark. The feature is now left out of what
+  is pushed, and the route keeps serving.
+- **The docs no longer say the DNS-01 challenge is missing because Caddy has no DNS
+  modules.** The default image has them. DNS-01 is still not offered, because
+  Belune has no place to keep a provider's API token yet.
+
+### About Rate Limiting From Earlier Releases
+
+Rate limiting was accepted in 0.1.0 through 0.1.2 and **refused from 0.1.3**,
+because it stored a limit that no Caddy ever enforced. It returns in this release
+in a different format: the old `{"rate":"10/s","burst":5}` has no equivalent in a
+sliding window, so it is not translated. **If you saved a rate limit in that
+era it is still stored and still does nothing; the dashboard now marks it Not
+active.** Remove it and add it again as `{"window":"1s","max_events":10}`. Nothing
+that was enforced before stops being enforced.
+
 ## [0.1.23]
 
 **Two fixes, one of which was quietly losing configuration.** A domain's port

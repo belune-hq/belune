@@ -669,10 +669,7 @@ func (h *Handler) UpsertRouteFeature(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !validFeatureTypes[req.FeatureType] {
-		// rate_limit stays in validFeatureTypes but is deliberately not advertised
-		// here: it falls through to ParseFeatureConfig, whose message explains it
-		// is withdrawn until 0.2.0 rather than claiming the type is unknown.
-		writeError(w, http.StatusBadRequest, "invalid feature_type: must be basic_auth, redirect, headers, or ip_allowlist")
+		writeError(w, http.StatusBadRequest, "invalid feature_type: must be basic_auth, redirect, headers, ip_allowlist, or rate_limit")
 		return
 	}
 

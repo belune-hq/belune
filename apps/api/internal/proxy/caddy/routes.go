@@ -356,9 +356,9 @@ func buildFeatureHandlers(cfg proxy.RouteConfig) ([]caddyHandle, error) {
 		}
 		parsed, err := proxy.ParseFeatureConfig(f.Type, f.Config)
 		if err != nil {
-			// Name the domain: this is how an operator finds the offending row,
-			// and it is the only warning a withdrawn feature type (rate_limit)
-			// produces now that ParseFeatureConfig rejects it outright. Skipping
+			// Name the domain: this is how an operator finds the offending row —
+			// notably a rate_limit row stored in the older rate/burst form,
+			// which no longer parses. Skipping
 			// keeps the rest of the route building — dropping the whole route
 			// would take a live site down over one bad feature.
 			slog.Warn("caddy: skipping invalid route feature",
@@ -366,10 +366,6 @@ func buildFeatureHandlers(cfg proxy.RouteConfig) ([]caddyHandle, error) {
 			continue
 		}
 
-		// No rate_limit case below: ParseFeatureConfig rejects every payload
-		// while the stock Caddy image has no ratelimit module, so such a feature
-		// is warned about and skipped above and never reaches this switch.
-		// 0.2.0 restores both together.
 		switch c := parsed.(type) {
 		case *proxy.BasicAuthConfig:
 			handlers = append(handlers, caddyHandle{
@@ -393,6 +389,29 @@ func buildFeatureHandlers(cfg proxy.RouteConfig) ([]caddyHandle, error) {
 				h["response"] = headerOpsToMap(c.Response)
 			}
 			handlers = append(handlers, h)
+
+		case *proxy.RateLimitConfig:
+			// Both of these are fixed on purpose, not oversights:
+			//  - the zone is derived from the route, never operator-supplied,
+			//    because zones with the same name share ONE counter across
+			//    domains — two hosts both set to "10/s" would eat each other's
+			//    budget;
+			//  - the key is the client IP. Omitted, the module uses a single
+			//    global bucket, which from one client looks identical to
+			//    per-IP working. (Behind another proxy, remote.host is that
+			//    proxy.)
+			// Nothing else from the module's handler is emitted: "distributed"
+			// would silently turn on distributed limiting with default storage.
+			handlers = append(handlers, caddyHandle{
+				"handler": "rate_limit",
+				"rate_limits": map[string]any{
+					routeIDFor(cfg.Hostname, cfg.Path): map[string]any{
+						"key":        "{http.request.remote.host}",
+						"window":     c.Window,
+						"max_events": c.MaxEvents,
+					},
+				},
+			})
 
 		case *proxy.IPAllowlistConfig:
 			handlers = append(handlers, caddyHandle{

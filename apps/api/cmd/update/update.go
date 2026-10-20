@@ -15,18 +15,23 @@ import (
 
 const (
 	// imageRepo is the GHCR image path. sourceRepo is the GitHub repository the
-	// version-pinned infra files come from. They hold the same string today and
-	// are separate anyway, because the two move independently: GHCR packages
-	// belong to the ACCOUNT, not the repository, so a rename or an org transfer
-	// relocates the repo and leaves the package where it was.
+	// version-pinned infra files come from. They held the same string until the
+	// repo moved to the belune-hq organisation, and they now differ — which is
+	// the whole reason they were kept apart: GHCR packages belong to the
+	// ACCOUNT, not the repository, so the transfer relocated the repo and left
+	// the package where it was, and a GHCR package can be neither transferred
+	// nor redirected.
 	//
 	// ⚠️ imageRepo can only change in a release that installs have ALREADY taken.
 	// An install resolves its next version with its OWN copy of this constant, so
 	// a release that moves the path is a release the version before it cannot
-	// find. sourceRepo is the softer of the two — the fetch below runs
-	// `curl -sSfL`, so GitHub's transfer redirect carries it.
+	// find. That is why it still names weiliang79, and why the release workflow
+	// publishes both paths. sourceRepo is the softer of the two: the fetch below
+	// runs `curl -sSfL`, and raw.githubusercontent.com serves a moved owner's
+	// path directly (200, no redirect at all), so an install still carrying the
+	// old string keeps working.
 	imageRepo         = "weiliang79/belune"
-	sourceRepo        = "weiliang79/belune"
+	sourceRepo        = "belune-hq/belune"
 	defaultInstallDir = "/opt/belune"
 	healthURL         = "http://localhost:8080/healthz"
 	systemdDir        = "/etc/systemd/system"

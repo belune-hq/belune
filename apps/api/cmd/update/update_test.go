@@ -146,15 +146,15 @@ func (h *harness) assertNoStagingLeft() {
 }
 
 var fetchLines = []string{
-	"curl -sSfL https://raw.githubusercontent.com/weiliang79/belune/v0.1.11/infra/docker-compose.prod.yml -o <TMP>/<STAGE>/docker-compose.yml",
-	"curl -sSfL https://raw.githubusercontent.com/weiliang79/belune/v0.1.11/infra/caddy/Caddyfile.template -o <TMP>/<STAGE>/infra/caddy/Caddyfile.template",
-	"curl -sSfL https://raw.githubusercontent.com/weiliang79/belune/v0.1.11/infra/buildkit/buildkitd.toml -o <TMP>/<STAGE>/infra/buildkit/buildkitd.toml",
-	"curl -sSfL https://raw.githubusercontent.com/weiliang79/belune/v0.1.11/.env.example -o <TMP>/<STAGE>/.env.example",
-	"curl -sSfL https://raw.githubusercontent.com/weiliang79/belune/v0.1.11/infra/systemd/belune.service -o <TMP>/<STAGE>/infra/systemd/belune.service",
-	"curl -sSfL https://raw.githubusercontent.com/weiliang79/belune/v0.1.11/infra/systemd/belune-backup.service -o <TMP>/<STAGE>/infra/systemd/belune-backup.service",
-	"curl -sSfL https://raw.githubusercontent.com/weiliang79/belune/v0.1.11/scripts/backup.sh -o <TMP>/<STAGE>/scripts/backup.sh",
-	"curl -sSfL https://raw.githubusercontent.com/weiliang79/belune/v0.1.11/scripts/restore.sh -o <TMP>/<STAGE>/scripts/restore.sh",
-	"curl -sSfL https://raw.githubusercontent.com/weiliang79/belune/v0.1.11/scripts/update.sh -o <TMP>/<STAGE>/scripts/update.sh",
+	"curl -sSfL https://raw.githubusercontent.com/belune-hq/belune/v0.1.11/infra/docker-compose.prod.yml -o <TMP>/<STAGE>/docker-compose.yml",
+	"curl -sSfL https://raw.githubusercontent.com/belune-hq/belune/v0.1.11/infra/caddy/Caddyfile.template -o <TMP>/<STAGE>/infra/caddy/Caddyfile.template",
+	"curl -sSfL https://raw.githubusercontent.com/belune-hq/belune/v0.1.11/infra/buildkit/buildkitd.toml -o <TMP>/<STAGE>/infra/buildkit/buildkitd.toml",
+	"curl -sSfL https://raw.githubusercontent.com/belune-hq/belune/v0.1.11/.env.example -o <TMP>/<STAGE>/.env.example",
+	"curl -sSfL https://raw.githubusercontent.com/belune-hq/belune/v0.1.11/infra/systemd/belune.service -o <TMP>/<STAGE>/infra/systemd/belune.service",
+	"curl -sSfL https://raw.githubusercontent.com/belune-hq/belune/v0.1.11/infra/systemd/belune-backup.service -o <TMP>/<STAGE>/infra/systemd/belune-backup.service",
+	"curl -sSfL https://raw.githubusercontent.com/belune-hq/belune/v0.1.11/scripts/backup.sh -o <TMP>/<STAGE>/scripts/backup.sh",
+	"curl -sSfL https://raw.githubusercontent.com/belune-hq/belune/v0.1.11/scripts/restore.sh -o <TMP>/<STAGE>/scripts/restore.sh",
+	"curl -sSfL https://raw.githubusercontent.com/belune-hq/belune/v0.1.11/scripts/update.sh -o <TMP>/<STAGE>/scripts/update.sh",
 }
 
 func TestRun_StepsInOrderAndInTheInstallDir(t *testing.T) {

@@ -20,7 +20,15 @@ env:
   # a path no installed updater pulls from, with the run still green. Every
   # install resolves its next version using the image path ITS OWN version was
   # built with, so this string has to outlive the repo's name.
-  IMAGE_NAME: weiliang79/belune
+  #
+  # That transfer has now happened: this repo lives under belune-hq while the
+  # package still belongs to weiliang79, and a GHCR package cannot be moved or
+  # redirected. So every release publishes BOTH paths from one build. The legacy
+  # path is not a mirror of the real one — it IS the path every existing install
+  # pulls from, and it keeps receiving every release for as long as any install
+  # still names it.
+  IMAGE_NAME: weiliang79/belune # what installed updaters pull
+  ORG_IMAGE_NAME: belune-hq/belune # where new installs get pointed later
 
 jobs:
   # A tag must not publish a broken image. CI runs on branch pushes, not tags,
@@ -64,7 +72,10 @@ jobs:
     needs: verify
     permissions:
       contents: write # create the GitHub Release, push the versions.json bump branch
-      packages: write # push to GHCR
+      # Not what pushes the image — see the login step below, which uses a PAT
+      # because the legacy package is cross-account. Kept so the org path can go
+      # back to GITHUB_TOKEN on the day the legacy path is finally retired.
+      packages: write
       pull-requests: write # open the versions.json PR
 
     steps:
@@ -78,18 +89,47 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # GITHUB_TOKEN cannot do this job any more. It is scoped to this
+      # repository's owner (belune-hq) and the legacy package belongs to
+      # weiliang79 — a cross-account write GHCR refuses. A package's "Actions
+      # repository access" list is the documented way to grant some other
+      # repository write access to it, but it only offers repositories owned by
+      # the package's owner, so an org repo cannot be added at all (measured,
+      # 2026-10-20). Hence a classic PAT owned by weiliang79 with
+      # write:packages. One login has to cover both paths: they share a registry
+      # host and docker holds a single credential per host.
+      - name: Check the legacy credential is present
+        env:
+          TOKEN: ${{ secrets.GHCR_LEGACY_TOKEN }}
+        run: |
+          if [ -z "${TOKEN}" ]; then
+            echo "::error::GHCR_LEGACY_TOKEN is not set, so this release cannot publish" \
+                 "ghcr.io/${IMAGE_NAME} — the path every installed updater pulls from." \
+                 "Failing before anything is published rather than shipping a release" \
+                 "no install can reach."
+            exit 1
+          fi
+
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          # The package owner, not github.actor: the credential below is that
+          # account's PAT, and whoever pushed the tag is irrelevant to it.
+          username: weiliang79
+          password: ${{ secrets.GHCR_LEGACY_TOKEN }}
 
       - name: Derive image tags
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # Both paths take the identical tag set and one push writes both, so a
+          # given tag always carries the SAME digest at both — which makes
+          # verifying a release a digest comparison rather than two separate
+          # byte checks.
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+            ${{ env.REGISTRY }}/${{ env.ORG_IMAGE_NAME }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}

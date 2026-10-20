@@ -236,6 +236,12 @@ type notAppliedFeature struct {
 
 type routeKey struct{ hostname, path string }
 
+// minNotAppliedGrace is the shortest a degradation must persist before it is
+// reported, however short the reconcile interval is. Erring long is free: the
+// condition this reports is permanent in the case that matters, so a minute of
+// silence costs nothing, while reporting a blip claims something untrue.
+const minNotAppliedGrace = time.Minute
+
 // notAppliedByRoute reports what the reconciler observed it had to strip,
 // because it is the only component that knows what was actually pushed to Caddy.
 // The capability probe cannot say: it reads unknown for ever behind a proxy
@@ -257,7 +263,13 @@ func (h *Handler) notAppliedByRoute() map[routeKey][]notAppliedFeature {
 		return nil
 	}
 	st := h.reconciler.Status()
-	grace := 2 * time.Duration(st.IntervalSeconds) * time.Second
+	// ⚠️ Floored, because a zero IntervalSeconds would make the grace period zero
+	// and report every transient degradation at once — and zero is what an
+	// unconfigured or stubbed reconciler reports. That is the unsafe direction
+	// (a Caddy restarting during an update would light up every feature it
+	// briefly could not confirm) and it is the same zero-value trap as a rate
+	// limit's max_events, which this feature exists to guard against.
+	grace := max(2*time.Duration(st.IntervalSeconds)*time.Second, minNotAppliedGrace)
 	now := time.Now()
 
 	var out map[routeKey][]notAppliedFeature

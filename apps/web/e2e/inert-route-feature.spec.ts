@@ -207,7 +207,7 @@ test("a rate limit the Caddy cannot apply reads as not active, not as on", async
     await test.step(`${reason}: not active although the probe says unknown`, async () => {
       await stubCapabilities(page, "unknown");
       await page.route(
-        /\/applications\/[^/]+\/domains(\?.*)?$/,
+        /\/api\/projects\/[^/]+\/applications\/[^/]+\/domains(\?.*)?$/,
         async (route) => {
           if (route.request().method() !== "GET") return route.continue();
           const res = await route.fetch();

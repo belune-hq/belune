@@ -5,7 +5,7 @@ templates are all genuinely useful contributions — you do not need to write Go
 or React to help.
 
 Belune is pre-1.0 and maintained by one person, so please open an issue or a
-[discussion](https://github.com/weiliang79/belune/discussions) before starting
+[discussion](https://github.com/belune-hq/belune/discussions) before starting
 substantial work. It saves everyone the disappointment of a large PR that does
 not fit the roadmap.
 

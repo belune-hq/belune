@@ -95,6 +95,27 @@ export default defineConfig({
           if (id.includes("/node_modules/@tanstack/")) {
             return "tanstack";
           }
+          // The editor is only ever imported lazily (see code-editor.tsx), so
+          // naming the chunk does not bring it into the first load — the entry
+          // does not reference it. What it buys is cache stability: without
+          // this the editor's chunk imports the entry chunk, so its hash
+          // changes with every release and a ~300 kB download repeats after
+          // every update.sh. As a vendor chunk with no imports of ours, it
+          // changes only when CodeMirror does.
+          //
+          // The embedded binary is the same size either way, since
+          // `//go:embed all:dist` takes every chunk: this is about first paint
+          // and repeat downloads, not image size.
+          if (
+            id.includes("/node_modules/@codemirror/") ||
+            id.includes("/node_modules/@lezer/") ||
+            id.includes("/node_modules/@marijn/") ||
+            id.includes("/node_modules/style-mod/") ||
+            id.includes("/node_modules/w3c-keyname/") ||
+            id.includes("/node_modules/crelt/")
+          ) {
+            return "codemirror";
+          }
         },
       },
     },

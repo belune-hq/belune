@@ -29,6 +29,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { CodeEditor } from "@/components/ui/code-editor";
 import { DataTable, buildActionColumnDef } from "@/components/ui/data-table";
 import {
   DropdownMenu,
@@ -343,8 +344,21 @@ const SERVICE_COLUMNS: ColumnDef<FakeService>[] = [
 
 function noop() {}
 
+// One of every JSON token type, so each highlight colour is on screen at once.
+const SAMPLE_JSON = `{
+  "window": "1s",
+  "max_events": 10,
+  "enabled": true,
+  "note": null,
+  "ranges": ["10.0.0.0/8", "192.168.0.0/16"]
+}`;
+
 function Showcase({ id }: { id: string }) {
   const [segment, setSegment] = useState("all");
+  const [compactJson, setCompactJson] = useState(
+    '{"window":"1s","max_events":10}',
+  );
+  const [blockJson, setBlockJson] = useState(SAMPLE_JSON);
 
   return (
     <div className="space-y-5">
@@ -426,6 +440,33 @@ function Showcase({ id }: { id: string }) {
           <div className="space-y-2">
             <Label htmlFor={`${id}-notes`}>Notes</Label>
             <Textarea id={`${id}-notes`} rows={2} placeholder="Optional" />
+          </div>
+          {/* Compact is the real call site (route feature config): it sits
+              beside an Input on purpose, to show the two are the same height.
+              Block is what the multi-line fields will use. */}
+          <div className="space-y-2">
+            <Label id={`${id}-json-label`}>Config (compact)</Label>
+            <CodeEditor
+              compact
+              language="json"
+              value={compactJson}
+              onChange={setCompactJson}
+              aria-labelledby={`${id}-json-label`}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor={`${id}-height`}>Input (same height)</Label>
+            <Input id={`${id}-height`} placeholder="my-service" />
+          </div>
+          <div className="space-y-2 sm:col-span-2">
+            <Label id={`${id}-block-label`}>Config (block)</Label>
+            <CodeEditor
+              language="json"
+              value={blockJson}
+              onChange={setBlockJson}
+              placeholder="Empty shows this placeholder"
+              aria-labelledby={`${id}-block-label`}
+            />
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-5">

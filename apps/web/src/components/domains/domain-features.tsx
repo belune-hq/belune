@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { toast } from "sonner";
 import {
   ArrowRightIcon,
@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { CodeEditor } from "@/components/ui/code-editor";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -92,6 +92,9 @@ export function DomainFeatures({
   const deleteFeature = useDeleteRouteFeature(projectId, applicationId);
   const [newFeatureType, setNewFeatureType] = useState("");
   const [newFeatureConfig, setNewFeatureConfig] = useState("{}");
+  // A <label for> cannot reach the editor's contenteditable, so the label is
+  // tied to it by id instead.
+  const configLabelId = useId();
   // `undefined` while loading or if the request failed: both mean "unknown", and
   // featureStatus makes no claim about the operator's Caddy in that case.
   const { data: capabilities } = useProxyCapabilities();
@@ -218,12 +221,31 @@ export function DomainFeatures({
           </Select>
         </div>
         <div className="space-y-1">
-          <Label className="text-xs">Config (JSON)</Label>
-          <Input
+          <Label id={configLabelId} className="text-xs">
+            Config (JSON)
+          </Label>
+          {/* Highlighting and bracket matching only. What counts as a valid
+              config is still JSON.parse in handleAddFeature and then the
+              server's ParseFeatureConfig: the editor must not grow opinions
+              (max_events: 0 is a footgun the SERVER rejects, and colouring or
+              flagging it here would be a second, unauthoritative verdict). */}
+          {/* Block, not compact: compact falls back to an <input>, which strips
+              newlines, so pasting pretty-printed JSON before the editor chunk
+              arrives would be silently rewritten on the first keystroke. A
+              textarea fallback keeps it. Real configs need the room anyway — a
+              bcrypt hash alone makes basic_auth's object ~110 characters. */}
+          <CodeEditor
+            language="json"
+            // Six rows: the editor's own chrome is 16px (7px above and below,
+            // centring one line in a 2rem box, plus the border), so six
+            // text-xs lines at 16px need 112px. Set here rather than on the
+            // primitive because the other fields that will use it — a mounted
+            // file, a .env paste — want their own heights.
+            className="min-h-28"
             value={newFeatureConfig}
-            onChange={(e) => setNewFeatureConfig(e.target.value)}
+            onChange={setNewFeatureConfig}
             placeholder={CONFIG_EXAMPLES[newFeatureType] ?? '{"key": "value"}'}
-            className="font-mono text-xs"
+            aria-labelledby={configLabelId}
           />
         </div>
         <Button
@@ -349,7 +371,7 @@ export function DomainFeaturesDialog({
           is max-content, so one long unbreakable string (a bcrypt hash) would
           widen the column itself and no min-w-0/truncate on the children could
           shrink it. */}
-      <DialogContent className="max-h-[calc(100dvh-2rem)] grid-cols-[minmax(0,1fr)] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] grid-cols-[minmax(0,1fr)] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Route Features</DialogTitle>
           <DialogDescription>

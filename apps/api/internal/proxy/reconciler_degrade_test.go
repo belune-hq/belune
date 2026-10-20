@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -207,6 +208,11 @@ func TestCarrySince(t *testing.T) {
 // A standing degradation must keep its Since and log once, not once per pass; a
 // cleared one must leave the status empty.
 func TestReconcile_DegradedSinceStableAndLoggedOnce(t *testing.T) {
+	// ⚠ CI runs `go test -short ./...` and does NOT set this gate, so neither this
+	// test nor the skip-set one above runs there. This is the deliberate deeper
+	// check through a real pass; the property itself is guarded on every push by
+	// TestDegradationsChanged_StandingConditionStaysSilent below, which needs
+	// neither Docker nor a Caddy.
 	if os.Getenv("BELUNE_CADDY_INTEGRATION") == "" {
 		t.Skip("set BELUNE_CADDY_INTEGRATION=1 (needs Docker for Postgres)")
 	}
@@ -243,4 +249,32 @@ func TestReconcile_DegradedSinceStableAndLoggedOnce(t *testing.T) {
 	prov.set = capability.NewSet(capability.ModuleRateLimit)
 	require.NoError(t, r.ReconcileNow(ctx))
 	assert.Empty(t, r.Status().Degraded, "the list clears once the module is available")
+}
+
+// The log-once property, without a database. carrySince and the comparison are
+// a pair: re-stamping Since instead of carrying it would make every pass look
+// like a change and re-log a standing condition for ever. The reconcile-level
+// test above shows the same thing but is gated off in CI, so this is the check
+// that actually guards it on every push.
+func TestDegradationsChanged_StandingConditionStaysSilent(t *testing.T) {
+	t0 := time.Now()
+	one := []proxy.Degradation{{
+		Hostname: "a.test", Path: "/", Feature: proxy.FeatureRateLimit,
+		Module: capability.ModuleRateLimit, Reason: proxy.ReasonModulesUnknown,
+	}}
+
+	first := proxy.CarrySince(nil, slices.Clone(one), t0)
+	assert.True(t, proxy.DegradationsChanged(nil, first), "appearing is worth a log line")
+
+	second := proxy.CarrySince(first, slices.Clone(one), t0.Add(30*time.Second))
+	assert.False(t, proxy.DegradationsChanged(first, second), "the next pass must say nothing")
+
+	// A later pass that learns WHY is a change: the advice the reason carries
+	// differs ("use the Belune Caddy image" versus "Belune cannot reach it").
+	firmedUp := slices.Clone(one)
+	firmedUp[0].Reason = proxy.ReasonModuleAbsent
+	third := proxy.CarrySince(second, firmedUp, t0.Add(time.Minute))
+	assert.True(t, proxy.DegradationsChanged(second, third), "the reason firming up is a change")
+
+	assert.True(t, proxy.DegradationsChanged(third, nil), "and so is clearing")
 }

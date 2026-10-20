@@ -163,7 +163,8 @@ func TestRun_StepsInOrderAndInTheInstallDir(t *testing.T) {
 	require.Equal(t, 0, h.run("v0.1.11"), h.out.String())
 
 	// Every fetch before anything else touches the host, then the backup, then
-	// the uid probe, then a FULL `up -d` (a refreshed compose may change any
+	// the uid probe, then the proxy pull (service-scoped: a bare pull would
+	// recreate postgres), then a FULL `up -d` (a refreshed compose may change any
 	// service — --no-deps belune would silently skip those), then the helper
 	// extraction, then the health check.
 	want := append([]string{"docker pull ghcr.io/weiliang79/belune:0.1.11"}, fetchLines...)
@@ -171,6 +172,7 @@ func TestRun_StepsInOrderAndInTheInstallDir(t *testing.T) {
 		"bash <INSTALL>/scripts/backup.sh --local-only-ok",
 		"docker run --rm --entrypoint id ghcr.io/weiliang79/belune:0.1.11 -u",
 		"docker run --rm --entrypoint id ghcr.io/weiliang79/belune:0.1.11 -g",
+		"docker compose pull caddy",
 		"docker compose up -d",
 		"docker run --rm --entrypoint= ghcr.io/weiliang79/belune:0.1.11 cat /usr/local/bin/belune-backup-upload",
 		"curl -sf http://localhost:8080/healthz",
@@ -344,6 +346,26 @@ func TestRun_RestoreFailureSaysSo(t *testing.T) {
 
 	assert.Contains(t, h.out.String(), "Could not restore automatically; see .env.backup-0.1.10 and "+h.install+"/.infra-backup-0.1.10.")
 	assert.NotContains(t, h.out.String(), "Restored.")
+}
+
+// A proxy image that cannot be pulled (a BYO locally-built BELUNE_CADDY_IMAGE
+// never was pushed) must cost nothing: the update completes, with a warning, and
+// nothing is reverted.
+func TestRun_FailedProxyPullStillCompletesTheUpdate(t *testing.T) {
+	h := newHarness(t)
+	h.handler = func(c cmd) (bool, error) {
+		return c.name == "docker" && strings.Join(c.args, " ") == "compose pull caddy", io.EOF
+	}
+
+	require.Equal(t, 0, h.run("v0.1.11"), h.out.String())
+
+	out := h.out.String()
+	assert.Contains(t, out, "[warn]  Could not pull the proxy image; keeping the one already on this host.")
+	assert.True(t, h.did("docker compose up -d"), "the update must carry on to the reconcile")
+	assert.False(t, h.did("cp "), "a pull failure must not trip the revert")
+	assert.NotContains(t, out, "restoring")
+	assert.Contains(t, out, "Updated 0.1.10 → 0.1.11")
+	assert.Contains(t, h.read(".env"), "BELUNE_IMAGE=ghcr.io/weiliang79/belune:0.1.11")
 }
 
 // Past `up -d` containers may be recreated and migrations applied, so reverting

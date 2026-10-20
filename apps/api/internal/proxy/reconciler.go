@@ -45,7 +45,29 @@ type Reconciler struct {
 
 	mu     sync.RWMutex
 	status ReconcilerStatus
+
+	// lastExpected is how many routes the latest pass wanted Caddy to hold, and
+	// probe is what the last cheap probe saw. Both feed probeLostConfig.
+	lastExpected int
+	probe        caddyState
 }
+
+// caddyProbeInterval is how often Run checks whether Caddy still holds our
+// routes. A restarted Caddy comes back with only its static Caddyfile, so every
+// domain answers with the dashboard until a pass re-adds the routes; waiting for
+// the 30s tick made that window up to 30s. A const on purpose: the probe is one
+// admin GET, and nothing about it is worth an operator's attention.
+const caddyProbeInterval = 3 * time.Second
+
+// caddyState is what one probe concluded about Caddy.
+type caddyState int
+
+const (
+	caddyUnknown     caddyState = iota // not probed yet
+	caddyUnreachable                   // the admin API did not answer
+	caddyHealthy                       // answered, and holds what we expect
+	caddyLostConfig                    // answered, and holds none of our routes
+)
 
 // ReconcilerStatus is a snapshot of the reconciler's recent activity. It is
 // exposed over the admin API so operators can tell at a glance whether the
@@ -133,6 +155,8 @@ func (r *Reconciler) Run(ctx context.Context) {
 
 	ticker := time.NewTicker(r.interval)
 	defer ticker.Stop()
+	probe := time.NewTicker(caddyProbeInterval)
+	defer probe.Stop()
 
 	for {
 		select {
@@ -140,8 +164,73 @@ func (r *Reconciler) Run(ctx context.Context) {
 			return
 		case <-ticker.C:
 			r.reconcile(ctx)
+		case <-probe.C:
+			r.probeLostConfig(ctx)
 		}
 	}
+}
+
+// probeLostConfig notices a Caddy that restarted and reconciles at once instead
+// of waiting for the tick.
+//
+// ListRoutes returns only host-matched routes, so neither the catch-all nor the
+// Caddyfile's default site count: a restarted Caddy reports zero on an install
+// that has domains. It fires on a TRANSITION into that state, never on the state
+// itself — if a pass cannot restore the routes the condition stays true, and a
+// level trigger would then reconcile every few seconds for ever. A still-broken
+// install falls back to the ordinary tick. It also fires when Caddy becomes
+// reachable again, which covers an API that booted before Caddy was answering
+// (InitCatchAll warns once and does not retry).
+//
+// Caddy can live outside Docker, so unreachable is a contemplated topology and
+// is logged once per transition, not once per probe.
+func (r *Reconciler) probeLostConfig(ctx context.Context) {
+	current, err := r.proxy.ListRoutes(ctx)
+
+	r.mu.Lock()
+	next := nextCaddyState(current, err, r.lastExpected)
+	prev := r.probe
+	r.probe = next
+	fire := probeShouldReconcile(prev, next, r.status.LastError != "")
+	r.mu.Unlock()
+
+	switch {
+	case next == caddyUnreachable && prev != caddyUnreachable:
+		slog.Warn("proxy reconciler: caddy admin API is not answering", "error", err)
+	case fire && next == caddyLostConfig:
+		slog.Warn("proxy reconciler: caddy has lost its routes (restarted?); reconciling now")
+	case fire:
+		slog.Info("proxy reconciler: caddy is reachable again; reconciling now")
+	}
+	if fire {
+		r.reconcile(ctx)
+	}
+}
+
+// nextCaddyState classifies one ListRoutes answer. Pure, so the decision that
+// is most likely to regress can be tested without a database or a Caddy.
+func nextCaddyState(routes []RouteConfig, err error, lastExpected int) caddyState {
+	switch {
+	case err != nil:
+		return caddyUnreachable
+	case len(routes) == 0 && lastExpected > 0:
+		return caddyLostConfig
+	}
+	return caddyHealthy
+}
+
+// probeShouldReconcile is the edge trigger: entering lost-config, or leaving
+// unreachable. Never the state itself. Unknown -> healthy only counts when the
+// opening pass failed; otherwise the first probe would reconcile a Caddy that
+// was never in trouble.
+func probeShouldReconcile(prev, next caddyState, lastPassErrored bool) bool {
+	switch next {
+	case caddyLostConfig:
+		return prev != caddyLostConfig
+	case caddyHealthy:
+		return prev == caddyUnreachable || (prev == caddyUnknown && lastPassErrored)
+	}
+	return false
 }
 
 // reconcile performs one reconciliation pass. Errors are logged and retried on
@@ -194,6 +283,10 @@ func (r *Reconciler) reconcile(ctx context.Context) {
 		recordErr(err)
 		return
 	}
+
+	r.mu.Lock()
+	r.lastExpected = len(expected)
+	r.mu.Unlock()
 
 	// Degrade the feature, never drop the route. Skip and custom-cert sets below
 	// are computed from `expected`, so a route that stays in it stays in them —

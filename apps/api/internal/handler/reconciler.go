@@ -27,7 +27,7 @@ func (h *Handler) GetProxyReconcilerStatus(w http.ResponseWriter, r *http.Reques
 	if st.AdminState == "" {
 		st.AdminState = "unknown"
 	}
-	writeJSON(w, http.StatusOK, proxyStatusResponse{ReconcilerStatus: st, Caddy: h.caddyPanel(r)})
+	writeJSON(w, http.StatusOK, proxyStatusResponse{ReconcilerStatus: st, Caddy: h.caddyPanel(r, st.AdminState)})
 }
 
 // ReconcileProxy triggers an on-demand reconciliation of Caddy's routes against

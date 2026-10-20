@@ -37,10 +37,15 @@ type caddyPanel struct {
 	AccessLog logtailer.Status `json:"access_log"`
 }
 
-func (h *Handler) caddyPanel(r *http.Request) caddyPanel {
+// caddyPanel takes the admin state from the caller's one reconciler snapshot: reading
+// Status() again here lets the 3s probe land between the two reads, and a single
+// response would then hold two opinions about the same Caddy.
+func (h *Handler) caddyPanel(r *http.Request, adminState string) caddyPanel {
 	h.caddyInspectorOnce.Do(func() {
-		// Local is infallible for the single-server runtime and Caddy is the
-		// control plane's own; if it ever errors the inspector reports unknown.
+		// ⚠️ Local cannot fail for the single-server runtime, so a failure is not
+		// retried: Once memoises it and the panel would stay unknown until restart.
+		// Revisit when Runtimes can be fallible (multi-server) — cache successes
+		// only, as the capability prober does.
 		var rt capability.Runtime
 		if h.runtimes != nil {
 			if lr, err := h.runtimes.Local(context.Background()); err == nil {
@@ -50,10 +55,6 @@ func (h *Handler) caddyPanel(r *http.Request) caddyPanel {
 		h.caddyInspector = caddyinfo.New(h.cfg, rt, h.capabilities)
 	})
 
-	adminState := ""
-	if h.reconciler != nil {
-		adminState = h.reconciler.Status().AdminState
-	}
 	report := h.caddyInspector.Inspect(r.Context(), adminState)
 
 	// Rebuilt from the report's module list so this and /api/proxy/capabilities

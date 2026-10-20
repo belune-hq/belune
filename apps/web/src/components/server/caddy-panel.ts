@@ -15,7 +15,8 @@ export interface CaddyRow {
   hint?: string;
 }
 
-/** Mirrors logtailer.missingLogGrace: Caddy creates the log on the first
+/** Mirrors logtailer.missingLogGrace (apps/api/internal/logtailer/tailer.go) —
+ *  change them together: Caddy creates the log on the first
  *  request, so a missing file is only a fault after this long. */
 export const MISSING_LOG_GRACE_MS = 60_000;
 

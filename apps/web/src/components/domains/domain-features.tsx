@@ -135,7 +135,7 @@ export function DomainFeatures({
             <FeatureRow
               key={feature.id}
               feature={feature}
-              status={featureStatus(feature, capabilities)}
+              status={featureStatus(feature, capabilities, live.not_applied)}
               onDelete={() => {
                 toast.promise(
                   deleteFeature.mutateAsync({

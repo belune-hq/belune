@@ -11,7 +11,7 @@ export const Route = createFileRoute("/_app/about")({
   errorComponent: RouteError,
 });
 
-const GITHUB_URL = "https://github.com/weiliang79/belune";
+const GITHUB_URL = "https://github.com/belune-hq/belune";
 
 function AboutPage() {
   const version = useVersion();
@@ -48,7 +48,7 @@ function AboutPage() {
             className="text-text-faint hover:text-foreground inline-flex items-center gap-2 text-sm transition-colors"
           >
             <SiGithub className="size-4" aria-hidden="true" />
-            github.com/weiliang79/belune
+            github.com/belune-hq/belune
           </a>
         </CardContent>
       </Card>

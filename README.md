@@ -9,9 +9,9 @@
   </p>
   <p>
     <a href="LICENSE"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-blue.svg"></a>
-    <a href="https://github.com/weiliang79/belune/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/weiliang79/belune/actions/workflows/ci.yml/badge.svg"></a>
+    <a href="https://github.com/belune-hq/belune/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/belune-hq/belune/actions/workflows/ci.yml/badge.svg"></a>
     <!-- TODO(phase-b): release badge once the tag-driven release workflow publishes to GHCR
-    <a href="https://github.com/weiliang79/belune/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/weiliang79/belune"></a>
+    <a href="https://github.com/belune-hq/belune/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/belune-hq/belune"></a>
     -->
   </p>
 </div>
@@ -26,7 +26,7 @@
 One command on a fresh Linux host with Docker:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/weiliang79/belune/refs/heads/main/scripts/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/belune-hq/belune/refs/heads/main/scripts/install.sh | bash
 ```
 
 Then follow the [install runbook](docs/runbooks/install.md) for DNS, TLS, the

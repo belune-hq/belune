@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Belune — Installer
-# Usage: curl -sSL https://raw.githubusercontent.com/weiliang79/belune/refs/heads/main/scripts/install.sh | bash
+# Usage: curl -sSL https://raw.githubusercontent.com/belune-hq/belune/refs/heads/main/scripts/install.sh | bash
 set -euo pipefail
 
 INSTALL_DIR="${BELUNE_DIR:-/opt/belune}"

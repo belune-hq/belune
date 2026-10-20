@@ -20,7 +20,7 @@ which handles the boring parts (compose, secrets, image pull) automatically.
 ## 2. Run the installer
 
 ```sh
-curl -sSL https://raw.githubusercontent.com/weiliang79/belune/refs/heads/main/scripts/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/belune-hq/belune/refs/heads/main/scripts/install.sh | bash
 ```
 
 This:

@@ -9,7 +9,7 @@ Belune puts every domain behind Caddy and configures it through Caddy's admin AP
 
 Belune's stack runs `ghcr.io/belune-hq/belune-caddy:2`: upstream Caddy plus seven optional modules (rate limiting, the Cloudflare, Route 53 and DigitalOcean DNS providers, a WAF, CrowdSec, and layer 4 proxying). Today only rate limiting is something you can use from the dashboard; the rest ship ahead of their features so that turning them on later doesn't mean replacing the proxy again.
 
-You don't have to use it. Stock upstream `caddy:2-alpine` is a supported setup, not a degraded one: every core function (routing, automatic and custom TLS, basic auth, headers, IP allowlists, redirects, path routing) works the same. Set `BELUNE_CADDY_IMAGE` in `.env` to switch, and run `update.sh` (or `docker compose up -d`) to recreate the proxy. See the [configuration reference](https://github.com/weiliang79/belune/blob/main/docs/configuration.md) for the variable.
+You don't have to use it. Stock upstream `caddy:2-alpine` is a supported setup, not a degraded one: every core function (routing, automatic and custom TLS, basic auth, headers, IP allowlists, redirects, path routing) works the same. Set `BELUNE_CADDY_IMAGE` in `.env` to switch, and run `update.sh` (or `docker compose up -d`) to recreate the proxy. See the [configuration reference](https://github.com/belune-hq/belune/blob/main/docs/configuration.md) for the variable.
 
 <Callout type="info">
 Recreating the Caddy container, which is also what upgrading to 0.2.0 does, makes your domains briefly unreachable while the new container starts.

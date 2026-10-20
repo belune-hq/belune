@@ -1,11 +1,11 @@
 blank_issues_enabled: false
 contact_links:
   - name: Question or help with your setup
-    url: https://github.com/weiliang79/belune/discussions/categories/q-a
+    url: https://github.com/belune-hq/belune/discussions/categories/q-a
     about: Ask in Discussions — install problems, "how do I…", and configuration help.
   - name: Idea or feature discussion
-    url: https://github.com/weiliang79/belune/discussions/categories/ideas
+    url: https://github.com/belune-hq/belune/discussions/categories/ideas
     about: Float an idea before it becomes a feature request, or +1 an existing one.
   - name: Report a security vulnerability
-    url: https://github.com/weiliang79/belune/security/advisories/new
+    url: https://github.com/belune-hq/belune/security/advisories/new
     about: Please report security issues privately, never as a public issue.

@@ -19,7 +19,7 @@ There are no backports to older tags — please upgrade before reporting.
 **Please do not open a public issue for a security problem.**
 
 Preferred: use GitHub's private vulnerability reporting —
-[**Report a vulnerability**](https://github.com/weiliang79/belune/security/advisories/new)
+[**Report a vulnerability**](https://github.com/belune-hq/belune/security/advisories/new)
 under the repository's Security tab. This keeps the report private until a fix
 is available and lets us coordinate a release together.
 

@@ -12,5 +12,5 @@
 export const BRAND = {
   name: "Belune",
   /** Canonical source repo. Linked from the sidebar's wordmark. */
-  repoUrl: "https://github.com/weiliang79/belune",
+  repoUrl: "https://github.com/belune-hq/belune",
 } as const;

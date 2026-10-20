@@ -8,10 +8,10 @@ body:
         Thanks for taking the time to file a report.
 
         **Please do not report security vulnerabilities here** — use
-        [private disclosure](https://github.com/weiliang79/belune/security/advisories/new)
+        [private disclosure](https://github.com/belune-hq/belune/security/advisories/new)
         instead.
 
-        For "how do I…" and setup help, [Discussions](https://github.com/weiliang79/belune/discussions/categories/q-a)
+        For "how do I…" and setup help, [Discussions](https://github.com/belune-hq/belune/discussions/categories/q-a)
         is a better fit than an issue.
 
   - type: textarea

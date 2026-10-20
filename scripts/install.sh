@@ -5,12 +5,13 @@ set -euo pipefail
 
 INSTALL_DIR="${BELUNE_DIR:-/opt/belune}"
 # IMAGE_REPO is the GHCR image path; SOURCE_REPO is the GitHub repo that serves
-# release metadata, the infra files and the doc links below. Same string today,
-# separate because they move independently: a GHCR package belongs to the
-# ACCOUNT, not the repository, so an org transfer relocates the repo and leaves
-# the package behind. Keep them in step with cmd/update/update.go.
+# release metadata, the infra files and the doc links below. They differ now the
+# repo has moved to the belune-hq organisation, which is why they were kept
+# separate: a GHCR package belongs to the ACCOUNT, not the repository, so the
+# transfer relocated the repo and left the package behind — and a GHCR package
+# cannot be transferred. Keep them in step with cmd/update/update.go.
 IMAGE_REPO="weiliang79/belune"
-SOURCE_REPO="weiliang79/belune"
+SOURCE_REPO="belune-hq/belune"
 
 # The version to install. Defaults to the latest published release; set
 # BELUNE_VERSION=v0.1.0 to install a specific one.

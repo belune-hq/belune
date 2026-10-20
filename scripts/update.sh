@@ -27,12 +27,13 @@ set -euo pipefail
 main() {
   INSTALL_DIR="${BELUNE_DIR:-/opt/belune}"
   # IMAGE_REPO is the GHCR image path; SOURCE_REPO is the GitHub repo release
-  # metadata comes from. Same string today, separate because they move
-  # independently: a GHCR package belongs to the ACCOUNT, not the repository, so
-  # an org transfer relocates the repo and leaves the package behind. Keep them
-  # in step with imageRepo/sourceRepo in cmd/update/update.go.
+  # metadata comes from. They differ now the repo has moved to the belune-hq
+  # organisation, which is why they were kept separate: a GHCR package belongs
+  # to the ACCOUNT, not the repository, so the transfer relocated the repo and
+  # left the package behind — and a GHCR package cannot be transferred. Keep
+  # them in step with imageRepo/sourceRepo in cmd/update/update.go.
   IMAGE_REPO="weiliang79/belune"
-  SOURCE_REPO="weiliang79/belune"
+  SOURCE_REPO="belune-hq/belune"
 
   die() { echo "  [err]   $*" >&2; exit 1; }
 

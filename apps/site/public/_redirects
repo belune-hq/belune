@@ -6,7 +6,7 @@
 # image + config from that release tag, so the served copy never needs to name a
 # version. Pinning this to a tag would just freeze the installer and force an
 # edit every release. Target is set once and left alone.
-/install.sh  https://raw.githubusercontent.com/weiliang79/belune/main/scripts/install.sh  302
+/install.sh  https://raw.githubusercontent.com/belune-hq/belune/main/scripts/install.sh  302
 
 # Docs restructured into two root sections (Core, API) 2026-09-08 — every old
 # `/docs/<page>` path now lives under `/docs/core/<page>` or `/docs/api/<page>`.

@@ -77,4 +77,80 @@ describe("featureStatus", () => {
     expect(b).toContain("older format");
     expect(a).not.toEqual(b);
   });
+
+  describe("not-applied (what the reconciler observed)", () => {
+    const since = "2026-10-20T07:12:04Z";
+    const seen = (reason: "module_absent" | "modules_unknown") => [
+      { feature_type: "rate_limit", reason, since },
+    ];
+
+    // The state this exists for: the probe is unknown for ever, so without it the
+    // row would render a plain ON toggle for a feature nothing enforces.
+    it("marks a feature inert when the probe is unknown but the reconciler stripped it", () => {
+      const s = featureStatus(
+        rateLimit(current),
+        caps("unknown"),
+        seen("modules_unknown"),
+      );
+      expect(s.active).toBe(false);
+      expect(s.inert).toEqual([
+        { kind: "not-applied", reason: "modules_unknown", since },
+      ]);
+    });
+
+    it("is suppressed when the probe's own module reason is present", () => {
+      const s = featureStatus(
+        rateLimit(current),
+        caps("unavailable"),
+        seen("module_absent"),
+      );
+      expect(s.inert.map((r) => r.kind)).toEqual(["module"]);
+    });
+
+    it("adds nothing when the reconciler reported nothing", () => {
+      expect(
+        featureStatus(rateLimit(current), caps("unknown"), []).active,
+      ).toBe(true);
+      expect(
+        featureStatus(rateLimit(current), undefined, undefined).active,
+      ).toBe(true);
+    });
+
+    it("ignores an entry for a different feature type", () => {
+      const s = featureStatus(
+        { feature_type: "basic_auth", config: {}, enabled: true },
+        caps("unknown"),
+        seen("modules_unknown"),
+      );
+      expect(s.active).toBe(true);
+    });
+
+    it("keeps it alongside a legacy-config reason", () => {
+      const s = featureStatus(
+        rateLimit({ rate: "10/s" }),
+        caps("unknown"),
+        seen("modules_unknown"),
+      );
+      expect(s.inert.map((r) => r.kind)).toEqual([
+        "not-applied",
+        "legacy-config",
+      ]);
+    });
+
+    it("gives different advice for each reason", () => {
+      const absent = inertExplanation({
+        kind: "not-applied",
+        reason: "module_absent",
+        since,
+      });
+      const unknown = inertExplanation({
+        kind: "not-applied",
+        reason: "modules_unknown",
+        since,
+      });
+      expect(absent).toContain("Belune Caddy image");
+      expect(unknown).toContain("CADDY_CONTAINER_NAME");
+      expect(absent).not.toEqual(unknown);
+    });
+  });
 });

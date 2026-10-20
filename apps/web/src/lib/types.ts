@@ -489,6 +489,17 @@ export type TLSStatus =
    *  expected and has not delivered. */
   | "local";
 
+/** A configured feature the proxy reconciler is serving a domain WITHOUT.
+ *  The API only lists one once it has persisted past a grace period, so a Caddy
+ *  that is briefly unprobeable during an update never produces an entry. */
+export interface NotAppliedFeature {
+  feature_type: string;
+  /** `module_absent`: the probe saw Caddy and the module was not there.
+   *  `modules_unknown`: the probe could not read Caddy at all. */
+  reason: "module_absent" | "modules_unknown";
+  since: string;
+}
+
 export interface DomainExpanded extends Domain {
   /** The public URL prefix this domain answers on; "/" means the whole host. */
   path: string;
@@ -507,6 +518,8 @@ export interface DomainExpanded extends Domain {
    *  the domain row never showed its feature count and the features list always
    *  said "none configured" — for features that existed and were live in Caddy. */
   route_features?: RouteFeature[];
+  /** Absent unless something is being withheld; see NotAppliedFeature. */
+  not_applied?: NotAppliedFeature[];
   tls_status?: TLSStatus;
   tls_issuer?: string | null;
   tls_not_after?: string | null;

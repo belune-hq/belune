@@ -99,6 +99,39 @@ type Degradation struct {
 	Feature  string `json:"feature"`
 	// Module is the Caddy module the feature needs and the running Caddy lacks.
 	Module string `json:"module"`
+	// Reason says how we came to withhold it, because the two cases need different
+	// advice: ReasonModuleAbsent ("use the Belune Caddy image") versus
+	// ReasonModulesUnknown ("Belune cannot reach the proxy to ask").
+	Reason string `json:"reason"`
+	// Since is when this exact degradation first appeared, carried across passes.
+	// It exists so a consumer can tell a standing condition from a transient one
+	// (Caddy is unprobeable during every update) by TIME rather than by counting
+	// passes: two passes can land seconds apart during a Caddy restart.
+	Since time.Time `json:"since"`
+}
+
+// Why a feature was withheld; see Degradation.Reason.
+const (
+	ReasonModuleAbsent   = "module_absent"
+	ReasonModulesUnknown = "modules_unknown"
+)
+
+// carrySince returns next with each entry's Since taken from the identical
+// hostname+path+feature in prev, or from now when it is new. The previous value
+// is copied whole: slices.Equal in reconcile compares time.Time with ==, so a
+// value rebuilt from the same instant but a different monotonic reading would
+// look like a change and re-log a standing degradation every pass.
+func carrySince(prev, next []Degradation, now time.Time) []Degradation {
+	for i := range next {
+		next[i].Since = now
+		for _, p := range prev {
+			if p.Hostname == next[i].Hostname && p.Path == next[i].Path && p.Feature == next[i].Feature {
+				next[i].Since = p.Since
+				break
+			}
+		}
+	}
+	return next
 }
 
 // NewReconciler creates a Reconciler with the given tick interval. dec unwraps
@@ -294,6 +327,9 @@ func (r *Reconciler) reconcile(ctx context.Context) {
 	// skip computation" true. Removing a route here would have to remove it from
 	// both, or an ssl_mode=off host would start attracting certificate attempts.
 	expected, degraded = r.degrade(ctx, expected)
+	r.mu.RLock()
+	degraded = carrySince(r.status.Degraded, degraded, start)
+	r.mu.RUnlock()
 
 	// Before the routes: a route pointing at a container the proxy cannot resolve
 	// is a 502, and a recreated proxy container has lost every project network it
@@ -558,6 +594,10 @@ func (r *Reconciler) degrade(ctx context.Context, expected []RouteConfig) ([]Rou
 		return expected, nil
 	}
 	caps := r.caps.Capabilities(ctx)
+	reason := ReasonModuleAbsent
+	if !caps.Known() {
+		reason = ReasonModulesUnknown
+	}
 
 	var degraded []Degradation
 	out := make([]RouteConfig, len(expected))
@@ -578,6 +618,7 @@ func (r *Reconciler) degrade(ctx context.Context, expected []RouteConfig) ([]Rou
 					Path:     keyFor(cfg).path,
 					Feature:  f.Type,
 					Module:   module,
+					Reason:   reason,
 				})
 				continue
 			}

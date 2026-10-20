@@ -1,6 +1,9 @@
 package proxy
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // Degrade exposes the capability filter so it can be tested without a database.
 func (r *Reconciler) Degrade(ctx context.Context, expected []RouteConfig) ([]RouteConfig, []Degradation) {
@@ -29,4 +32,9 @@ func NextCaddyState(routes []RouteConfig, err error, lastExpected int) CaddyStat
 
 func ProbeShouldReconcile(prev, next CaddyState, lastPassErrored bool) bool {
 	return probeShouldReconcile(prev, next, lastPassErrored)
+}
+
+// CarrySince exposes the Since bookkeeping so it can be tested without a database.
+func CarrySince(prev, next []Degradation, now time.Time) []Degradation {
+	return carrySince(prev, next, now)
 }

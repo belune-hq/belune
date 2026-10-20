@@ -32,7 +32,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ExpiryCell } from "@/components/certificates/expiry-cell";
 import { useRemoveDomain } from "@/lib/hooks/use-domains";
-import type { DomainExpanded, RouteFeature } from "@/lib/types";
+import type {
+  DomainExpanded,
+  NotAppliedFeature,
+  RouteFeature,
+} from "@/lib/types";
 import { useProxyCapabilities } from "@/lib/hooks/use-proxy-capabilities";
 import { featureStatus, inertExplanation } from "@/lib/route-feature-status";
 import { useDomainTLSStatus } from "@/lib/hooks/use-certificates";
@@ -149,7 +153,10 @@ export function DomainsTable({
         // but not what — and "what" is the entire question when you are checking
         // whether the admin subdomain is the one behind basic auth.
         cell: ({ row }) => (
-          <FeatureCell features={row.original.route_features} />
+          <FeatureCell
+            features={row.original.route_features}
+            notApplied={row.original.not_applied}
+          />
         ),
       },
       buildActionColumnDef<DomainExpanded>({
@@ -243,7 +250,13 @@ function ForceHTTPSCell({ domain }: { domain: DomainExpanded }) {
   );
 }
 
-function FeatureCell({ features }: { features?: RouteFeature[] }) {
+function FeatureCell({
+  features,
+  notApplied,
+}: {
+  features?: RouteFeature[];
+  notApplied?: NotAppliedFeature[];
+}) {
   const { data: capabilities } = useProxyCapabilities();
   const list = features ?? [];
   if (list.length === 0) {
@@ -256,7 +269,7 @@ function FeatureCell({ features }: { features?: RouteFeature[] }) {
   return (
     <div className="flex flex-wrap items-center gap-1">
       {shown.map((f) => {
-        const { inert } = featureStatus(f, capabilities);
+        const { inert } = featureStatus(f, capabilities, notApplied);
         // Enabled in the database but not applied: the worst badge to get wrong,
         // since a "Rate Limit" badge on a domain with no rate limit is exactly
         // what an operator comparing siblings would trust. Dashed amber, with the

@@ -196,4 +196,67 @@ test("a rate limit the Caddy cannot apply reads as not active, not as on", async
     await expect(option).toHaveAttribute("aria-disabled", "true");
     await expect(option).toContainText("does not have");
   });
+
+  // The hole this step closes: a Caddy Belune cannot exec into reads "unknown"
+  // for ever, so the capability probe never says "unavailable" and the row above
+  // would render a plain ON toggle for a feature the reconciler strips on every
+  // pass. The domain list carries what the reconciler OBSERVED instead; the
+  // handler only reports it past a grace period, which the Go suite proves, so
+  // the list is stubbed here to be past it.
+  for (const reason of ["modules_unknown", "module_absent"] as const) {
+    await test.step(`${reason}: not active although the probe says unknown`, async () => {
+      await stubCapabilities(page, "unknown");
+      await page.route(
+        /\/api\/projects\/[^/]+\/applications\/[^/]+\/domains(\?.*)?$/,
+        async (route) => {
+          if (route.request().method() !== "GET") return route.continue();
+          const res = await route.fetch();
+          const rows = (await res.json()) as Record<string, unknown>[];
+          await route.fulfill({
+            response: res,
+            json: rows.map((d) => ({
+              ...d,
+              not_applied: [
+                {
+                  feature_type: "rate_limit",
+                  reason,
+                  since: "2026-10-20T07:12:04Z",
+                },
+              ],
+            })),
+          });
+        },
+      );
+      await page.goto(domainsUrl);
+
+      const badge = page.getByText("Rate Limit · not active");
+      await expect(badge).toBeVisible();
+      const badgeBox = await settled(badge);
+      expect(badgeBox.opacity).toBe(1);
+      expect(badgeBox.width).toBeGreaterThan(40);
+
+      const dialog = await openFeatures();
+      const toggle = dialog.getByRole("switch", { name: "Enable rate_limit" });
+      await expect(toggle).toBeDisabled();
+      await expect(toggle).not.toBeChecked();
+
+      const chip = dialog.getByText("Not active", { exact: true });
+      await expect(chip).toBeVisible();
+      expect((await settled(chip)).opacity).toBe(1);
+
+      const line = dialog.getByTestId("feature-inert-not-applied");
+      await expect(line).toBeVisible();
+      await expect(line).toContainText(
+        reason === "modules_unknown"
+          ? "CADDY_CONTAINER_NAME"
+          : "Belune Caddy image",
+      );
+      const lineBox = await settled(line);
+      expect(lineBox.opacity).toBe(1);
+      expect(lineBox.width).toBeGreaterThan(100);
+      expect((await rendered(line)).opacity).toBe(1);
+      // The probe said nothing, so the module line must not appear.
+      await expect(dialog.getByTestId("feature-inert-module")).toHaveCount(0);
+    });
+  }
 });

@@ -121,6 +121,17 @@ const (
 // is copied whole: slices.Equal in reconcile compares time.Time with ==, so a
 // value rebuilt from the same instant but a different monotonic reading would
 // look like a change and re-log a standing degradation every pass.
+// degradationsChanged reports whether this pass's degradation set differs from
+// the last one's, which is what keeps a standing condition out of the log on
+// every tick. Pure, like nextCaddyState and probeShouldReconcile, because it is
+// paired with carrySince and only the pair is the real behaviour: the
+// comparison is by value, so a Since that was re-stamped rather than carried
+// over reads as a change and re-logs for ever. A reconcile-level test can show
+// that too, but it needs a database; this can be checked anywhere.
+func degradationsChanged(prev, next []Degradation) bool {
+	return !slices.Equal(prev, next)
+}
+
 func carrySince(prev, next []Degradation, now time.Time) []Degradation {
 	for i := range next {
 		next[i].Since = now
@@ -295,7 +306,7 @@ func (r *Reconciler) reconcile(ctx context.Context) {
 		r.status.TotalDrift += int64(added + removed + updated)
 		// Only on change: this runs every pass, and a standing condition would
 		// otherwise repeat itself in the log every 30 seconds for ever.
-		if !slices.Equal(r.status.Degraded, degraded) {
+		if degradationsChanged(r.status.Degraded, degraded) {
 			for _, d := range degraded {
 				slog.Warn("proxy reconciler: serving route without a feature its Caddy lacks the module for",
 					"hostname", d.Hostname, "path", d.Path, "feature", d.Feature, "module", d.Module)

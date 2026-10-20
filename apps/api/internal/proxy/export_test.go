@@ -38,3 +38,9 @@ func ProbeShouldReconcile(prev, next CaddyState, lastPassErrored bool) bool {
 func CarrySince(prev, next []Degradation, now time.Time) []Degradation {
 	return carrySince(prev, next, now)
 }
+
+// DegradationsChanged exposes the log-once decision so it can be tested without
+// a database.
+func DegradationsChanged(prev, next []Degradation) bool {
+	return degradationsChanged(prev, next)
+}

@@ -10,8 +10,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/weiliang79/belune/internal/proxy"
-	"github.com/weiliang79/belune/internal/testutil"
+	"github.com/belune-hq/belune/internal/proxy"
+	"github.com/belune-hq/belune/internal/testutil"
 )
 
 // Caddy's states as the probe can see them.

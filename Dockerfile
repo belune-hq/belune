@@ -111,7 +111,7 @@ ARG VERSION=dev
 # The -X path must be the real symbol; the linker silently ignores -X for a
 # symbol that does not exist, which is the other half of the same bug.
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
-    -ldflags="-s -w -X github.com/weiliang79/belune/internal/version.Version=${VERSION}" \
+    -ldflags="-s -w -X github.com/belune-hq/belune/internal/version.Version=${VERSION}" \
     -o /belune ./cmd/server
 
 # The host-side remote-backup helper. install.sh/update.sh cat it out of this

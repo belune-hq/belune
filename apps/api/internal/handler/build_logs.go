@@ -8,9 +8,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/weiliang79/belune/internal/pkg/buildlog"
-	"github.com/weiliang79/belune/internal/pkg/sse"
-	"github.com/weiliang79/belune/internal/status"
+	"github.com/belune-hq/belune/internal/pkg/buildlog"
+	"github.com/belune-hq/belune/internal/pkg/sse"
+	"github.com/belune-hq/belune/internal/status"
 )
 
 //apidoc:tag applications/deployments

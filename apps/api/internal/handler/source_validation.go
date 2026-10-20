@@ -1,6 +1,6 @@
 package handler
 
-import "github.com/weiliang79/belune/internal/service"
+import "github.com/belune-hq/belune/internal/service"
 
 // The rules for where an application comes from, and for the branch and root
 // directory values, live in service/source_validation.go so the REST handlers

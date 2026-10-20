@@ -6,7 +6,7 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 
-	"github.com/weiliang79/belune/internal/runtime"
+	"github.com/belune-hq/belune/internal/runtime"
 )
 
 // SpawnUpdateHelper launches the TARGET image's /usr/local/bin/belune-update in

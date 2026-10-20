@@ -18,10 +18,10 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 
-	"github.com/weiliang79/belune/internal/pkg/metrics"
-	"github.com/weiliang79/belune/internal/pkg/tracing"
-	"github.com/weiliang79/belune/internal/status"
-	"github.com/weiliang79/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/pkg/metrics"
+	"github.com/belune-hq/belune/internal/pkg/tracing"
+	"github.com/belune-hq/belune/internal/status"
+	"github.com/belune-hq/belune/internal/store/generated"
 )
 
 // deployHookPath is the public trigger route; the token is appended to it. The

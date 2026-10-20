@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/weiliang79/belune/internal/pkg/crypto"
+	"github.com/belune-hq/belune/internal/pkg/crypto"
 )
 
 // SettingPublicIP is the settings-table key that overrides the BELUNE_PUBLIC_IP

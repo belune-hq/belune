@@ -9,9 +9,9 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/weiliang79/belune/internal/pkg/cronspec"
-	"github.com/weiliang79/belune/internal/store/generated"
-	"github.com/weiliang79/belune/internal/worker"
+	"github.com/belune-hq/belune/internal/pkg/cronspec"
+	"github.com/belune-hq/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/worker"
 )
 
 // resolveVolumeForBackup parses the applicationId + volumeId path params, checks

@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/weiliang79/belune/internal/config"
-	"github.com/weiliang79/belune/internal/notify"
+	"github.com/belune-hq/belune/internal/config"
+	"github.com/belune-hq/belune/internal/notify"
 )
 
 func TestAbsoluteLink(t *testing.T) {

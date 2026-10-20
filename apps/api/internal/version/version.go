@@ -12,5 +12,5 @@ package version
 
 // Version is overridden at build time with:
 //
-//	go build -ldflags "-X github.com/weiliang79/belune/internal/version.Version=v0.1.0"
+//	go build -ldflags "-X github.com/belune-hq/belune/internal/version.Version=v0.1.0"
 var Version = "dev"

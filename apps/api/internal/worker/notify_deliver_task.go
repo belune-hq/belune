@@ -11,7 +11,7 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/weiliang79/belune/internal/notify"
+	"github.com/belune-hq/belune/internal/notify"
 )
 
 // NotifyDeliverPayload is the task payload for TypeNotifyDeliver: one enqueued

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/weiliang79/belune/internal/pkg/logger"
+	"github.com/belune-hq/belune/internal/pkg/logger"
 )
 
 // redisSlogLogger adapts go-redis's Logging interface onto slog. go-redis writes

@@ -6,8 +6,8 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/weiliang79/belune/internal/server/middleware"
-	"github.com/weiliang79/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/server/middleware"
+	"github.com/belune-hq/belune/internal/store/generated"
 )
 
 const (

@@ -10,11 +10,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/weiliang79/belune/internal/app"
-	"github.com/weiliang79/belune/internal/config"
-	"github.com/weiliang79/belune/internal/pkg/logger"
-	"github.com/weiliang79/belune/internal/pkg/tracing"
-	"github.com/weiliang79/belune/internal/version"
+	"github.com/belune-hq/belune/internal/app"
+	"github.com/belune-hq/belune/internal/config"
+	"github.com/belune-hq/belune/internal/pkg/logger"
+	"github.com/belune-hq/belune/internal/pkg/tracing"
+	"github.com/belune-hq/belune/internal/version"
 )
 
 func main() {

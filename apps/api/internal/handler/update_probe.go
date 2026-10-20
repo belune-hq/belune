@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/weiliang79/belune/internal/runtime"
+	"github.com/belune-hq/belune/internal/runtime"
 )
 
 // platformChannel carries "an update is underway" to every connected client.

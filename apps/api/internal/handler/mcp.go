@@ -3,7 +3,7 @@ package handler
 import (
 	"net/http"
 
-	"github.com/weiliang79/belune/internal/server/middleware"
+	"github.com/belune-hq/belune/internal/server/middleware"
 )
 
 // HandleMCP serves the MCP (Model Context Protocol) server. The route

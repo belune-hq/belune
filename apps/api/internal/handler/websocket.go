@@ -8,8 +8,8 @@ import (
 
 	"nhooyr.io/websocket"
 
-	"github.com/weiliang79/belune/internal/server/middleware"
-	"github.com/weiliang79/belune/internal/ws"
+	"github.com/belune-hq/belune/internal/server/middleware"
+	"github.com/belune-hq/belune/internal/ws"
 )
 
 // HandleWebSocket upgrades the connection to WebSocket and registers the client.

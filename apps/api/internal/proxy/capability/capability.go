@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/weiliang79/belune/internal/runtime"
+	"github.com/belune-hq/belune/internal/runtime"
 )
 
 // Module IDs as `caddy list-modules` prints them. Matched exactly: crowdsec

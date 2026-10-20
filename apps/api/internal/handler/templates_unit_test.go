@@ -3,7 +3,7 @@ package handler
 import (
 	"testing"
 
-	"github.com/weiliang79/belune/internal/template"
+	"github.com/belune-hq/belune/internal/template"
 )
 
 func TestValidateTemplateInputs(t *testing.T) {

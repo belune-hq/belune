@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/weiliang79/belune/internal/notify"
-	"github.com/weiliang79/belune/internal/pkg/crypto"
+	"github.com/belune-hq/belune/internal/notify"
+	"github.com/belune-hq/belune/internal/pkg/crypto"
 )
 
 func newChannelSvc(t *testing.T) *NotificationChannelService {

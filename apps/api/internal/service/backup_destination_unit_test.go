@@ -3,7 +3,7 @@ package service
 import (
 	"testing"
 
-	"github.com/weiliang79/belune/internal/pkg/crypto"
+	"github.com/belune-hq/belune/internal/pkg/crypto"
 )
 
 // 32-byte hex key for AES-256 (inlined to avoid importing testutil, which would

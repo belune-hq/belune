@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/weiliang79/belune/internal/pkg/logger"
+	"github.com/belune-hq/belune/internal/pkg/logger"
 )
 
 // asynqLogger adapts asynq's logging interface onto slog.

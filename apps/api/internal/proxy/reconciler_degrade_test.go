@@ -11,10 +11,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/weiliang79/belune/internal/proxy"
-	"github.com/weiliang79/belune/internal/proxy/capability"
-	"github.com/weiliang79/belune/internal/store/generated"
-	"github.com/weiliang79/belune/internal/testutil"
+	"github.com/belune-hq/belune/internal/proxy"
+	"github.com/belune-hq/belune/internal/proxy/capability"
+	"github.com/belune-hq/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/testutil"
 )
 
 // countingProvider fails the test if it is asked when no probe was warranted.

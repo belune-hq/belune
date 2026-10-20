@@ -11,11 +11,11 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/weiliang79/belune/internal/proxy"
-	"github.com/weiliang79/belune/internal/server/middleware"
-	"github.com/weiliang79/belune/internal/store/generated"
-	"github.com/weiliang79/belune/internal/tlsstatus"
-	"github.com/weiliang79/belune/internal/worker"
+	"github.com/belune-hq/belune/internal/proxy"
+	"github.com/belune-hq/belune/internal/server/middleware"
+	"github.com/belune-hq/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/tlsstatus"
+	"github.com/belune-hq/belune/internal/worker"
 )
 
 // domainTLSStatus is one row of the central TLS view: what the server last

@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/weiliang79/belune/internal/config"
+	"github.com/belune-hq/belune/internal/config"
 )
 
 // The dashboard's hostname is set at runtime from the UI, so a static allowlist

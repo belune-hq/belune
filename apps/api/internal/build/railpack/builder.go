@@ -10,7 +10,7 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/weiliang79/belune/internal/build"
+	"github.com/belune-hq/belune/internal/build"
 )
 
 type Builder struct{}

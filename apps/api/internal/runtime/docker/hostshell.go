@@ -9,7 +9,7 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 
-	"github.com/weiliang79/belune/internal/runtime"
+	"github.com/belune-hq/belune/internal/runtime"
 )
 
 // hostShellRWC is the exec stream for a host shell, extended so that closing it

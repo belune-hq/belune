@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/weiliang79/belune/internal/pkg/joblog"
-	"github.com/weiliang79/belune/internal/pkg/loglevel"
+	"github.com/belune-hq/belune/internal/pkg/joblog"
+	"github.com/belune-hq/belune/internal/pkg/loglevel"
 )
 
 // LogSink accumulates NDJSON build-log entries produced by one or more per-stream

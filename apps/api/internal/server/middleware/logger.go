@@ -10,7 +10,7 @@ import (
 
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 
-	"github.com/weiliang79/belune/internal/pkg/redact"
+	"github.com/belune-hq/belune/internal/pkg/redact"
 )
 
 // Logger logs each HTTP request with method, path, status, duration, and request ID.

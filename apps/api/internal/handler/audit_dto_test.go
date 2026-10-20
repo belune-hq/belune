@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/weiliang79/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/store/generated"
 )
 
 // The details column is JSONB; the DTO must emit it as raw JSON (not a base64

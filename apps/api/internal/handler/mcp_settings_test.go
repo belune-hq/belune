@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/weiliang79/belune/internal/testutil"
+	"github.com/belune-hq/belune/internal/testutil"
 )
 
 // settingsApp creates a project and an application with DISTINCTIVE resource,

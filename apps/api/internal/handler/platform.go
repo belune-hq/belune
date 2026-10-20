@@ -12,9 +12,9 @@ import (
 
 	"github.com/docker/docker/pkg/stdcopy"
 
-	"github.com/weiliang79/belune/internal/config"
-	"github.com/weiliang79/belune/internal/pkg/netutil"
-	"github.com/weiliang79/belune/internal/runtime"
+	"github.com/belune-hq/belune/internal/config"
+	"github.com/belune-hq/belune/internal/pkg/netutil"
+	"github.com/belune-hq/belune/internal/runtime"
 )
 
 // platformServices is the allowlist of infrastructure containers whose logs the

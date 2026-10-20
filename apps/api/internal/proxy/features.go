@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/weiliang79/belune/internal/proxy/capability"
+	"github.com/belune-hq/belune/internal/proxy/capability"
 )
 
 // Feature type identifiers. Must match the values stored in

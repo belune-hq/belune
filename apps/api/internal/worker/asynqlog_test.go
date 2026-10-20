@@ -8,8 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/weiliang79/belune/internal/pkg/logger"
-	"github.com/weiliang79/belune/internal/pkg/loglevel"
+	"github.com/belune-hq/belune/internal/pkg/logger"
+	"github.com/belune-hq/belune/internal/pkg/loglevel"
 )
 
 // asynq's own logger writes "asynq: pid=... INFO: Scheduler starting" straight

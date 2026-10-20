@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/weiliang79/belune/internal/testutil"
+	"github.com/belune-hq/belune/internal/testutil"
 )
 
 func putSettings(t *testing.T, token string, kv ...[2]string) *http.Response {

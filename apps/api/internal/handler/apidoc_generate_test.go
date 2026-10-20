@@ -120,9 +120,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/tools/go/packages"
 
-	"github.com/weiliang79/belune/internal/service"
-	"github.com/weiliang79/belune/internal/store/generated"
-	"github.com/weiliang79/belune/internal/testutil"
+	"github.com/belune-hq/belune/internal/service"
+	"github.com/belune-hq/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/testutil"
 )
 
 // apidocErrorMessage reads a response's "error" field if it's a 403, without
@@ -304,7 +304,7 @@ func apidocFuncName(v any) string {
 		return ""
 	}
 	full := runtime.FuncForPC(rv.Pointer()).Name()
-	// "github.com/weiliang79/belune/internal/handler.(*Handler).GetProject-fm"
+	// "github.com/belune-hq/belune/internal/handler.(*Handler).GetProject-fm"
 	// -> "GetProject". The "-fm" suffix marks a method value; trim it too.
 	full = strings.TrimSuffix(full, "-fm")
 	if i := strings.LastIndex(full, "."); i >= 0 {

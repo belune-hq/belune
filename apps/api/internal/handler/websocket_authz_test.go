@@ -15,11 +15,11 @@ import (
 	"nhooyr.io/websocket"
 	"nhooyr.io/websocket/wsjson"
 
-	"github.com/weiliang79/belune/internal/runtime"
-	"github.com/weiliang79/belune/internal/server"
-	"github.com/weiliang79/belune/internal/terminal"
-	"github.com/weiliang79/belune/internal/testutil"
-	"github.com/weiliang79/belune/internal/ws"
+	"github.com/belune-hq/belune/internal/runtime"
+	"github.com/belune-hq/belune/internal/server"
+	"github.com/belune-hq/belune/internal/terminal"
+	"github.com/belune-hq/belune/internal/testutil"
+	"github.com/belune-hq/belune/internal/ws"
 )
 
 // wsHarness is an API server with a live hub — the shared test env is built with

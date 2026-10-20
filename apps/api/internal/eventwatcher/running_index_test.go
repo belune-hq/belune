@@ -3,7 +3,7 @@ package eventwatcher
 import (
 	"testing"
 
-	"github.com/weiliang79/belune/internal/runtime"
+	"github.com/belune-hq/belune/internal/runtime"
 )
 
 // ListContainers returns stopped containers too (All: true), and they keep

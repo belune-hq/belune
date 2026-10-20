@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/weiliang79/belune/internal/pkg/logger"
-	"github.com/weiliang79/belune/internal/pkg/loglevel"
+	"github.com/belune-hq/belune/internal/pkg/logger"
+	"github.com/belune-hq/belune/internal/pkg/loglevel"
 )
 
 func newConsole(level slog.Level) (*bytes.Buffer, *slog.Logger) {

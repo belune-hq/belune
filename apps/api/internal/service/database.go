@@ -10,11 +10,11 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/weiliang79/belune/internal/runtime"
-	"github.com/weiliang79/belune/internal/service/backup"
-	"github.com/weiliang79/belune/internal/status"
-	"github.com/weiliang79/belune/internal/store"
-	"github.com/weiliang79/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/runtime"
+	"github.com/belune-hq/belune/internal/service/backup"
+	"github.com/belune-hq/belune/internal/status"
+	"github.com/belune-hq/belune/internal/store"
+	"github.com/belune-hq/belune/internal/store/generated"
 )
 
 type DatabaseService struct {

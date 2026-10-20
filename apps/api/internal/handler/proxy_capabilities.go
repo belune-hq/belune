@@ -3,8 +3,8 @@ package handler
 import (
 	"net/http"
 
-	"github.com/weiliang79/belune/internal/proxy"
-	"github.com/weiliang79/belune/internal/proxy/capability"
+	"github.com/belune-hq/belune/internal/proxy"
+	"github.com/belune-hq/belune/internal/proxy/capability"
 )
 
 // SetCapabilities wires the Caddy capability probe. It is the SAME instance the

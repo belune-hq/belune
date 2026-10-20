@@ -15,8 +15,8 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/weiliang79/belune/internal/store"
-	"github.com/weiliang79/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/store"
+	"github.com/belune-hq/belune/internal/store/generated"
 )
 
 var ErrInvalidAPIToken = errors.New("invalid or expired token")

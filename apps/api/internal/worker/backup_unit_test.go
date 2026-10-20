@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/weiliang79/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/store/generated"
 )
 
 func TestDBDumpSpec(t *testing.T) {

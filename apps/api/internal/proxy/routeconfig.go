@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/belune-hq/belune/internal/store/generated"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/weiliang79/belune/internal/store/generated"
 )
 
 // ResolveUpstreamPort picks the container port a domain's traffic is proxied to:

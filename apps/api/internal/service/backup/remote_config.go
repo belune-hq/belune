@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/weiliang79/belune/internal/config"
+	"github.com/belune-hq/belune/internal/config"
 )
 
 // RemoteConfig is the resolved control-plane remote-storage configuration —

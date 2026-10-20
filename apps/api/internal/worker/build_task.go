@@ -12,12 +12,12 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/weiliang79/belune/internal/build"
-	"github.com/weiliang79/belune/internal/git"
-	"github.com/weiliang79/belune/internal/naming"
-	"github.com/weiliang79/belune/internal/pkg/buildlog"
-	"github.com/weiliang79/belune/internal/status"
-	"github.com/weiliang79/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/build"
+	"github.com/belune-hq/belune/internal/git"
+	"github.com/belune-hq/belune/internal/naming"
+	"github.com/belune-hq/belune/internal/pkg/buildlog"
+	"github.com/belune-hq/belune/internal/status"
+	"github.com/belune-hq/belune/internal/store/generated"
 )
 
 type buildPayload struct {

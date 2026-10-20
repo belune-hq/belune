@@ -4,8 +4,8 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/weiliang79/belune/internal/pkg/crypto"
-	"github.com/weiliang79/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/pkg/crypto"
+	"github.com/belune-hq/belune/internal/store/generated"
 )
 
 // BackfillWebhookSecrets moves any plaintext webhook secrets into the encrypted

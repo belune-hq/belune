@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/weiliang79/belune/internal/testutil"
+	"github.com/belune-hq/belune/internal/testutil"
 )
 
 func TestGetMetrics_AdminOnly(t *testing.T) {

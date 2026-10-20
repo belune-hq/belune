@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/weiliang79/belune/internal/runtime/docker"
+	"github.com/belune-hq/belune/internal/runtime/docker"
 )
 
 // redisPing dials addr and speaks the redis inline protocol; true means the

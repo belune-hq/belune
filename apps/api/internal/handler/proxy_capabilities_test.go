@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/weiliang79/belune/internal/proxy/capability"
-	"github.com/weiliang79/belune/internal/testutil"
+	"github.com/belune-hq/belune/internal/proxy/capability"
+	"github.com/belune-hq/belune/internal/testutil"
 )
 
 // A Caddy that was probed successfully but has no optional modules: stock.

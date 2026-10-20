@@ -3,7 +3,7 @@ package handler
 import (
 	"testing"
 
-	"github.com/weiliang79/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/store/generated"
 )
 
 // The App Health card renders one badge per bucket and relies on them being

@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/weiliang79/belune/internal/testutil"
-	"github.com/weiliang79/belune/internal/worker"
+	"github.com/belune-hq/belune/internal/testutil"
+	"github.com/belune-hq/belune/internal/worker"
 )
 
 // extractInvitationToken extracts the plaintext token from the nth email task.

@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/weiliang79/belune/internal/service"
+	"github.com/belune-hq/belune/internal/service"
 )
 
 type contextKey string

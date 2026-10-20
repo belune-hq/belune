@@ -9,9 +9,9 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	"github.com/weiliang79/belune/internal/proxy"
-	"github.com/weiliang79/belune/internal/proxy/capability"
-	"github.com/weiliang79/belune/internal/runtime"
+	"github.com/belune-hq/belune/internal/proxy"
+	"github.com/belune-hq/belune/internal/proxy/capability"
+	"github.com/belune-hq/belune/internal/runtime"
 )
 
 // MockContainerRuntime implements runtime.ContainerRuntime for testing.

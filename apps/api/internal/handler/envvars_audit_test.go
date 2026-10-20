@@ -13,11 +13,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/weiliang79/belune/internal/runtime"
-	"github.com/weiliang79/belune/internal/server"
-	"github.com/weiliang79/belune/internal/service"
-	"github.com/weiliang79/belune/internal/terminal"
-	"github.com/weiliang79/belune/internal/testutil"
+	"github.com/belune-hq/belune/internal/runtime"
+	"github.com/belune-hq/belune/internal/server"
+	"github.com/belune-hq/belune/internal/service"
+	"github.com/belune-hq/belune/internal/terminal"
+	"github.com/belune-hq/belune/internal/testutil"
 )
 
 // auditedServerURL serves the same database through a second server whose audit

@@ -489,6 +489,25 @@ func (u *updater) Run(args []string) (err error) {
 	// so an image-only update still just replaces the belune container.
 	// Past this point a failure is handled by rollbackHint, not an automatic revert.
 	u.revertArmed = false
+
+	// Compose never re-pulls a tag it already has, and the Caddy image is a
+	// floating one (belune-caddy:2) the rebuild bot moves for CVEs — so without
+	// this a moved tag reaches no existing install. Three constraints:
+	//   - after the compose swap, because the staged file is what names the
+	//     TARGET version's Caddy image;
+	//   - after the revert window closes and only a warning on failure, because a
+	//     proxy pull problem must never roll back a Belune update, and a
+	//     locally-built BELUNE_CADDY_IMAGE that was never pushed fails every time;
+	//   - scoped to the service, because postgres and redis are floating minor
+	//     tags too and a bare pull would make `up -d` recreate the database.
+	// Via compose rather than `docker pull <ref>`: the reference is resolved from
+	// ${BELUNE_CADDY_IMAGE:-...} against .env, which compose already knows how to do.
+	// A moved tag means `up -d` recreates Caddy; the reconciler restores its routes.
+	u.info("Pulling the proxy image...")
+	if u.inherit("docker", "compose", "pull", "caddy") != nil {
+		u.warn("Could not pull the proxy image; keeping the one already on this host.")
+	}
+
 	u.info("Reconciling the stack (docker compose up -d)...")
 	if u.inherit("docker", "compose", "up", "-d") != nil {
 		u.rollbackHint()

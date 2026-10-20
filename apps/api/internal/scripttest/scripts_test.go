@@ -513,7 +513,8 @@ func TestUpdate_FailureBeforeRestartRestoresPinAndInfra(t *testing.T) {
 }
 
 // The order is the contract with the operator's host: everything fetched before
-// anything is touched, a FULL `up -d` (a refreshed compose may change any
+// anything is touched, the proxy image pulled (by service name: a bare pull
+// would recreate postgres), a FULL `up -d` (a refreshed compose may change any
 // service, which --no-deps belune would skip), and the helper extracted from the
 // TARGET image only once the stack is up.
 func TestUpdate_RunsTheStepsInOrder(t *testing.T) {
@@ -531,6 +532,7 @@ func TestUpdate_RunsTheStepsInOrder(t *testing.T) {
 		"pull " + img,
 		"run --rm --entrypoint id " + img + " -u",
 		"run --rm --entrypoint id " + img + " -g",
+		"compose pull caddy",
 		"compose up -d",
 		"run --rm --entrypoint= " + img + " cat /usr/local/bin/belune-backup-upload",
 	}, strings.Split(strings.TrimSpace(string(raw)), "\n"))

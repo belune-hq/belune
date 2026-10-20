@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/weiliang79/belune/internal/proxy"
+	"github.com/belune-hq/belune/internal/proxy"
 )
 
 // The path-forwarding contract, shared with the frontend preview. Both sides

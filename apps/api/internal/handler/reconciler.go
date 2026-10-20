@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/weiliang79/belune/internal/proxy"
+	"github.com/belune-hq/belune/internal/proxy"
 )
 
 // GetProxyReconcilerStatus returns the most recent reconciliation pass state.

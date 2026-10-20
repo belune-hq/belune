@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/weiliang79/belune/internal/service"
-	"github.com/weiliang79/belune/internal/testutil"
+	"github.com/belune-hq/belune/internal/service"
+	"github.com/belune-hq/belune/internal/testutil"
 )
 
 // destroyResourceKinds are the literal path segments this PR's "tokens

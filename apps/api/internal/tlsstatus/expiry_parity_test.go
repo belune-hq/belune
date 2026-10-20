@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/weiliang79/belune/internal/tlsstatus"
+	"github.com/belune-hq/belune/internal/tlsstatus"
 )
 
 // The expiry warning threshold is declared twice: here, where it decides whether

@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/weiliang79/belune/internal/build"
-	"github.com/weiliang79/belune/internal/runtime"
+	"github.com/belune-hq/belune/internal/build"
+	"github.com/belune-hq/belune/internal/runtime"
 )
 
 // Builder handles pre-built images — just pull and deploy, no build step.

@@ -11,8 +11,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/weiliang79/belune/internal/service"
-	"github.com/weiliang79/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/service"
+	"github.com/belune-hq/belune/internal/store/generated"
 )
 
 type backupDestinationResponse struct {

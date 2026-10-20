@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/weiliang79/belune/internal/build"
-	"github.com/weiliang79/belune/internal/runtime"
+	"github.com/belune-hq/belune/internal/build"
+	"github.com/belune-hq/belune/internal/runtime"
 )
 
 type Builder struct {

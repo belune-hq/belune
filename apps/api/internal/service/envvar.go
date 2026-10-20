@@ -8,9 +8,9 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/weiliang79/belune/internal/pkg/crypto"
-	"github.com/weiliang79/belune/internal/store"
-	"github.com/weiliang79/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/pkg/crypto"
+	"github.com/belune-hq/belune/internal/store"
+	"github.com/belune-hq/belune/internal/store/generated"
 )
 
 // EnvKeyRegex is the shape of a valid variable name, shared by the REST

@@ -13,9 +13,9 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/weiliang79/belune/internal/runtime"
-	statuspkg "github.com/weiliang79/belune/internal/status"
-	"github.com/weiliang79/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/runtime"
+	statuspkg "github.com/belune-hq/belune/internal/status"
+	"github.com/belune-hq/belune/internal/store/generated"
 )
 
 // upgradeDBPayload triggers a guarded major-version upgrade of a managed

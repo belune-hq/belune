@@ -16,11 +16,11 @@ import (
 	"github.com/hibiken/asynq"
 	"golang.org/x/mod/semver"
 
-	"github.com/weiliang79/belune/internal/pkg/redact"
-	"github.com/weiliang79/belune/internal/runtime"
-	"github.com/weiliang79/belune/internal/store/generated"
-	"github.com/weiliang79/belune/internal/version"
-	"github.com/weiliang79/belune/internal/worker"
+	"github.com/belune-hq/belune/internal/pkg/redact"
+	"github.com/belune-hq/belune/internal/runtime"
+	"github.com/belune-hq/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/version"
+	"github.com/belune-hq/belune/internal/worker"
 )
 
 // updateImageRepo is where release images live. Hardcoded to match

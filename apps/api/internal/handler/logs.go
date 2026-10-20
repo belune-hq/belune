@@ -9,9 +9,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/weiliang79/belune/internal/naming"
-	"github.com/weiliang79/belune/internal/pkg/sse"
-	"github.com/weiliang79/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/naming"
+	"github.com/belune-hq/belune/internal/pkg/sse"
+	"github.com/belune-hq/belune/internal/store/generated"
 )
 
 //apidoc:tag applications/metrics-logs

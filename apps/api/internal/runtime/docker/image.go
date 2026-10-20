@@ -15,8 +15,8 @@ import (
 	"github.com/docker/docker/api/types/filters"
 	imagetypes "github.com/docker/docker/api/types/image"
 
-	"github.com/weiliang79/belune/internal/pkg/metrics"
-	"github.com/weiliang79/belune/internal/runtime"
+	"github.com/belune-hq/belune/internal/pkg/metrics"
+	"github.com/belune-hq/belune/internal/runtime"
 )
 
 func (c *Client) PullImage(ctx context.Context, image string) (err error) {

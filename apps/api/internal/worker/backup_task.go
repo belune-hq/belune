@@ -15,9 +15,9 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/weiliang79/belune/internal/pkg/metrics"
-	"github.com/weiliang79/belune/internal/pkg/tracing"
-	"github.com/weiliang79/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/pkg/metrics"
+	"github.com/belune-hq/belune/internal/pkg/tracing"
+	"github.com/belune-hq/belune/internal/store/generated"
 )
 
 // HandleBackupNowTask runs a control-plane backup natively (Postgres dump +

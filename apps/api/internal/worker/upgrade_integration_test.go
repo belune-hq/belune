@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/weiliang79/belune/internal/naming"
-	"github.com/weiliang79/belune/internal/runtime/docker"
-	"github.com/weiliang79/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/naming"
+	"github.com/belune-hq/belune/internal/runtime/docker"
+	"github.com/belune-hq/belune/internal/store/generated"
 )
 
 // TestUpgradeRoundTrip_RealDocker provisions a real Postgres 16 container,

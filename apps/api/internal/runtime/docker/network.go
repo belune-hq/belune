@@ -8,8 +8,8 @@ import (
 
 	networktypes "github.com/docker/docker/api/types/network"
 
-	"github.com/weiliang79/belune/internal/pkg/metrics"
-	"github.com/weiliang79/belune/internal/runtime"
+	"github.com/belune-hq/belune/internal/pkg/metrics"
+	"github.com/belune-hq/belune/internal/runtime"
 )
 
 func (c *Client) CreateNetwork(ctx context.Context, name string) (err error) {

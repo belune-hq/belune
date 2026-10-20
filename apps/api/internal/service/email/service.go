@@ -17,9 +17,9 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/weiliang79/belune/internal/config"
-	"github.com/weiliang79/belune/internal/pkg/metrics"
-	"github.com/weiliang79/belune/internal/pkg/tracing"
+	"github.com/belune-hq/belune/internal/config"
+	"github.com/belune-hq/belune/internal/pkg/metrics"
+	"github.com/belune-hq/belune/internal/pkg/tracing"
 )
 
 // Message represents a single outbound email.

@@ -12,9 +12,9 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/weiliang79/belune/internal/pkg/tracing"
-	"github.com/weiliang79/belune/internal/status"
-	"github.com/weiliang79/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/pkg/tracing"
+	"github.com/belune-hq/belune/internal/status"
+	"github.com/belune-hq/belune/internal/store/generated"
 )
 
 // ErrDeployInProgress means another deploy/build/reload/rebuild/rollback holds

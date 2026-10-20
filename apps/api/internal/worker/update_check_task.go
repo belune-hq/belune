@@ -13,9 +13,9 @@ import (
 
 	"golang.org/x/mod/semver"
 
-	"github.com/weiliang79/belune/internal/notify"
-	"github.com/weiliang79/belune/internal/store/generated"
-	"github.com/weiliang79/belune/internal/version"
+	"github.com/belune-hq/belune/internal/notify"
+	"github.com/belune-hq/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/version"
 )
 
 // settingUpdateCheckEnabled gates the daily manifest check. Absent or any

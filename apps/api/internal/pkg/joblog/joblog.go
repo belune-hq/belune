@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/weiliang79/belune/internal/pkg/loglevel"
+	"github.com/belune-hq/belune/internal/pkg/loglevel"
 )
 
 // Entry is a single log line. Stream records the originating OS stream

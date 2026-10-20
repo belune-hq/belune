@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/weiliang79/belune/internal/runtime"
+	"github.com/belune-hq/belune/internal/runtime"
 )
 
 // countingRuntime counts the container listings the cache is meant to absorb.

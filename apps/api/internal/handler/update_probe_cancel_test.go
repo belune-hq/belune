@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/weiliang79/belune/internal/runtime"
+	"github.com/belune-hq/belune/internal/runtime"
 )
 
 // ctxRuntime behaves like the real Docker client: it honours the

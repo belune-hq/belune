@@ -15,8 +15,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/weiliang79/belune/internal/naming"
-	"github.com/weiliang79/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/naming"
+	"github.com/belune-hq/belune/internal/store/generated"
 )
 
 // safeMountPathChars restricts mount paths to a conservative character set.

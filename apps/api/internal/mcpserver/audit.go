@@ -3,7 +3,7 @@ package mcpserver
 import (
 	"context"
 
-	"github.com/weiliang79/belune/internal/server/middleware"
+	"github.com/belune-hq/belune/internal/server/middleware"
 )
 
 // Auditor is the slice of service.AuditService the mutating tools need. An

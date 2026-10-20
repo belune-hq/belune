@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/weiliang79/belune/internal/server/middleware"
+	"github.com/belune-hq/belune/internal/server/middleware"
 )
 
 // The authenticated surface's rate limiter had no test at all — testutil's

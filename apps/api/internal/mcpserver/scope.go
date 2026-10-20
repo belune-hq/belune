@@ -8,7 +8,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/weiliang79/belune/internal/server/middleware"
+	"github.com/belune-hq/belune/internal/server/middleware"
 )
 
 // toolScopes declares the PAT scope every tool requires. POST /mcp is one

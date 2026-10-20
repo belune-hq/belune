@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/weiliang79/belune/internal/runtime"
-	"github.com/weiliang79/belune/internal/testutil"
+	"github.com/belune-hq/belune/internal/runtime"
+	"github.com/belune-hq/belune/internal/testutil"
 )
 
 // FINDING 1 probe: does the reported elapsed survive the pull->helper handover?

@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/weiliang79/belune/internal/runtime"
+	"github.com/belune-hq/belune/internal/runtime"
 )
 
 const listModulesOutput = `admin.api.load

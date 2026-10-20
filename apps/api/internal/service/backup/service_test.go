@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/weiliang79/belune/internal/config"
-	"github.com/weiliang79/belune/internal/service/backup"
+	"github.com/belune-hq/belune/internal/config"
+	"github.com/belune-hq/belune/internal/service/backup"
 )
 
 // startS3 spins up a LocalStack (S3-only) testcontainer and returns a

@@ -2,9 +2,9 @@ package mcpserver
 
 import (
 	"context"
+	"github.com/belune-hq/belune/internal/service"
+	"github.com/belune-hq/belune/internal/store/generated"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/weiliang79/belune/internal/service"
-	"github.com/weiliang79/belune/internal/store/generated"
 	"sort"
 	"strings"
 	"testing"
@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/weiliang79/belune/internal/server/middleware"
+	"github.com/belune-hq/belune/internal/server/middleware"
 )
 
 // registeredTools asks the real server what it registered, over an in-memory

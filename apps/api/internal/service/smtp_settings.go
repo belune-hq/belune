@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/weiliang79/belune/internal/config"
-	"github.com/weiliang79/belune/internal/pkg/crypto"
-	"github.com/weiliang79/belune/internal/service/email"
-	"github.com/weiliang79/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/config"
+	"github.com/belune-hq/belune/internal/pkg/crypto"
+	"github.com/belune-hq/belune/internal/service/email"
+	"github.com/belune-hq/belune/internal/store/generated"
 )
 
 // SMTP settings keys in the generic settings table. The password is stored

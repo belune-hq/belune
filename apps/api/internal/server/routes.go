@@ -7,9 +7,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/httprate"
 
-	"github.com/weiliang79/belune/internal/handler"
-	"github.com/weiliang79/belune/internal/server/middleware"
-	"github.com/weiliang79/belune/internal/service"
+	"github.com/belune-hq/belune/internal/handler"
+	"github.com/belune-hq/belune/internal/server/middleware"
+	"github.com/belune-hq/belune/internal/service"
 )
 
 const (

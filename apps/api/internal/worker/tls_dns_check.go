@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/weiliang79/belune/internal/config"
-	"github.com/weiliang79/belune/internal/pkg/netutil"
+	"github.com/belune-hq/belune/internal/config"
+	"github.com/belune-hq/belune/internal/pkg/netutil"
 )
 
 // DNS precheck.

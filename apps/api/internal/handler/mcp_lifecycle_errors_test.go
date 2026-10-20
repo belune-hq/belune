@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/weiliang79/belune/internal/testutil"
+	"github.com/belune-hq/belune/internal/testutil"
 )
 
 // A container that will not start or stop must be reported as a failure and

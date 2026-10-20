@@ -24,11 +24,11 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/weiliang79/belune/internal/quota"
-	"github.com/weiliang79/belune/internal/runtime"
-	"github.com/weiliang79/belune/internal/service"
-	"github.com/weiliang79/belune/internal/store/generated"
-	"github.com/weiliang79/belune/internal/version"
+	"github.com/belune-hq/belune/internal/quota"
+	"github.com/belune-hq/belune/internal/runtime"
+	"github.com/belune-hq/belune/internal/service"
+	"github.com/belune-hq/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/version"
 )
 
 // Deps is everything the tools need. A struct rather than positional

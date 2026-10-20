@@ -12,9 +12,9 @@ import (
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/weiliang79/belune/internal/naming"
-	"github.com/weiliang79/belune/internal/runtime"
-	"github.com/weiliang79/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/naming"
+	"github.com/belune-hq/belune/internal/runtime"
+	"github.com/belune-hq/belune/internal/store/generated"
 )
 
 const (

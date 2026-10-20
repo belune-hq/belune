@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/weiliang79/belune/internal/service"
-	"github.com/weiliang79/belune/internal/service/email"
+	"github.com/belune-hq/belune/internal/service"
+	"github.com/belune-hq/belune/internal/service/email"
 )
 
 // smtpSettingsRequest is the create/update payload. Password is preserved when

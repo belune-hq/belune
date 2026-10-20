@@ -19,8 +19,8 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/weiliang79/belune/internal/config"
-	"github.com/weiliang79/belune/internal/service/backup"
+	"github.com/belune-hq/belune/internal/config"
+	"github.com/belune-hq/belune/internal/service/backup"
 )
 
 func main() {

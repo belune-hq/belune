@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/weiliang79/belune/internal/notify"
-	"github.com/weiliang79/belune/internal/service/email"
+	"github.com/belune-hq/belune/internal/notify"
+	"github.com/belune-hq/belune/internal/service/email"
 )
 
 // NewNotifyRegistry builds a notify.Registry wired to the app's SMTP mailer, so

@@ -10,8 +10,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/weiliang79/belune/internal/server/middleware"
-	"github.com/weiliang79/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/server/middleware"
+	"github.com/belune-hq/belune/internal/store/generated"
 )
 
 // wsAuthTimeout bounds one subscribe-time lookup. ReadPump is the socket's only

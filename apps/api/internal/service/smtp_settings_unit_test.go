@@ -3,8 +3,8 @@ package service
 import (
 	"testing"
 
-	"github.com/weiliang79/belune/internal/config"
-	"github.com/weiliang79/belune/internal/pkg/crypto"
+	"github.com/belune-hq/belune/internal/config"
+	"github.com/belune-hq/belune/internal/pkg/crypto"
 )
 
 func newSMTPSvc(t *testing.T) *SMTPSettingsService {

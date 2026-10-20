@@ -9,9 +9,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
-	"github.com/weiliang79/belune/internal/pkg/crypto"
-	"github.com/weiliang79/belune/internal/store/generated"
-	"github.com/weiliang79/belune/internal/testutil"
+	"github.com/belune-hq/belune/internal/pkg/crypto"
+	"github.com/belune-hq/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/testutil"
 )
 
 var (

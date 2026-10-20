@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/weiliang79/belune/internal/status"
+	"github.com/belune-hq/belune/internal/status"
 )
 
 func TestValidTransition(t *testing.T) {

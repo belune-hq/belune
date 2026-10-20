@@ -6,8 +6,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/weiliang79/belune/internal/service"
-	"github.com/weiliang79/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/service"
+	"github.com/belune-hq/belune/internal/store/generated"
 )
 
 // triggeredDeployment is deliberately smaller than `deployment`: the row has

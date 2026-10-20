@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/weiliang79/belune/internal/store/generated"
-	"github.com/weiliang79/belune/internal/version"
-	"github.com/weiliang79/belune/internal/worker"
+	"github.com/belune-hq/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/version"
+	"github.com/belune-hq/belune/internal/worker"
 )
 
 // updateCheckKeys are every setting row HandleUpdateCheck reads or writes.

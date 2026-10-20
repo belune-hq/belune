@@ -3,7 +3,7 @@ package handler
 import (
 	"net/http"
 
-	"github.com/weiliang79/belune/internal/version"
+	"github.com/belune-hq/belune/internal/version"
 )
 
 type versionResponse struct {

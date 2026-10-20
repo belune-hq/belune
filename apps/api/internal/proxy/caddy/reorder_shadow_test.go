@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/weiliang79/belune/internal/proxy"
+	"github.com/belune-hq/belune/internal/proxy"
 )
 
 // idsOf reads the @id of each route; a match-less route has none.

@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/weiliang79/belune/internal/pkg/logger"
+	"github.com/belune-hq/belune/internal/pkg/logger"
 )
 
 func TestIsTransientConnError(t *testing.T) {

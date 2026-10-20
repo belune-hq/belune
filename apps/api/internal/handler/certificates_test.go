@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/weiliang79/belune/internal/testutil"
+	"github.com/belune-hq/belune/internal/testutil"
 )
 
 // testCertPair mints a self-signed PEM pair for the given hostname.

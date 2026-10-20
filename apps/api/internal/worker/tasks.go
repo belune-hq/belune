@@ -1,6 +1,6 @@
 package worker
 
-import "github.com/weiliang79/belune/internal/service"
+import "github.com/belune-hq/belune/internal/service"
 
 const (
 	TypeDeploy              = "deploy"

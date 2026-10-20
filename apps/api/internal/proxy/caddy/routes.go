@@ -17,8 +17,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/weiliang79/belune/internal/pkg/metrics"
-	"github.com/weiliang79/belune/internal/proxy"
+	"github.com/belune-hq/belune/internal/pkg/metrics"
+	"github.com/belune-hq/belune/internal/proxy"
 )
 
 // ErrCaddyUnreachable is returned when the Caddy admin API cannot be contacted

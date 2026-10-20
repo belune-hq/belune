@@ -40,6 +40,13 @@ const DefaultControlPlaneBackupSchedule = "0 2 * * *"
 const SettingControlPlaneBackupRetainDays = "control_plane_backup_retain_days"
 const SettingControlPlaneBackupRetainCount = "control_plane_backup_retain_count"
 
+// How the Caddy container's name was determined; see Config.CaddyContainerSource.
+const (
+	CaddySourceEnv     = "env"     // CADDY_CONTAINER_NAME was set explicitly
+	CaddySourceLabel   = "label"   // a container carries belune-system=caddy
+	CaddySourceAssumed = "assumed" // neither: the compiled-in default, unverified
+)
+
 type Config struct {
 	Port               int
 	DatabaseURL        string
@@ -50,6 +57,11 @@ type Config struct {
 	Keyring            *crypto.Keyring
 	CaddyAdminURL      string
 	CaddyContainerName string // Docker container name/ID for Caddy; used to attach it to per-project networks
+	// CaddyContainerSource records HOW CaddyContainerName was arrived at (one of
+	// the CaddySource* values), so the dashboard can say "assumed" instead of
+	// presenting a guessed name as a finding. Empty until app.resolveCaddyContainer
+	// has run.
+	CaddyContainerSource string
 	// APIContainerName is this control-plane container's own Docker name/ID. The
 	// worker attaches it to each per-project network so the post-deploy health
 	// probe can reach app containers directly (app-to-app isolation is unaffected;

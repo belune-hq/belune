@@ -18,11 +18,16 @@ import (
 //apidoc:title Get Proxy Status
 //apidoc:order 6
 func (h *Handler) GetProxyReconcilerStatus(w http.ResponseWriter, r *http.Request) {
-	if h.reconciler == nil {
-		writeJSON(w, http.StatusOK, proxy.ReconcilerStatus{})
-		return
+	var st proxy.ReconcilerStatus
+	if h.reconciler != nil {
+		st = h.reconciler.Status()
 	}
-	writeJSON(w, http.StatusOK, h.reconciler.Status())
+	// No reconciler (or one that has not probed) has not said Caddy is anything;
+	// an empty string would leave the client to decide what that means.
+	if st.AdminState == "" {
+		st.AdminState = "unknown"
+	}
+	writeJSON(w, http.StatusOK, proxyStatusResponse{ReconcilerStatus: st, Caddy: h.caddyPanel(r)})
 }
 
 // ReconcileProxy triggers an on-demand reconciliation of Caddy's routes against

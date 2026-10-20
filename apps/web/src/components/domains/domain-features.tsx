@@ -236,6 +236,12 @@ export function DomainFeatures({
               bcrypt hash alone makes basic_auth's object ~110 characters. */}
           <CodeEditor
             language="json"
+            // Six rows: the editor's own chrome is 16px (7px above and below,
+            // centring one line in a 2rem box, plus the border), so six
+            // text-xs lines at 16px need 112px. Set here rather than on the
+            // primitive because the other fields that will use it — a mounted
+            // file, a .env paste — want their own heights.
+            className="min-h-28"
             value={newFeatureConfig}
             onChange={setNewFeatureConfig}
             placeholder={CONFIG_EXAMPLES[newFeatureType] ?? '{"key": "value"}'}

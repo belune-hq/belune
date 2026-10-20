@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -198,7 +199,79 @@ func (h *Handler) ListDomains(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, domains)
+	notApplied := h.notAppliedByRoute()
+	out := make([]domainListItem, len(domains))
+	for i, d := range domains {
+		out[i] = domainListItem{
+			ListDomainsByApplicationWithFeaturesRow: d,
+			NotApplied:                              notApplied[routeKey{d.Hostname, d.Path}],
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// Two wrappers, one per sqlc row type, rather than converting one row into the
+// other: a column added to domains later would otherwise be dropped from one
+// response silently, and the SQL comment on GetDomainWithFeatures exists to keep
+// the two shapes identical. Embedding keeps the row's fields promoted inline, so
+// the wire shape only gains not_applied.
+type domainListItem struct {
+	generated.ListDomainsByApplicationWithFeaturesRow
+	NotApplied []notAppliedFeature `json:"not_applied,omitempty"`
+}
+
+type domainDetail struct {
+	generated.GetDomainWithFeaturesRow
+	NotApplied []notAppliedFeature `json:"not_applied,omitempty"`
+}
+
+// notAppliedFeature is a configured feature the proxy reconciler is serving a
+// domain WITHOUT. Present only for a condition that has outlasted the grace
+// period in notAppliedByRoute.
+type notAppliedFeature struct {
+	FeatureType string    `json:"feature_type"`
+	Reason      string    `json:"reason"`
+	Since       time.Time `json:"since"`
+}
+
+type routeKey struct{ hostname, path string }
+
+// notAppliedByRoute reports what the reconciler observed it had to strip,
+// because it is the only component that knows what was actually pushed to Caddy.
+// The capability probe cannot say: it reads unknown for ever behind a proxy
+// Belune cannot exec into, and a warning on "unknown" would fire for every
+// operator during every update, when Caddy is briefly unprobeable.
+//
+// Time is the filter. Only a degradation older than two reconcile intervals is
+// reported, which a restart-time blip (self-heals in seconds) never reaches and
+// a permanent one always does. A pass count would not do: the 3s lost-config
+// probe can fire two passes seconds apart during one restart.
+//
+// GET /api/maintenance/proxy deliberately stays UNFILTERED: it is the debugging
+// view, and an operator who went looking should see the raw state.
+//
+// Callers look up only the hostname+path of rows they are already returning, so
+// the install-wide list never leaks another project's hostnames.
+func (h *Handler) notAppliedByRoute() map[routeKey][]notAppliedFeature {
+	if h.reconciler == nil {
+		return nil
+	}
+	st := h.reconciler.Status()
+	grace := 2 * time.Duration(st.IntervalSeconds) * time.Second
+	now := time.Now()
+
+	var out map[routeKey][]notAppliedFeature
+	for _, d := range st.Degraded {
+		if now.Sub(d.Since) < grace {
+			continue
+		}
+		if out == nil {
+			out = map[routeKey][]notAppliedFeature{}
+		}
+		k := routeKey{d.Hostname, d.Path}
+		out[k] = append(out[k], notAppliedFeature{FeatureType: d.Feature, Reason: d.Reason, Since: d.Since})
+	}
+	return out
 }
 
 // GetDomain returns one domain in the same shape ListDomains returns it.
@@ -235,7 +308,10 @@ func (h *Handler) GetDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, domain)
+	writeJSON(w, http.StatusOK, domainDetail{
+		GetDomainWithFeaturesRow: domain,
+		NotApplied:               h.notAppliedByRoute()[routeKey{domain.Hostname, domain.Path}],
+	})
 }
 
 type addDomainRequest struct {

@@ -5220,7 +5220,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/ListDomainsByApplicationWithFeaturesRow"
+                    "$ref": "#/components/schemas/domainListItem"
                   },
                   "type": "array"
                 }
@@ -5429,7 +5429,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GetDomainWithFeaturesRow"
+                  "$ref": "#/components/schemas/domainDetail"
                 }
               }
             }
@@ -14226,6 +14226,13 @@
           },
           "path": {
             "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "since": {
+            "format": "date-time",
+            "type": "string"
           }
         },
         "type": "object"
@@ -17398,6 +17405,264 @@
         },
         "type": "object"
       },
+      "domainDetail": {
+        "properties": {
+          "advanced_config": {
+            "format": "byte",
+            "type": "string"
+          },
+          "application_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "caddy_config_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "certificate_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "container_port": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "force_https": {
+            "type": "boolean"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "internal_path": {
+            "type": "string"
+          },
+          "not_applied": {
+            "items": {
+              "$ref": "#/components/schemas/notAppliedFeature"
+            },
+            "type": "array"
+          },
+          "path": {
+            "type": "string"
+          },
+          "route_features": {},
+          "ssl_credentials_encrypted": {
+            "format": "byte",
+            "type": "string"
+          },
+          "ssl_enabled": {
+            "type": "boolean"
+          },
+          "ssl_mode": {
+            "type": "string"
+          },
+          "ssl_provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "strip_path": {
+            "type": "boolean"
+          },
+          "tls_advisory": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tls_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tls_issuer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tls_last_checked_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tls_not_after": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tls_status": {
+            "type": "string"
+          },
+          "verified_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "domainListItem": {
+        "properties": {
+          "advanced_config": {
+            "format": "byte",
+            "type": "string"
+          },
+          "application_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "caddy_config_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "certificate_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "container_port": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "force_https": {
+            "type": "boolean"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "internal_path": {
+            "type": "string"
+          },
+          "not_applied": {
+            "items": {
+              "$ref": "#/components/schemas/notAppliedFeature"
+            },
+            "type": "array"
+          },
+          "path": {
+            "type": "string"
+          },
+          "route_features": {},
+          "ssl_credentials_encrypted": {
+            "format": "byte",
+            "type": "string"
+          },
+          "ssl_enabled": {
+            "type": "boolean"
+          },
+          "ssl_mode": {
+            "type": "string"
+          },
+          "ssl_provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "strip_path": {
+            "type": "boolean"
+          },
+          "tls_advisory": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tls_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tls_issuer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tls_last_checked_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tls_not_after": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tls_status": {
+            "type": "string"
+          },
+          "verified_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "domainTLSStatus": {
         "properties": {
           "application_id": {
@@ -17846,6 +18111,21 @@
           },
           "unhealthy_services": {
             "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "notAppliedFeature": {
+        "properties": {
+          "feature_type": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "since": {
+            "format": "date-time",
+            "type": "string"
           }
         },
         "type": "object"

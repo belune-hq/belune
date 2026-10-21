@@ -98,6 +98,44 @@ describe("CodeEditor when the editor is unavailable", () => {
     expect(field).toHaveProperty("value", value);
   });
 
+  // Input and Textarea ship `text-base md:text-sm`, and tailwind-merge keeps a
+  // caller's `text-xs` apart from `md:text-sm`, so the plain field was 14px beside
+  // a 12px editor from the md breakpoint up. Found by measuring in a browser.
+  it("matches the editor's text size above the md breakpoint too", async () => {
+    const warn = silence();
+    control.mode = "fail";
+    const sizes = async (className?: string) => {
+      const { unmount } = render(
+        <CodeEditor
+          language="json"
+          value="x"
+          onChange={() => {}}
+          className={className}
+          aria-label="Body"
+        />,
+      );
+      await waitFor(() => expect(warn).toHaveBeenCalled());
+      const classes = [...screen.getByRole("textbox").classList];
+      unmount();
+      return classes;
+    };
+
+    const dflt = await sizes();
+    expect(dflt).toContain("text-xs");
+    expect(dflt).toContain("md:text-xs");
+    expect(dflt).not.toContain("md:text-sm");
+
+    const small = await sizes("text-sm");
+    expect(small).toContain("text-sm");
+    expect(small).toContain("md:text-sm");
+    expect(small).not.toContain("text-xs");
+
+    // A size the caller chose for md is theirs.
+    const own = await sizes("text-sm md:text-lg");
+    expect(own).toContain("md:text-lg");
+    expect(own).not.toContain("md:text-sm");
+  });
+
   it("tries again on the next mount, instead of failing until a page reload", async () => {
     // A rejected React.lazy stays rejected for good, so without the swap in the
     // boundary a transient failure would cost the editor for the rest of the

@@ -31,6 +31,20 @@ export interface CodeEditorProps {
 // the other changes nothing the eye can see.
 const TEXT = "font-mono text-xs";
 
+// Input and Textarea ship `text-base md:text-sm`, and tailwind-merge treats
+// `text-xs` and `md:text-sm` as different variants, so a caller's size loses to
+// the md rule from the breakpoint up: the plain field was 14px beside a 12px
+// editor on a desktop. Repeating the chosen size at md makes the two match at
+// every width. A size the caller gave at md is left alone.
+const SIZE = /(?:^|\s)(text-(?:xs|sm|base|lg|xl|2xl|3xl))(?=\s|$)/;
+const MD_SIZE = /(?:^|\s)md:text-(?:xs|sm|base|lg|xl|2xl|3xl)(?=\s|$)/;
+
+function plainText(className?: string): string {
+  const merged = cn(TEXT, className);
+  const size = SIZE.exec(merged)?.[1];
+  return size && !MD_SIZE.test(merged) ? cn(merged, `md:${size}`) : merged;
+}
+
 // A rejected React.lazy stays rejected for the life of the page, so a failed
 // load swaps in a fresh one and the next mount gets a real second attempt. The
 // usual cause is an update.sh restart while a tab was open: the tab asks for a
@@ -88,7 +102,7 @@ function PlainField({
     value,
     placeholder,
     spellCheck: false,
-    className: cn(TEXT, className),
+    className: plainText(className),
     "aria-label": ariaLabel,
     "aria-labelledby": ariaLabelledBy,
     "aria-describedby": ariaDescribedBy,

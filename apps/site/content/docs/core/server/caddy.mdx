@@ -40,3 +40,11 @@ Belune manages Caddy entirely through its admin API; it never writes a Caddyfile
 5. **The access log volume.** Belune writes a JSON access log to `/var/log/caddy/access.log` inside the Caddy container and reads it from its own, so both mount the same volume there.
 
 Belune treats its own routes as the source of truth and re-asserts them every 30 seconds, so a host route you add to Caddy by hand will be removed. Optional modules are a bonus, never a requirement.
+
+## The Proxy Panel
+
+The Server page shows what Belune can tell about Caddy itself: which container it is and how that container was found, whether the admin API answers, the version and image, the loaded modules, and whether the request log is being read.
+
+Every line separates "could not be determined" from "not there". If Belune cannot list Caddy's modules because the proxy is restarting, the panel says the modules are unknown rather than that they are missing. When Caddy runs outside Docker there is no container to inspect, and the panel says so instead of reporting an error.
+
+The panel is read-only. Belune owns the route table and rewrites anything it does not recognise within thirty seconds, so Caddy's configuration cannot be edited from here.

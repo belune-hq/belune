@@ -799,6 +799,63 @@ export interface ReconcilerStatus {
   last_error?: string;
   run_count: number;
   total_drift: number;
+  /** The 3s probe's reading of Caddy's admin API. "unknown" = not probed yet. */
+  admin_state: CaddyAdminState;
+  caddy: CaddyPanel;
+}
+
+export type CaddyAdminState =
+  | "unknown"
+  | "unreachable"
+  | "healthy"
+  | "lost_config";
+
+/** Every nullable or "unknown" value here means "could not be determined",
+ *  which is NOT the same as absent — render it as unknown, never as none. */
+export interface CaddyPanel {
+  discovery: {
+    source: "env" | "label" | "assumed" | "";
+    container_name: string;
+  };
+  admin: { url: string; state: CaddyAdminState };
+  container: {
+    state: "found" | "not_found" | "unknown";
+    status?: string;
+  };
+  version: {
+    value: string | null;
+    upstream: string | null;
+    source: "label" | "exec" | null;
+  };
+  image: string | null;
+  modules: { known: boolean; ids: string[] };
+  features: Record<string, { module: string; state: FeatureAvailability }>;
+  access_log: AccessLogStatus;
+}
+
+export type AccessLogState =
+  | "unknown"
+  | "missing"
+  | "unreadable"
+  | "error"
+  | "starting"
+  | "no_traffic"
+  | "no_app_traffic"
+  | "ingesting";
+
+export interface AccessLogStatus {
+  path: string;
+  resolved_path: string;
+  file: "present" | "missing" | "unreadable" | "";
+  state: AccessLogState;
+  /** When counting began; the counters below are relative to it. */
+  since: string;
+  lines_read: number;
+  rows_inserted: number;
+  last_line_at?: string;
+  last_insert_at?: string;
+  last_error?: string;
+  last_error_at?: string;
 }
 
 /** Whether the running Caddy has the module a route feature needs. "unknown"

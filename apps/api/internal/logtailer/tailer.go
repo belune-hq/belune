@@ -52,6 +52,12 @@ type Tailer struct {
 	cacheMu     sync.RWMutex
 	batchSize   int
 	flushEvery  time.Duration
+
+	// stats feeds Status. A mutex rather than atomics because the fields are
+	// read together: a snapshot where lines_read and rows_inserted come from
+	// different moments would misclassify the state.
+	statsMu sync.Mutex
+	stats   counters
 }
 
 // New creates a new log tailer.
@@ -63,6 +69,7 @@ func New(logPath string, queries *generated.Queries, rdb *redis.Client) *Tailer 
 		domainCache: make(map[string]pgtype.UUID),
 		batchSize:   100,
 		flushEvery:  2 * time.Second,
+		stats:       counters{startedAt: time.Now()},
 	}
 }
 
@@ -81,6 +88,7 @@ func (t *Tailer) Run(ctx context.Context) {
 				return
 			}
 			slog.Warn("access log tailer error, retrying in 5s", "error", err)
+			t.recordError(err)
 			select {
 			case <-ctx.Done():
 				return
@@ -126,6 +134,9 @@ func (t *Tailer) tail(ctx context.Context) error {
 	}
 	defer f.Close()
 
+	t.setTailing(true)
+	defer t.setTailing(false)
+
 	// Seek to end so we only process new entries
 	if _, err := f.Seek(0, io.SeekEnd); err != nil {
 		return fmt.Errorf("seek to end: %w", err)
@@ -163,6 +174,7 @@ func (t *Tailer) tail(ctx context.Context) error {
 		if line == "" {
 			continue
 		}
+		t.countLine()
 
 		params, ok := t.parseLine(ctx, line)
 		if !ok {
@@ -284,8 +296,10 @@ func (t *Tailer) flush(ctx context.Context, batch []generated.InsertRequestLogPa
 	for _, p := range batch {
 		if err := t.queries.InsertRequestLog(ctx, p); err != nil {
 			slog.Warn("failed to insert request log", "error", err)
+			t.recordError(fmt.Errorf("insert request log: %w", err))
 			continue
 		}
+		t.countInsert()
 
 		// Publish to Redis pub/sub for live SSE consumers
 		appIDStr := fmt.Sprintf("%x-%x-%x-%x-%x",

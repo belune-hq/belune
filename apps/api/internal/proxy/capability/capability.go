@@ -11,10 +11,12 @@ package capability
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -68,6 +70,17 @@ func NewSet(ids ...string) Set {
 // a module while it is merely restarting sends them to rebuild an image that was
 // fine.
 func (s Set) Known() bool { return len(s.modules) > 0 }
+
+// IDs returns every module ID, sorted. Empty when the probe could not ask, which
+// callers must read through Known rather than as "this Caddy has no modules".
+func (s Set) IDs() []string {
+	ids := make([]string, 0, len(s.modules))
+	for id := range s.modules {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	return ids
+}
 
 // Has reports whether the exact module ID is present.
 func (s Set) Has(moduleID string) bool {
@@ -177,38 +190,54 @@ func (p *Prober) probe(ctx context.Context) (Set, error) {
 }
 
 func (p *Prober) containerID(ctx context.Context) (string, error) {
-	// The labelled list first: it is the normal case and the cheap query.
-	containers, err := p.rt.ListSystemContainers(ctx)
+	c, err := FindContainer(ctx, p.rt, p.containerName)
 	if err != nil {
-		return "", fmt.Errorf("listing system containers: %w", err)
+		return "", err
 	}
-	if id := findID(containers, p.containerName); id != "" {
-		return id, nil
+	return c.ID, nil
+}
+
+// ErrContainerNotFound means the lookup worked and no container has the name,
+// as opposed to the runtime failing to answer.
+var ErrContainerNotFound = errors.New("no such container")
+
+// FindContainer locates the named container. Shared with the dashboard's Caddy
+// panel so both resolve a container identically — a second lookup with
+// different rules is how the panel and the prober would come to disagree about
+// which container "Caddy" is.
+func FindContainer(ctx context.Context, rt Runtime, name string) (runtime.ContainerInfo, error) {
+	// The labelled list first: it is the normal case and the cheap query.
+	containers, err := rt.ListSystemContainers(ctx)
+	if err != nil {
+		return runtime.ContainerInfo{}, fmt.Errorf("listing system containers: %w", err)
+	}
+	if c, ok := findContainer(containers, name); ok {
+		return c, nil
 	}
 
 	// ⚠️ Then every container, because ListSystemContainers filters on the
 	// belune-system label and CADDY_CONTAINER_NAME is the documented escape
-	// hatch for a Caddy that does not carry it (app.go:374 returns before the
+	// hatch for a Caddy that does not carry it (app.go returns before the
 	// label is ever consulted). Without this fallback a bring-your-own Caddy
 	// named explicitly would route fine and report every optional module
 	// absent — the silent half of a failure is the half that costs time.
-	all, err := p.rt.ListAllContainers(ctx)
+	all, err := rt.ListAllContainers(ctx)
 	if err != nil {
-		return "", fmt.Errorf("listing all containers: %w", err)
+		return runtime.ContainerInfo{}, fmt.Errorf("listing all containers: %w", err)
 	}
-	if id := findID(all, p.containerName); id != "" {
-		return id, nil
+	if c, ok := findContainer(all, name); ok {
+		return c, nil
 	}
-	return "", fmt.Errorf("no container named %q", p.containerName)
+	return runtime.ContainerInfo{}, fmt.Errorf("%w named %q", ErrContainerNotFound, name)
 }
 
-func findID(containers []runtime.ContainerInfo, name string) string {
+func findContainer(containers []runtime.ContainerInfo, name string) (runtime.ContainerInfo, bool) {
 	for _, c := range containers {
 		if c.Name == name && c.ID != "" {
-			return c.ID
+			return c, true
 		}
 	}
-	return ""
+	return runtime.ContainerInfo{}, false
 }
 
 var moduleIDPattern = regexp.MustCompile(`^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$`)

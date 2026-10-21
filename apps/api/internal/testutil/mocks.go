@@ -9,6 +9,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/belune-hq/belune/internal/logtailer"
 	"github.com/belune-hq/belune/internal/proxy"
 	"github.com/belune-hq/belune/internal/proxy/capability"
 	"github.com/belune-hq/belune/internal/runtime"
@@ -38,11 +39,14 @@ type MockContainerRuntime struct {
 	ListAllContainers_    []runtime.ContainerInfo
 	ContainerLogsTail_    string
 	ListSystemContainers_ []runtime.ContainerInfo
-	ListImages_           []runtime.ImageInfo
-	ListVolumes_          []runtime.VolumeInfo
-	ListNetworks_         []runtime.NetworkInfo
-	SystemInfo_           *runtime.DockerSystemInfo
-	SystemDiskUsage_      *runtime.DockerDiskUsage
+	// ListContainersErr, when set, fails both container listings — the runtime
+	// being unreachable, as distinct from the container simply not existing.
+	ListContainersErr error
+	ListImages_       []runtime.ImageInfo
+	ListVolumes_      []runtime.VolumeInfo
+	ListNetworks_     []runtime.NetworkInfo
+	SystemInfo_       *runtime.DockerSystemInfo
+	SystemDiskUsage_  *runtime.DockerDiskUsage
 
 	// ResolveImageDigest_ is returned by ResolveImageDigest; ResolveDigestCalls
 	// records the refs it was asked to resolve.
@@ -139,6 +143,9 @@ func (m *MockContainerRuntime) ListContainers(_ context.Context) ([]runtime.Cont
 func (m *MockContainerRuntime) ListAllContainers(_ context.Context) ([]runtime.ContainerInfo, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.ListContainersErr != nil {
+		return nil, m.ListContainersErr
+	}
 	if m.ListAllContainers_ == nil {
 		return []runtime.ContainerInfo{}, nil
 	}
@@ -148,6 +155,9 @@ func (m *MockContainerRuntime) ListAllContainers(_ context.Context) ([]runtime.C
 func (m *MockContainerRuntime) ListSystemContainers(_ context.Context) ([]runtime.ContainerInfo, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.ListContainersErr != nil {
+		return nil, m.ListContainersErr
+	}
 	return m.ListSystemContainers_, nil
 }
 
@@ -396,6 +406,24 @@ func (m *MockCapabilities) Capabilities(context.Context) capability.Set {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.set
+}
+
+// MockAccessLog implements handler.AccessLogStatusProvider.
+type MockAccessLog struct {
+	mu sync.Mutex
+	st logtailer.Status
+}
+
+func (m *MockAccessLog) Set(s logtailer.Status) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.st = s
+}
+
+func (m *MockAccessLog) Status() logtailer.Status {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.st
 }
 
 // MockQueueInspector implements handler.QueueInspector for testing.

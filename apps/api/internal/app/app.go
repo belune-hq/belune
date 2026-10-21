@@ -226,6 +226,8 @@ func New(cfg *config.Config) (*App, error) {
 	broadcaster := ws.NewContainerStatusBroadcaster(hub)
 	httpSrv := server.New(cfg, db, queries, asynqClient, asynqInspector, runtimes, caddyClient, reconciler, rdb, hub, auditSvc, notifySvc, termMgr, emailSvc)
 	httpSrv.SetCapabilities(caddyCaps)
+	logTailer := logtailer.New(cfg.AccessLogPath, queries, rdb)
+	httpSrv.SetAccessLog(logTailer)
 
 	// Optional Prometheus-friendly bind. Serves /metrics without auth on the
 	// configured address (typically loopback). Keeps the main /metrics route
@@ -267,7 +269,7 @@ func New(cfg *config.Config) (*App, error) {
 		metricsServer:  metricsServer,
 		asynqInspector: asynqInspector,
 		reconciler:     reconciler,
-		logTailer:      logtailer.New(cfg.AccessLogPath, queries, rdb),
+		logTailer:      logTailer,
 		logCollector:   logcollector.New(dockerClient, queries, rdb),
 		redisAdapter:   ws.NewRedisAdapter(rdb, hub),
 		eventWatcher:   eventwatcher.New(dockerClient, queries, broadcaster),
@@ -380,8 +382,12 @@ func (a *App) Run(ctx context.Context) error {
 // symptom is every app domain answering 502 with a healthy-looking stack.
 func resolveCaddyContainer(cfg *config.Config, dc *docker.Client) {
 	if os.Getenv("CADDY_CONTAINER_NAME") != "" {
+		cfg.CaddyContainerSource = config.CaddySourceEnv
 		return
 	}
+	// Assumed until a label proves otherwise, so every early return below leaves
+	// the honest answer behind rather than an empty one.
+	cfg.CaddyContainerSource = config.CaddySourceAssumed
 
 	// Retried briefly: on a cold `compose up` the proxy is created alongside this
 	// container rather than before it, so the first look can legitimately come up
@@ -403,6 +409,7 @@ func resolveCaddyContainer(cfg *config.Config, dc *docker.Client) {
 			if c.Labels["belune-system"] == logcollector.SystemCaddy && c.Name != "" {
 				slog.Info("discovered Caddy container", "name", c.Name)
 				cfg.CaddyContainerName = c.Name
+				cfg.CaddyContainerSource = config.CaddySourceLabel
 				return
 			}
 		}

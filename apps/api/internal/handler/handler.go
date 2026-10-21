@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/belune-hq/belune/internal/mcpserver"
 	"github.com/belune-hq/belune/internal/pkg/redact"
 	"github.com/belune-hq/belune/internal/proxy"
+	"github.com/belune-hq/belune/internal/proxy/caddyinfo"
 	"github.com/belune-hq/belune/internal/proxy/capability"
 	"github.com/belune-hq/belune/internal/quota"
 	"github.com/belune-hq/belune/internal/runtime"
@@ -79,20 +81,25 @@ type Handler struct {
 	// capabilities reports which optional Caddy modules exist. Nil until wired
 	// (tests, a Caddy we do not manage) and then treated as "not known", never as
 	// "none present": see capabilitySet.
-	capabilities      capability.Provider
-	auth              *service.AuthService
-	rdb               *redis.Client
-	appService        *service.ApplicationService
-	projService       *service.ProjectService
-	dbService         *service.DatabaseService
-	gitProviderSvc    *service.GitProviderConfigService
-	gitIntegrationSvc *service.GitIntegrationService
-	backupDestSvc     *service.BackupDestinationService
-	hub               *ws.Hub
-	auditSvc          *service.AuditService
-	deployQueue       *service.DeployQueue
-	notifySvc         *service.NotificationService
-	termManager       *terminal.Manager
+	capabilities capability.Provider
+	// accessLog reports the request-log tailer's health; nil until wired.
+	accessLog AccessLogStatusProvider
+	// caddyInspector is built on first use and kept: it holds the version cache.
+	caddyInspector     *caddyinfo.Inspector
+	caddyInspectorOnce sync.Once
+	auth               *service.AuthService
+	rdb                *redis.Client
+	appService         *service.ApplicationService
+	projService        *service.ProjectService
+	dbService          *service.DatabaseService
+	gitProviderSvc     *service.GitProviderConfigService
+	gitIntegrationSvc  *service.GitIntegrationService
+	backupDestSvc      *service.BackupDestinationService
+	hub                *ws.Hub
+	auditSvc           *service.AuditService
+	deployQueue        *service.DeployQueue
+	notifySvc          *service.NotificationService
+	termManager        *terminal.Manager
 	// docker system df is far too slow to run inside a request (33s on a small
 	// VPS), so the Docker overview reads it from here.
 	diskUsage diskUsageCache

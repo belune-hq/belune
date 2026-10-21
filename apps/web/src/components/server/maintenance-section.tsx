@@ -38,6 +38,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Separator } from "@/components/ui/separator";
+import { StatusPill } from "@/components/ui/status-pill";
+import {
+  describeCaddy,
+  summarize,
+  type CaddyRow,
+} from "@/components/server/caddy-panel";
 import { useDockerOverview } from "@/lib/hooks/use-docker";
 import {
   useClearPendingQueue,
@@ -252,7 +258,7 @@ export function MaintenanceSection() {
 }
 
 function ProxyBlock() {
-  const { data: status } = useReconcilerStatus();
+  const { data: status, dataUpdatedAt } = useReconcilerStatus();
   const reconcile = useReconcileProxy();
 
   const lastRun =
@@ -271,38 +277,102 @@ function ProxyBlock() {
     });
   };
 
+  // Judged at the moment of the snapshot, not render time, so the grace period
+  // for a missing log cannot flip a row between polls. Absent until the first
+  // response, and on an API that predates the panel.
+  const rows = status?.caddy
+    ? describeCaddy(status.caddy, dataUpdatedAt)
+    : null;
+  const summary = rows ? summarize(rows) : null;
+
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <RouteIcon className="text-text-muted size-4" />
-          <p className="text-sm font-medium">Proxy (Caddy)</p>
-          {lastRun && (
-            <span
-              className={cn(
-                "text-xs",
-                status?.last_error ? "text-status-error" : "text-text-faint",
-              )}
-            >
-              reconciled {lastRun}
-              {status?.last_error ? " · error" : ""}
-            </span>
-          )}
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <RouteIcon className="text-text-muted size-4" />
+            <p className="text-sm font-medium">Proxy (Caddy)</p>
+            {summary && (
+              <StatusPill
+                status={summary.label}
+                label={summary.label}
+                tone={summary.tone}
+              />
+            )}
+            {lastRun && (
+              <span
+                className={cn(
+                  "text-xs",
+                  status?.last_error ? "text-status-error" : "text-text-faint",
+                )}
+              >
+                reconciled {lastRun}
+                {status?.last_error ? " · error" : ""}
+              </span>
+            )}
+          </div>
+          <p className="text-muted-foreground mt-1 text-xs">
+            Re-push all app routes to Caddy to fix any drift between the
+            database and the live proxy.
+          </p>
         </div>
-        <p className="text-muted-foreground mt-1 text-xs">
-          Re-push all app routes to Caddy to fix any drift between the database
-          and the live proxy.
-        </p>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={reconcile.isPending}
+          onClick={handleReconcile}
+        >
+          Reconcile Routes
+        </Button>
       </div>
-      <Button
-        size="sm"
-        variant="outline"
-        disabled={reconcile.isPending}
-        onClick={handleReconcile}
-      >
-        Reconcile Routes
-      </Button>
+
+      {rows && status?.caddy && (
+        <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-[8rem_1fr]">
+          {rows.map((r) => (
+            <CaddyFact key={r.key} row={r} />
+          ))}
+        </dl>
+      )}
+      {status?.caddy.modules.known && (
+        <details className="text-xs">
+          <summary className="text-text-muted cursor-pointer select-none">
+            All {status.caddy.modules.ids.length} modules
+          </summary>
+          <p className="text-text-faint mt-2 font-mono break-words">
+            {status.caddy.modules.ids.join(" · ")}
+          </p>
+        </details>
+      )}
     </div>
+  );
+}
+
+const FACT_DOT: Record<CaddyRow["tone"], string> = {
+  ready: "bg-status-ready",
+  building: "bg-status-building",
+  error: "bg-status-error",
+  neutral: "bg-text-faint",
+};
+
+function CaddyFact({ row }: { row: CaddyRow }) {
+  return (
+    <>
+      <dt className="text-text-muted flex items-center gap-2 text-xs">
+        <span
+          aria-hidden
+          className={cn("size-1.5 shrink-0 rounded-full", FACT_DOT[row.tone])}
+        />
+        {row.label}
+      </dt>
+      <dd className="min-w-0 text-sm">
+        <span className="font-mono break-all">{row.value}</span>
+        {row.hint && (
+          <span className="text-muted-foreground mt-0.5 block text-xs break-words">
+            {row.hint}
+          </span>
+        )}
+      </dd>
+    </>
   );
 }
 

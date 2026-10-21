@@ -59,6 +59,7 @@ describe("CodeEditor when the editor is unavailable", () => {
         value='{"window":"1s"}'
         onChange={onChange}
         aria-label="Config"
+        aria-describedby="hint"
       />,
     );
 
@@ -68,6 +69,7 @@ describe("CodeEditor when the editor is unavailable", () => {
 
     const input = screen.getByRole("textbox", { name: "Config" });
     expect(input.tagName).toBe("INPUT");
+    expect(input.getAttribute("aria-describedby")).toBe("hint");
     expect(container.querySelector(".cm-editor")).toBeNull();
     // Still holds the value, and typing still reaches the caller.
     expect(input).toHaveProperty("value", '{"window":"1s"}');

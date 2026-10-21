@@ -147,6 +147,25 @@ describe("CodeEditor", () => {
     expect(spanClass('"window"')).not.toBe(spanClass('"1s"'));
   });
 
+  it("is described by the element it points at", async () => {
+    const { container } = render(
+      <>
+        <p id="hint">Use caddy hash-password.</p>
+        <CodeEditor
+          language="json"
+          value="{}"
+          onChange={noop}
+          aria-label="Config"
+          aria-describedby="hint"
+        />
+      </>,
+    );
+    await mounted(container);
+    expect(
+      container.querySelector(".cm-content")?.getAttribute("aria-describedby"),
+    ).toBe("hint");
+  });
+
   it("follows a changed placeholder and keeps its accessible name", async () => {
     const { container, rerender } = render(
       <>

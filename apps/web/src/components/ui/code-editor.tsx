@@ -23,6 +23,8 @@ export interface CodeEditorProps {
   className?: string;
   "aria-label"?: string;
   "aria-labelledby"?: string;
+  /** Hint or help text for the field; read after its name by a screen reader. */
+  "aria-describedby"?: string;
 }
 
 // Same text treatment on the editor and on the plain field, so swapping one for
@@ -80,6 +82,7 @@ function PlainField({
   className,
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledBy,
+  "aria-describedby": ariaDescribedBy,
 }: Omit<CodeEditorProps, "language">) {
   const shared = {
     value,
@@ -88,6 +91,7 @@ function PlainField({
     className: cn(TEXT, className),
     "aria-label": ariaLabel,
     "aria-labelledby": ariaLabelledBy,
+    "aria-describedby": ariaDescribedBy,
   };
   return compact ? (
     <Input {...shared} onChange={(e) => onChange(e.target.value)} />

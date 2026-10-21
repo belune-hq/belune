@@ -48,9 +48,16 @@ func ModuleBackedFeatures() []string {
 }
 
 // BasicAuthConfig configures HTTP basic auth on a route.
+//
+// Password is INPUT-ONLY. It is declared because the strict decoder refuses any
+// key the struct lacks, and it is what a client may send in place of
+// HashedPassword. NormalizeFeatureConfig hashes it and stores a fresh struct
+// that never carries it, so a stored config has hashed_password and no password
+// key, and a GET can never return one. Only hashed_password reaches Caddy.
 type BasicAuthConfig struct {
 	Username       string `json:"username"`
 	HashedPassword string `json:"hashed_password"`
+	Password       string `json:"password,omitempty"`
 }
 
 // HeaderOps describes header mutations Caddy should apply.

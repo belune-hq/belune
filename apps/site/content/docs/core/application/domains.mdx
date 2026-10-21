@@ -57,7 +57,7 @@ Stripping matters when your app doesn't know it's mounted under a prefix, and an
 
 Beyond routing and TLS, a domain can carry **Route Features** — Caddy middleware applied to just that domain: 
 
-- **Basic Auth** — gate the domain behind an HTTP username and password (the password is stored hashed).
+- **Basic Auth** — gate the domain behind an HTTP username and password. Send a `password` and Belune hashes it with bcrypt before storing it, so the stored feature, and every read of it, shows only the hash (`hashed_password`) and never the password. A password can be at most 72 bytes, bcrypt's limit. If you already have a bcrypt hash, send `hashed_password` instead and it is kept exactly as you give it, never hashed again (`caddy hash-password` makes one, for example `docker run --rm -it caddy:2-alpine caddy hash-password`). If you send both, the `password` is used. The example the dialog fills in is empty on purpose, and is refused until you fill in a username and a password.
 - **Custom Headers** — set request and/or response headers on traffic through this domain.
 - **IP Allowlist** — permit only the CIDR ranges you list; every other client gets a `403`.
 - **Redirect** — send matching requests on to another URL.

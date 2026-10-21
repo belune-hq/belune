@@ -63,6 +63,11 @@ Beyond routing and TLS, a domain can carry **Route Features** — Caddy middlewa
 - **Redirect** — send matching requests on to another URL.
 - **Rate Limit** — cap how many requests one client may make in a window. Configured as `{"window":"1s","max_events":10}`: at most 10 requests per second from each client IP, and the 11th gets a `429` with a `Retry-After` header. `max_events` must be at least 1 and `window` between one second and one hour.
 
+### About Basic Auth
+
+- **Choose a strong password.** Belune does not enforce a minimum length, so the gate is only as good as the password behind it.
+- **Pair it with Rate Limit.** Caddy checks every request that carries credentials against the bcrypt hash, and a wrong guess costs it about as much CPU as a right one. A Basic Auth route with no Rate Limit is cheap to exhaust, so add a Rate Limit to the same domain to cap how fast anyone can try.
+
 ### About Rate Limiting
 
 - The limit is **per client IP and per domain path**. Two domains each set to `10` per second don't share a budget, and neither do two paths on the same host.

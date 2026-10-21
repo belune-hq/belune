@@ -8,7 +8,9 @@
     "trigger-cleanup",
     "get-proxy-reconciler-status",
     "reconcile-proxy",
+    "get-proxy-metrics",
     "get-queue-status",
+    "get-proxy-config",
     "clear-pending-queue",
     "clear-queue"
   ]

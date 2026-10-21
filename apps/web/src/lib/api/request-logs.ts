@@ -25,7 +25,8 @@ function toQuery(params?: RequestLogFilters): string {
   const query = new URLSearchParams();
   if (params?.limit) query.set("limit", String(params.limit));
   if (params?.offset) query.set("offset", String(params.offset));
-  if (params?.application_id) query.set("application_id", params.application_id);
+  if (params?.application_id)
+    query.set("application_id", params.application_id);
   if (params?.status_min != null)
     query.set("status_min", String(params.status_min));
   if (params?.status_max != null)

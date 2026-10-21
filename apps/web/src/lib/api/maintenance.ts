@@ -1,4 +1,9 @@
-import type { QueueStatus, ReconcilerStatus } from "@/lib/types";
+import type {
+  ProxyConfig,
+  ProxyTraffic,
+  QueueStatus,
+  ReconcilerStatus,
+} from "@/lib/types";
 import { api } from "./client";
 
 export type CleanupAction =
@@ -18,6 +23,14 @@ export function runCleanup(actions?: CleanupAction[]) {
 
 export function getReconcilerStatus() {
   return api.get<ReconcilerStatus>("/maintenance/proxy");
+}
+
+export function getProxyMetrics() {
+  return api.get<ProxyTraffic>("/maintenance/proxy/metrics");
+}
+
+export function getProxyConfig() {
+  return api.get<ProxyConfig>("/maintenance/proxy/config");
 }
 
 export function reconcileProxy() {

@@ -26,8 +26,10 @@ export function acceptInvitation(data: {
   first_name?: string;
   last_name?: string;
 }) {
-  return api.post<{ token: string; refresh_token: string; expires_in: number; user: User }>(
-    "/auth/accept-invitation",
-    data,
-  );
+  return api.post<{
+    token: string;
+    refresh_token: string;
+    expires_in: number;
+    user: User;
+  }>("/auth/accept-invitation", data);
 }

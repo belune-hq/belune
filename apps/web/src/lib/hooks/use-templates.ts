@@ -23,7 +23,12 @@ export function useTemplate(id: string, enabled = true) {
 
 export function useInstantiateTemplate() {
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: InstantiateTemplateRequest }) =>
-      templatesApi.instantiateTemplate(id, data),
+    mutationFn: ({
+      id,
+      data,
+    }: {
+      id: string;
+      data: InstantiateTemplateRequest;
+    }) => templatesApi.instantiateTemplate(id, data),
   });
 }

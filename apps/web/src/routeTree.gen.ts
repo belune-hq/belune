@@ -21,6 +21,7 @@ import { Route as AppTemplatesRouteImport } from './routes/_app/templates'
 import { Route as AppTeamRouteImport } from './routes/_app/team'
 import { Route as AppServerRouteImport } from './routes/_app/server'
 import { Route as AppQuotasRouteImport } from './routes/_app/quotas'
+import { Route as AppProxyRouteImport } from './routes/_app/proxy'
 import { Route as AppNotificationsRouteImport } from './routes/_app/notifications'
 import { Route as AppGitRouteImport } from './routes/_app/git'
 import { Route as AppDockerRouteImport } from './routes/_app/docker'
@@ -109,6 +110,11 @@ const AppServerRoute = AppServerRouteImport.update({
 const AppQuotasRoute = AppQuotasRouteImport.update({
   id: '/quotas',
   path: '/quotas',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppProxyRoute = AppProxyRouteImport.update({
+  id: '/proxy',
+  path: '/proxy',
   getParentRoute: () => AppRoute,
 } as any)
 const AppNotificationsRoute = AppNotificationsRouteImport.update({
@@ -293,6 +299,7 @@ export interface FileRoutesByFullPath {
   '/docker': typeof AppDockerRoute
   '/git': typeof AppGitRoute
   '/notifications': typeof AppNotificationsRoute
+  '/proxy': typeof AppProxyRoute
   '/quotas': typeof AppQuotasRoute
   '/server': typeof AppServerRoute
   '/team': typeof AppTeamRoute
@@ -336,6 +343,7 @@ export interface FileRoutesByTo {
   '/docker': typeof AppDockerRoute
   '/git': typeof AppGitRoute
   '/notifications': typeof AppNotificationsRoute
+  '/proxy': typeof AppProxyRoute
   '/quotas': typeof AppQuotasRoute
   '/server': typeof AppServerRoute
   '/team': typeof AppTeamRoute
@@ -379,6 +387,7 @@ export interface FileRoutesById {
   '/_app/docker': typeof AppDockerRoute
   '/_app/git': typeof AppGitRoute
   '/_app/notifications': typeof AppNotificationsRoute
+  '/_app/proxy': typeof AppProxyRoute
   '/_app/quotas': typeof AppQuotasRoute
   '/_app/server': typeof AppServerRoute
   '/_app/team': typeof AppTeamRoute
@@ -424,6 +433,7 @@ export interface FileRouteTypes {
     | '/docker'
     | '/git'
     | '/notifications'
+    | '/proxy'
     | '/quotas'
     | '/server'
     | '/team'
@@ -467,6 +477,7 @@ export interface FileRouteTypes {
     | '/docker'
     | '/git'
     | '/notifications'
+    | '/proxy'
     | '/quotas'
     | '/server'
     | '/team'
@@ -509,6 +520,7 @@ export interface FileRouteTypes {
     | '/_app/docker'
     | '/_app/git'
     | '/_app/notifications'
+    | '/_app/proxy'
     | '/_app/quotas'
     | '/_app/server'
     | '/_app/team'
@@ -633,6 +645,13 @@ declare module '@tanstack/react-router' {
       path: '/quotas'
       fullPath: '/quotas'
       preLoaderRoute: typeof AppQuotasRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/proxy': {
+      id: '/_app/proxy'
+      path: '/proxy'
+      fullPath: '/proxy'
+      preLoaderRoute: typeof AppProxyRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/notifications': {
@@ -925,6 +944,7 @@ interface AppRouteChildren {
   AppDockerRoute: typeof AppDockerRoute
   AppGitRoute: typeof AppGitRoute
   AppNotificationsRoute: typeof AppNotificationsRoute
+  AppProxyRoute: typeof AppProxyRoute
   AppQuotasRoute: typeof AppQuotasRoute
   AppServerRoute: typeof AppServerRoute
   AppTeamRoute: typeof AppTeamRoute
@@ -945,6 +965,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppDockerRoute: AppDockerRoute,
   AppGitRoute: AppGitRoute,
   AppNotificationsRoute: AppNotificationsRoute,
+  AppProxyRoute: AppProxyRoute,
   AppQuotasRoute: AppQuotasRoute,
   AppServerRoute: AppServerRoute,
   AppTeamRoute: AppTeamRoute,

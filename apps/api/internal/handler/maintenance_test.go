@@ -128,6 +128,9 @@ func TestMaintenance_NonAdminForbidden(t *testing.T) {
 	memberToken := env.LoginAs(t, "member@test.com", "password123")
 
 	for _, tc := range []struct{ method, path string }{
+		{"GET", "/api/maintenance/proxy"},
+		{"GET", "/api/maintenance/proxy/metrics"},
+		{"GET", "/api/maintenance/proxy/config"},
 		{"POST", "/api/maintenance/proxy/reconcile"},
 		{"GET", "/api/maintenance/queue"},
 		{"POST", "/api/maintenance/queue/clear"},

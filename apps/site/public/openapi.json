@@ -2630,6 +2630,94 @@
         ]
       }
     },
+    "/api/maintenance/proxy/config": {
+      "get": {
+        "operationId": "GetProxyConfig",
+        "summary": "Get Proxy Config",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "Maintenance (Admin)"
+        ],
+        "x-belune-order": 9,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/proxyConfigResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "read": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/maintenance/proxy/metrics": {
+      "get": {
+        "operationId": "GetProxyMetrics",
+        "summary": "Get Proxy Metrics",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "Maintenance (Admin)"
+        ],
+        "x-belune-order": 8,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProxyTraffic"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "read": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/maintenance/proxy/reconcile": {
       "post": {
         "operationId": "ReconcileProxy",
@@ -15509,6 +15597,71 @@
         },
         "type": "object"
       },
+      "ProxyTraffic": {
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "in_flight": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "mean_seconds": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "p50_seconds": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "p95_seconds": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "proxied_total": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "requests_per_second": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "server_errors_per_second": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "state": {
+            "type": "string"
+          },
+          "status_classes": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object"
+          },
+          "window_seconds": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "ReconcilerStatus": {
         "properties": {
           "admin_state": {
@@ -16639,6 +16792,12 @@
           },
           "modules": {
             "$ref": "#/components/schemas/Modules"
+          },
+          "optional_modules": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/featureCapability"
+            },
+            "type": "object"
           },
           "version": {
             "$ref": "#/components/schemas/Version"
@@ -18621,6 +18780,15 @@
           },
           "known": {
             "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "proxyConfigResponse": {
+        "properties": {
+          "config": {},
+          "redacted_fields": {
+            "type": "integer"
           }
         },
         "type": "object"

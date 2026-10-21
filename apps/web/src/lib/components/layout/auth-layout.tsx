@@ -1,9 +1,5 @@
 import type { ReactNode } from "react";
-import {
-  GitBranchIcon,
-  ShieldCheckIcon,
-  ActivityIcon,
-} from "lucide-react";
+import { GitBranchIcon, ShieldCheckIcon, ActivityIcon } from "lucide-react";
 import { BRAND } from "@/lib/brand";
 import { BeluneLogo } from "@/lib/components/belune-logo";
 import { useInstanceName } from "@/lib/hooks/use-features";
@@ -35,7 +31,7 @@ export function AuthLayout({
     <div className="grid min-h-screen lg:grid-cols-2">
       {/* Brand panel */}
       <div
-        className="relative hidden flex-col justify-between overflow-hidden p-12 text-brand-fg lg:flex"
+        className="text-brand-fg relative hidden flex-col justify-between overflow-hidden p-12 lg:flex"
         style={{
           background:
             "linear-gradient(150deg, var(--brand-press), var(--brand) 55%, var(--brand-hover))",
@@ -47,7 +43,9 @@ export function AuthLayout({
           </div>
           <div className="flex flex-col leading-tight">
             <span className="text-lg font-semibold">{instanceName}</span>
-            <span className="text-xs text-brand-fg/60">Effortless deploys.</span>
+            <span className="text-brand-fg/60 text-xs">
+              Effortless deploys.
+            </span>
           </div>
         </div>
 
@@ -59,7 +57,7 @@ export function AuthLayout({
             {HIGHLIGHTS.map(({ Icon, text }) => (
               <li
                 key={text}
-                className="flex items-center gap-3 text-sm text-brand-fg/90"
+                className="text-brand-fg/90 flex items-center gap-3 text-sm"
               >
                 <Icon aria-hidden="true" className="size-4 shrink-0" />
                 {text}
@@ -68,7 +66,7 @@ export function AuthLayout({
           </ul>
         </div>
 
-        <p className="font-mono text-xs text-brand-fg/60">
+        <p className="text-brand-fg/60 font-mono text-xs">
           {BRAND.name}
           {version && ` • ${version}`}
         </p>
@@ -80,7 +78,7 @@ export function AuthLayout({
           {/* Mobile brand lockup */}
           <div className="mb-8 flex items-center gap-2.5 lg:hidden">
             <div
-              className="grid size-9 place-items-center rounded-lg text-brand-fg"
+              className="text-brand-fg grid size-9 place-items-center rounded-lg"
               style={{
                 background:
                   "linear-gradient(140deg, var(--brand), var(--brand-press))",

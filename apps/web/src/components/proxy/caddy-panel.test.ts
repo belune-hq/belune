@@ -21,6 +21,11 @@ function healthy(over: Partial<CaddyPanel> = {}): CaddyPanel {
     features: {
       rate_limit: { module: "http.handlers.rate_limit", state: "available" },
     },
+    optional_modules: {
+      crowdsec: { module: "http.handlers.crowdsec", state: "available" },
+      waf: { module: "http.handlers.waf", state: "available" },
+      layer4: { module: "layer4", state: "available" },
+    },
     access_log: {
       path: "/var/log/caddy/access.log",
       resolved_path: "/var/log/caddy/access.log",

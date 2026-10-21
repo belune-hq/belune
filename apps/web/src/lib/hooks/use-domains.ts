@@ -98,7 +98,8 @@ export function useUpsertRouteFeature(
       feature_type: string;
       config: Record<string, unknown>;
       enabled: boolean;
-    }) => domainsApi.upsertRouteFeature(projectId, applicationId, domainId, data),
+    }) =>
+      domainsApi.upsertRouteFeature(projectId, applicationId, domainId, data),
     onSuccess: () => {
       qc.invalidateQueries({
         queryKey: queryKeys.domains.all(projectId, applicationId),
@@ -119,7 +120,13 @@ export function useDeleteRouteFeature(
     }: {
       domainId: string;
       featureId: string;
-    }) => domainsApi.deleteRouteFeature(projectId, applicationId, domainId, featureId),
+    }) =>
+      domainsApi.deleteRouteFeature(
+        projectId,
+        applicationId,
+        domainId,
+        featureId,
+      ),
     onSuccess: () => {
       qc.invalidateQueries({
         queryKey: queryKeys.domains.all(projectId, applicationId),

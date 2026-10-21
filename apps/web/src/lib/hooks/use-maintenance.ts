@@ -15,6 +15,25 @@ export function useReconcilerStatus() {
   });
 }
 
+/** Polled faster than the status: rates are only meaningful across scrapes. */
+export function useProxyMetrics() {
+  return useQuery({
+    queryKey: queryKeys.proxyMetrics,
+    queryFn: maintenanceApi.getProxyMetrics,
+    refetchInterval: 10_000,
+  });
+}
+
+/** Fetched on demand: the config is large and rarely wanted. */
+export function useProxyConfig(enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.proxyConfig,
+    queryFn: maintenanceApi.getProxyConfig,
+    enabled,
+    staleTime: 0,
+  });
+}
+
 export function useReconcileProxy() {
   const qc = useQueryClient();
   return useMutation({

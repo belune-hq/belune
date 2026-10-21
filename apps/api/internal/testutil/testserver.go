@@ -34,6 +34,7 @@ type TestEnv struct {
 	// Capabilities is what the Caddy probe reports; the zero value is "unknown".
 	Capabilities *MockCapabilities
 	AccessLog    *MockAccessLog
+	ProxyAdmin   *MockProxyAdmin
 	Config       *config.Config
 	Redis        *redis.Client
 	RedisSrv     *miniredis.Miniredis
@@ -61,6 +62,7 @@ func SetupTestServer(pool *pgxpool.Pool, queries *generated.Queries) *TestEnv {
 	mockReconciler := &MockReconciler{}
 	mockCaps := &MockCapabilities{}
 	mockAccessLog := &MockAccessLog{}
+	mockProxyAdmin := &MockProxyAdmin{}
 
 	// In-memory Redis so the auth service's revocation paths (per-JTI
 	// blacklist + per-user invalidated-after flag) actually exercise their
@@ -78,6 +80,7 @@ func SetupTestServer(pool *pgxpool.Pool, queries *generated.Queries) *TestEnv {
 	srv := server.New(cfg, pool, queries, mockAsynq, mockInspector, runtime.NewLocalRuntimes(mockRuntime), mockProxy, mockReconciler, rdb, nil, nil, nil, termMgr, nil)
 	srv.SetCapabilities(mockCaps)
 	srv.SetAccessLog(mockAccessLog)
+	srv.SetProxyAdmin(mockProxyAdmin)
 	ts := httptest.NewServer(srv.Router())
 
 	return &TestEnv{
@@ -91,6 +94,7 @@ func SetupTestServer(pool *pgxpool.Pool, queries *generated.Queries) *TestEnv {
 		Reconciler:   mockReconciler,
 		Capabilities: mockCaps,
 		AccessLog:    mockAccessLog,
+		ProxyAdmin:   mockProxyAdmin,
 		Config:       cfg,
 		Redis:        rdb,
 		RedisSrv:     mr,

@@ -662,6 +662,8 @@ func registerRoutes(r chi.Router, h *handler.Handler, auth *service.AuthService,
 					// and /metrics already were.
 					r.Get("/api/maintenance/proxy", h.GetProxyReconcilerStatus)
 					r.Post("/api/maintenance/proxy/reconcile", h.ReconcileProxy)
+					r.Get("/api/maintenance/proxy/metrics", h.GetProxyMetrics)
+					r.Get("/api/maintenance/proxy/config", h.GetProxyConfig)
 					r.Get("/api/maintenance/queue", h.GetQueueStatus)
 					r.Post("/api/maintenance/queue/clear", h.ClearQueue)
 					r.Post("/api/maintenance/queue/clear-pending", h.ClearPendingQueue)

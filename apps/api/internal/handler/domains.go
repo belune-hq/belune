@@ -771,7 +771,7 @@ func (h *Handler) UpsertRouteFeature(w http.ResponseWriter, r *http.Request) {
 	// The saved row is passed along for every type and used only by basic_auth, so
 	// that re-saving an existing config is never judged as if it were new.
 	var storedConfig json.RawMessage
-	if stored, ok := h.storedRouteFeature(r, domainUUID, req.FeatureType); ok {
+	if stored, ok := h.storedRouteFeature(r, domainUUID, req.FeatureType, pgtype.UUID{}); ok {
 		storedConfig = stored.Config
 	}
 	config, err := proxy.NormalizeFeatureConfig(req.FeatureType, req.Config, storedConfig)
@@ -814,25 +814,43 @@ func (h *Handler) UpsertRouteFeature(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.auditRouteFeature(r, "upsert_route_feature", domainUUID, uuidToString(feature.ID), feature.FeatureType, feature.Enabled)
+
 	// Rebuild proxy route with updated features
 	h.rebuildDomainRoute(r, domainUUID)
 
 	writeJSON(w, http.StatusOK, feature)
 }
 
-// storedRouteFeature returns the saved row of a type for a domain. The second
-// result is false when there is none.
-func (h *Handler) storedRouteFeature(r *http.Request, domainID pgtype.UUID, featureType string) (generated.DomainRouteFeature, bool) {
+// storedRouteFeature returns the saved row for a domain, by type or (when id is
+// valid) by id. The second result is false when there is none.
+func (h *Handler) storedRouteFeature(r *http.Request, domainID pgtype.UUID, featureType string, id pgtype.UUID) (generated.DomainRouteFeature, bool) {
 	rows, err := h.queries.ListRouteFeaturesByDomain(r.Context(), domainID)
 	if err != nil {
 		return generated.DomainRouteFeature{}, false
 	}
 	for _, f := range rows {
-		if f.FeatureType == featureType {
+		if (id.Valid && f.ID == id) || (!id.Valid && f.FeatureType == featureType) {
 			return f, true
 		}
 	}
 	return generated.DomainRouteFeature{}, false
+}
+
+// auditRouteFeature records a route feature being set, changed or removed. Turning
+// basic auth or an allowlist on or off on a public route is exactly the event that
+// should leave a trace.
+//
+// ⛔ The details name the hostname, the type and whether it is on, and never the
+// config. For basic_auth that is a hash today and a plaintext password in the
+// request that produced it; the audit log records key NAMES and never values for
+// this reason, and the config is the one place here a secret could escape.
+func (h *Handler) auditRouteFeature(r *http.Request, action string, domainID pgtype.UUID, featureID, featureType string, enabled bool) {
+	details := map[string]any{"feature_type": featureType, "enabled": enabled}
+	if domain, err := h.queries.GetDomain(r.Context(), domainID); err == nil {
+		details["hostname"] = domain.Hostname
+	}
+	h.audit(r, action, "route_feature", featureID, details)
 }
 
 //apidoc:tag applications/domains
@@ -868,6 +886,10 @@ func (h *Handler) DeleteRouteFeature(w http.ResponseWriter, r *http.Request) {
 	// 404 on no rows, so "belongs to another domain" and "does not exist" are
 	// the same answer — the id is the only thing protecting it.
 
+	// Read before deleting: the row is gone afterwards, and the audit entry should
+	// say WHAT was removed, not just that something was.
+	before, _ := h.storedRouteFeature(r, domainUUID, "", featureUUID)
+
 	deleted, err := h.queries.DeleteRouteFeature(r.Context(), generated.DeleteRouteFeatureParams{
 		ID:       featureUUID,
 		DomainID: domainUUID,
@@ -880,6 +902,8 @@ func (h *Handler) DeleteRouteFeature(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "route feature not found")
 		return
 	}
+
+	h.auditRouteFeature(r, "delete_route_feature", domainUUID, featureID, before.FeatureType, before.Enabled)
 
 	// Rebuild proxy route with updated features
 	h.rebuildDomainRoute(r, domainUUID)

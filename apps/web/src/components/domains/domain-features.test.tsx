@@ -216,12 +216,12 @@ describe("config examples", () => {
   });
 
   // basic_auth's example is EXPECTED to be rejected, by the server, on purpose
-  // (features.go: "username and hashed_password are required"): a fake hash would
-  // pass the non-empty check and then silently never authenticate. The client
-  // sends it as it is and has no opinion; what the person sees is the server's
-  // message. This is not a failing case.
+  // (an example must never carry a credential; features_normalize.go: "username
+  // and password are required"). The client sends it as it is and has no opinion;
+  // what the person sees is the server's message. This is not a failing case.
   it("sends basic_auth's empty example as it is and shows the server's rejection", async () => {
-    const reason = "basic_auth: username and hashed_password are required";
+    const reason =
+      "basic_auth: username and password are required (or hashed_password instead of password, for a bcrypt hash you already have)";
     mutateAsync.mockRejectedValueOnce(new Error(reason));
     vi.mocked(toast.promise).mockImplementation(((p: Promise<unknown>) => {
       p.catch(() => {}); // sonner would handle the rejection; the mock must too
@@ -236,7 +236,7 @@ describe("config examples", () => {
     expect(mutateAsync).toHaveBeenCalledExactlyOnceWith({
       domainId: "dom-1",
       feature_type: "basic_auth",
-      config: { username: "", hashed_password: "" },
+      config: { username: "", password: "" },
       enabled: true,
     });
     const { error } = vi.mocked(toast.promise).mock.calls[0][1] as {
@@ -245,21 +245,28 @@ describe("config examples", () => {
     expect(error(new Error(reason))).toBe(reason);
   });
 
-  it("says where basic_auth's hash comes from, for basic_auth only", async () => {
+  it("tells basic_auth's operator to send a password, with a hash as the alternative", async () => {
     const { container } = await renderFeatures();
-    expect(container.textContent).not.toContain("caddy hash-password");
+    expect(container.textContent).not.toContain("hashed with bcrypt");
 
     pick("basic_auth");
-    expect(container.textContent).toContain("caddy hash-password");
     // Tied to the field as its description, not just placed near it.
     const field = screen.getByRole("textbox", { name: "Config (JSON)" });
     const hint = document.getElementById(
       field.getAttribute("aria-describedby") ?? "",
     );
-    expect(hint?.textContent).toContain("bcrypt hash");
+    const text = hint?.textContent ?? "";
+    // Leads with the easy path: Belune hashes a password. A hash someone already
+    // has is the alternative, and `caddy hash-password` is where it comes from.
+    expect(text.startsWith("password is hashed with bcrypt")).toBe(true);
+    expect(text).toContain("hashed_password");
+    expect(text).toContain("caddy hash-password");
+    expect(text.indexOf("hashed_password")).toBeGreaterThan(
+      text.indexOf("password is hashed"),
+    );
 
     pick("rate_limit");
-    expect(container.textContent).not.toContain("caddy hash-password");
+    expect(container.textContent).not.toContain("hashed with bcrypt");
     expect(
       screen
         .getByRole("textbox", { name: "Config (JSON)" })

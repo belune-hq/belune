@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Trash2Icon } from "lucide-react";
 import { useProxyCapabilities } from "@/lib/hooks/use-proxy-capabilities";
+import { configForType, exampleFor } from "@/lib/route-feature-examples";
 import {
   featureStatus,
   inertExplanation,
@@ -53,12 +54,6 @@ const FEATURE_TYPES = [
   { value: "redirect", label: "Redirect", Icon: ArrowRightIcon },
   { value: "rate_limit", label: "Rate Limit", Icon: GaugeIcon },
 ] as const;
-
-// Prefilled when a type is picked, so nobody has to guess the shape. Only types
-// whose config is not obvious from "{}" need an entry.
-const CONFIG_EXAMPLES: Record<string, string> = {
-  rate_limit: '{"window":"1s","max_events":10}',
-};
 
 /**
  * Route features for one domain — middleware Caddy applies to the route.
@@ -95,6 +90,7 @@ export function DomainFeatures({
   // A <label for> cannot reach the editor's contenteditable, so the label is
   // tied to it by id instead.
   const configLabelId = useId();
+  const configHintId = useId();
   // `undefined` while loading or if the request failed: both mean "unknown", and
   // featureStatus makes no claim about the operator's Caddy in that case.
   const { data: capabilities } = useProxyCapabilities();
@@ -184,10 +180,10 @@ export function DomainFeatures({
             onValueChange={(value) => {
               const next = value ?? "";
               setNewFeatureType(next);
-              // Replace only the untouched placeholder, never something typed.
-              if (newFeatureConfig === "{}" || newFeatureConfig === "") {
-                setNewFeatureConfig(CONFIG_EXAMPLES[next] ?? "{}");
-              }
+              // Swaps one untouched example for the next, never something
+              // typed. Functional, so it judges the value as it is NOW: the
+              // editor reports edits from outside React's event handling.
+              setNewFeatureConfig((current) => configForType(current, next));
             }}
           >
             <SelectTrigger className="w-full capitalize">
@@ -244,9 +240,26 @@ export function DomainFeatures({
             className="min-h-28"
             value={newFeatureConfig}
             onChange={setNewFeatureConfig}
-            placeholder={CONFIG_EXAMPLES[newFeatureType] ?? '{"key": "value"}'}
+            // Shown only while the field is empty, which is exactly when no
+            // example is: a prefilled example and a placeholder never both
+            // render.
+            placeholder={exampleFor(newFeatureType) ?? '{"key": "value"}'}
             aria-labelledby={configLabelId}
+            aria-describedby={
+              newFeatureType === "basic_auth" ? configHintId : undefined
+            }
           />
+          {/* basic_auth's example is empty on purpose (see
+              route-feature-examples.ts), so this is where the real value comes
+              from. Belune hashes nothing: whatever is pasted here goes to Caddy
+              as it is. */}
+          {newFeatureType === "basic_auth" && (
+            <p id={configHintId} className="text-muted-foreground text-xs">
+              <code className="font-mono">hashed_password</code> must be a
+              bcrypt hash, not the password itself. Generate one with{" "}
+              <code className="font-mono">caddy hash-password</code>.
+            </p>
+          )}
         </div>
         <Button
           size="sm"

@@ -148,12 +148,14 @@ interface Settings {
   placeholder?: string;
   ariaLabel?: string;
   ariaLabelledBy?: string;
+  ariaDescribedBy?: string;
 }
 
 function settingsExtension(s: Settings): Extension {
   const attributes: Record<string, string> = {};
   if (s.ariaLabel) attributes["aria-label"] = s.ariaLabel;
   if (s.ariaLabelledBy) attributes["aria-labelledby"] = s.ariaLabelledBy;
+  if (s.ariaDescribedBy) attributes["aria-describedby"] = s.ariaDescribedBy;
   return [
     LANGUAGES[s.language](),
     s.placeholder ? placeholderExtension(s.placeholder) : [],
@@ -174,6 +176,7 @@ export default function CodeEditorView({
   className,
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledBy,
+  "aria-describedby": ariaDescribedBy,
 }: CodeEditorViewProps) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
@@ -182,6 +185,7 @@ export default function CodeEditorView({
     placeholder,
     ariaLabel,
     ariaLabelledBy,
+    ariaDescribedBy,
   };
 
   // The mount effect and the update listener outlive any one render, so they
@@ -245,10 +249,16 @@ export default function CodeEditorView({
   useEffect(() => {
     view.current?.dispatch({
       effects: settings.reconfigure(
-        settingsExtension({ language, placeholder, ariaLabel, ariaLabelledBy }),
+        settingsExtension({
+          language,
+          placeholder,
+          ariaLabel,
+          ariaLabelledBy,
+          ariaDescribedBy,
+        }),
       ),
     });
-  }, [language, placeholder, ariaLabel, ariaLabelledBy]);
+  }, [language, placeholder, ariaLabel, ariaLabelledBy, ariaDescribedBy]);
 
   return (
     <div

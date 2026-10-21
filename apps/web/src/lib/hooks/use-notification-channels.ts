@@ -66,8 +66,7 @@ export function useTestNotificationChannel() {
 
 export function useTestNotificationChannelParams() {
   return useMutation({
-    mutationFn: (
-      data: Parameters<typeof channelsApi.testNotificationChannelParams>[0],
-    ) => channelsApi.testNotificationChannelParams(data),
+    mutationFn: (data: Parameters<typeof channelsApi.testNotificationChannelParams>[0]) =>
+      channelsApi.testNotificationChannelParams(data),
   });
 }

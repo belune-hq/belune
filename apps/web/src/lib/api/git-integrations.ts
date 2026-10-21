@@ -26,9 +26,7 @@ export function listAvailableProviders() {
 export function startGitConnect(provider: GitProvider, baseUrl?: string) {
   const q = new URLSearchParams({ provider });
   if (baseUrl) q.set("base_url", baseUrl);
-  return api.get<{ auth_url: string }>(
-    `/git/integrations/connect?${q.toString()}`,
-  );
+  return api.get<{ auth_url: string }>(`/git/integrations/connect?${q.toString()}`);
 }
 
 export function deleteGitIntegration(id: string) {

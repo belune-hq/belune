@@ -13,8 +13,7 @@ export function useSettings() {
 export function useUpdateSettings() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (settings: SettingEntry[]) =>
-      settingsApi.updateSettings(settings),
+    mutationFn: (settings: SettingEntry[]) => settingsApi.updateSettings(settings),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.settings }),
   });
 }

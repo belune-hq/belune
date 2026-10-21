@@ -16,7 +16,10 @@ export function ProvenanceNote({
 }) {
   if (sourceKind !== "template" || !sourceRef) return null;
   return (
-    <span className={className} title={`Created from template ${sourceRef}`}>
+    <span
+      className={className}
+      title={`Created from template ${sourceRef}`}
+    >
       <LayoutTemplate
         aria-hidden="true"
         className="mr-1 inline-block size-3.5 align-[-2px]"

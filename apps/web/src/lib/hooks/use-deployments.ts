@@ -22,20 +22,13 @@ export function useDeployment(
   deploymentId: string,
 ) {
   return useQuery({
-    queryKey: queryKeys.deployments.detail(
-      projectId,
-      applicationId,
-      deploymentId,
-    ),
+    queryKey: queryKeys.deployments.detail(projectId, applicationId, deploymentId),
     queryFn: () =>
       deploymentsApi.getDeployment(projectId, applicationId, deploymentId),
   });
 }
 
-export function useRollbackDeployment(
-  projectId: string,
-  applicationId: string,
-) {
+export function useRollbackDeployment(projectId: string, applicationId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (deploymentId: string) =>

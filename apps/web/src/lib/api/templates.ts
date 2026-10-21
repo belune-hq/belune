@@ -58,12 +58,6 @@ export function getTemplate(id: string) {
   return api.get<TemplateDetail>(`/templates/${id}`);
 }
 
-export function instantiateTemplate(
-  id: string,
-  data: InstantiateTemplateRequest,
-) {
-  return api.post<InstantiateTemplateResponse>(
-    `/templates/${id}/instantiate`,
-    data,
-  );
+export function instantiateTemplate(id: string, data: InstantiateTemplateRequest) {
+  return api.post<InstantiateTemplateResponse>(`/templates/${id}/instantiate`, data);
 }

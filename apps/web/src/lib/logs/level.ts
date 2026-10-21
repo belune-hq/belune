@@ -56,3 +56,4 @@ export function normalizeLevel(s: string): LogLevel {
       return "info";
   }
 }
+

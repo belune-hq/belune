@@ -2,9 +2,7 @@ import type { EnvVar, EnvVarInput } from "@/lib/types";
 import { api } from "./client";
 
 export function getEnvVars(projectId: string, applicationId: string) {
-  return api.get<EnvVar[]>(
-    `/projects/${projectId}/applications/${applicationId}/env`,
-  );
+  return api.get<EnvVar[]>(`/projects/${projectId}/applications/${applicationId}/env`);
 }
 
 export function upsertEnvVars(
@@ -12,12 +10,9 @@ export function upsertEnvVars(
   applicationId: string,
   vars: EnvVarInput[],
 ) {
-  return api.put<EnvVar[]>(
-    `/projects/${projectId}/applications/${applicationId}/env`,
-    {
-      vars,
-    },
-  );
+  return api.put<EnvVar[]>(`/projects/${projectId}/applications/${applicationId}/env`, {
+    vars,
+  });
 }
 
 export function revealEnvVar(

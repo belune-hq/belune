@@ -154,7 +154,9 @@ function ModuleList({ ids }: { ids: string[] }) {
             className="max-w-xs"
           />
           <span className="text-text-muted" aria-live="polite">
-            {matched} of {ids.length} match
+            {query.trim()
+              ? `${matched} of ${ids.length} match`
+              : `${ids.length} modules`}
           </span>
         </div>
         {apps.length === 0 ? (
@@ -184,7 +186,17 @@ function ModuleSection({ app }: { app: ModuleApp }) {
       <h4 className="text-sm font-medium">
         {app.app} <span className="text-text-faint">· {app.count}</span>
       </h4>
-      {app.leaves.length > 0 && <ModuleLeaves leaves={app.leaves} />}
+      {app.leaves.length > 0 && (
+        // Labelled like a group, or a dotless app (`crowdsec`) would print its
+        // own name twice. Not called a namespace: these have none.
+        <div className="pl-3">
+          <p className="text-text-muted">
+            (no namespace){" "}
+            <span className="text-text-faint">· {app.leaves.length}</span>
+          </p>
+          <ModuleLeaves leaves={app.leaves} />
+        </div>
+      )}
       {app.groups.map((g) => (
         <div key={g.namespace} className="pl-3">
           <p className="text-text-muted">

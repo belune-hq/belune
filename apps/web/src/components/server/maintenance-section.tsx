@@ -280,7 +280,7 @@ function ProxyBlock() {
           <Link
             to="/proxy"
             search={{ tab: undefined }}
-            className="hover:text-brand-text text-sm font-medium hover:underline"
+            className="text-brand-text text-sm font-medium hover:underline"
           >
             Proxy (Caddy)
           </Link>

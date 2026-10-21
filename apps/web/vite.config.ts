@@ -101,7 +101,8 @@ export default defineConfig({
           // this the editor's chunk imports the entry chunk, so its hash
           // changes with every release and a ~300 kB download repeats after
           // every update.sh. As a vendor chunk with no imports of ours, it
-          // changes only when CodeMirror does.
+          // changes only when CodeMirror does, or when the app first uses
+          // another of its exports (a one-time change of a few bytes).
           //
           // The embedded binary is the same size either way, since
           // `//go:embed all:dist` takes every chunk: this is about first paint

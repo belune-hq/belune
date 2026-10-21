@@ -3,13 +3,35 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
-export type CodeEditorLanguage = "json";
+/**
+ * "plain" has no grammar: no highlighting, and no opinion on brackets. It is for
+ * files whose format Belune does not know (a mounted nginx.conf, an ini, a shell
+ * script). It is not inferred from anything: choosing a language from a file's
+ * extension needs a mapping and a decision for when the extension lies, which is
+ * its own change.
+ */
+export type CodeEditorLanguage = "json" | "plain";
 
 export interface CodeEditorProps {
   value: string;
   onChange: (value: string) => void;
   language: CodeEditorLanguage;
   placeholder?: string;
+  /**
+   * Called when the field loses focus, as an <input>'s onBlur is. Form libraries
+   * key validation timing on it (@tanstack/react-form's `isBlurred`), so an
+   * editor that never reported blur would silently change when errors appear.
+   * The editor and the plain fallback both call it, or they would disagree about
+   * a form's state.
+   */
+  onBlur?: () => void;
+  /**
+   * Where the editor stops growing and scrolls, as a CSS length. Defaults to
+   * 12rem, which suits a two-key JSON object and not a config file. Set it at the
+   * call site, like the minimum height: the next field wants different numbers.
+   * Keep it at or above the minimum height, or the editor stops short of the box.
+   */
+  maxHeight?: string;
   /**
    * Starts one line tall, like an Input, and falls back to an Input.
    *
@@ -91,6 +113,8 @@ export function CodeEditor({ compact, className, ...props }: CodeEditorProps) {
 function PlainField({
   value,
   onChange,
+  onBlur,
+  maxHeight,
   placeholder,
   compact,
   className,
@@ -106,11 +130,18 @@ function PlainField({
     "aria-label": ariaLabel,
     "aria-labelledby": ariaLabelledBy,
     "aria-describedby": ariaDescribedBy,
+    onBlur: () => onBlur?.(),
   };
   return compact ? (
     <Input {...shared} onChange={(e) => onChange(e.target.value)} />
   ) : (
-    <Textarea {...shared} onChange={(e) => onChange(e.target.value)} />
+    // The cap applies here too: a Textarea grows with its content, and without
+    // one a long file would push the field, and the dialog around it, off screen.
+    <Textarea
+      {...shared}
+      style={maxHeight ? { maxHeight } : undefined}
+      onChange={(e) => onChange(e.target.value)}
+    />
   );
 }
 

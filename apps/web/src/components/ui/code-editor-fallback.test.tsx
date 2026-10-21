@@ -98,6 +98,78 @@ describe("CodeEditor when the editor is unavailable", () => {
     expect(field).toHaveProperty("value", value);
   });
 
+  // Form libraries time validation on blur. If only the editor reported it, the
+  // fallback would silently change when a form's errors appear.
+  it.each([
+    ["a block field (a <textarea>)", false],
+    ["a compact field (an <input>)", true],
+  ])("reports blur from %s", async (_name, compact) => {
+    const warn = silence();
+    control.mode = "fail";
+    const onBlur = vi.fn();
+    render(
+      <CodeEditor
+        compact={compact}
+        language="plain"
+        value="x"
+        onChange={() => {}}
+        onBlur={onBlur}
+        aria-label="Body"
+      />,
+    );
+    await waitFor(() => expect(warn).toHaveBeenCalled());
+
+    fireEvent.blur(screen.getByRole("textbox", { name: "Body" }));
+
+    expect(onBlur).toHaveBeenCalledTimes(1);
+  });
+
+  // ⛔ The most destructive thing a multi-line field can do wrong. An <input>
+  // strips newlines from whatever it is given, so a mounted nginx.conf in a
+  // compact fallback would be flattened by the first keystroke. A block field's
+  // fallback is a <textarea>, which keeps them.
+  it("keeps a multi-line value's newlines through a block fallback", async () => {
+    const warn = silence();
+    control.mode = "fail";
+    const onChange = vi.fn();
+    const file = "server {\n  listen 80;\n}\n";
+    render(
+      <CodeEditor
+        language="plain"
+        value={file}
+        onChange={onChange}
+        aria-label="Body"
+      />,
+    );
+    await waitFor(() => expect(warn).toHaveBeenCalled());
+
+    const field = screen.getByRole("textbox", { name: "Body" });
+    expect(field.tagName).toBe("TEXTAREA");
+    expect(field).toHaveProperty("value", file);
+
+    fireEvent.change(field, { target: { value: file + "server {}\n" } });
+    expect(onChange).toHaveBeenCalledWith(file + "server {}\n");
+  });
+
+  it("shows why: a compact fallback is an <input>, which flattens newlines", async () => {
+    const warn = silence();
+    control.mode = "fail";
+    render(
+      <CodeEditor
+        compact
+        language="plain"
+        value={"a\nb"}
+        onChange={() => {}}
+        aria-label="Body"
+      />,
+    );
+    await waitFor(() => expect(warn).toHaveBeenCalled());
+
+    const field = screen.getByRole("textbox", { name: "Body" });
+    expect(field.tagName).toBe("INPUT");
+    expect((field as HTMLInputElement).value).not.toContain("\n");
+  });
+
   // Input and Textarea ship `text-base md:text-sm`, and tailwind-merge keeps a
   // caller's `text-xs` apart from `md:text-sm`, so the plain field was 14px beside
   // a 12px editor from the md breakpoint up. Found by measuring in a browser.
@@ -134,6 +206,24 @@ describe("CodeEditor when the editor is unavailable", () => {
     const own = await sizes("text-sm md:text-lg");
     expect(own).toContain("md:text-lg");
     expect(own).not.toContain("md:text-sm");
+  });
+
+  it("caps a block fallback's height like the editor's", async () => {
+    const warn = silence();
+    control.mode = "fail";
+    render(
+      <CodeEditor
+        language="plain"
+        value="x"
+        onChange={() => {}}
+        maxHeight="32rem"
+        aria-label="Body"
+      />,
+    );
+    await waitFor(() => expect(warn).toHaveBeenCalled());
+    expect(screen.getByRole("textbox", { name: "Body" }).style.maxHeight).toBe(
+      "32rem",
+    );
   });
 
   it("tries again on the next mount, instead of failing until a page reload", async () => {

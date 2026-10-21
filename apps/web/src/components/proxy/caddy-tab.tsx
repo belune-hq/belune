@@ -408,56 +408,53 @@ function ConfigCard() {
           so it cannot be edited here. Private keys and password hashes are
           removed before it leaves the server.
         </CardDescription>
+        {/* The same controls in both states, so they do not jump on toggle. */}
+        <CardAction className="flex gap-2">
+          {!shown ? (
+            <Button size="sm" onClick={() => setShown(true)}>
+              Show Configuration
+            </Button>
+          ) : (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={isFetching}
+                onClick={() => refetch()}
+              >
+                Refresh
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setShown(false)}>
+                Hide
+              </Button>
+            </>
+          )}
+        </CardAction>
       </CardHeader>
-      <CardContent className="space-y-3">
-        {!shown ? (
-          <Button size="sm" variant="outline" onClick={() => setShown(true)}>
-            Show Configuration
-          </Button>
-        ) : (
-          <>
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-muted-foreground text-xs">
-                {data
-                  ? `${data.redacted_fields} secret value${data.redacted_fields === 1 ? "" : "s"} redacted`
-                  : isFetching
-                    ? "Loading…"
-                    : ""}
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={isFetching}
-                  onClick={() => refetch()}
-                >
-                  Refresh
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setShown(false)}
-                >
-                  Hide
-                </Button>
-              </div>
-            </div>
-            {error ? (
-              <p className="text-status-error text-sm">
-                {error instanceof Error
-                  ? error.message
-                  : "Could not read Caddy's configuration."}
-              </p>
-            ) : data ? (
-              <pre className="bg-elev max-h-[32rem] overflow-auto rounded-md p-3 font-mono text-xs">
-                {JSON.stringify(data.config, null, 2)}
-              </pre>
-            ) : (
-              <Skeleton className="h-40 w-full" />
-            )}
-          </>
-        )}
-      </CardContent>
+      {shown && (
+        <CardContent className="space-y-3">
+          <p className="text-muted-foreground text-xs">
+            {data
+              ? `${data.redacted_fields} secret value${data.redacted_fields === 1 ? "" : "s"} redacted`
+              : isFetching
+                ? "Loading…"
+                : ""}
+          </p>
+          {error ? (
+            <p className="text-status-error text-sm">
+              {error instanceof Error
+                ? error.message
+                : "Could not read Caddy's configuration."}
+            </p>
+          ) : data ? (
+            <pre className="bg-elev max-h-[32rem] overflow-auto rounded-md p-3 font-mono text-xs">
+              {JSON.stringify(data.config, null, 2)}
+            </pre>
+          ) : (
+            <Skeleton className="h-40 w-full" />
+          )}
+        </CardContent>
+      )}
     </Card>
   );
 }

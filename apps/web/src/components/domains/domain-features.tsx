@@ -250,14 +250,17 @@ export function DomainFeatures({
             }
           />
           {/* basic_auth's example is empty on purpose (see
-              route-feature-examples.ts), so this is where the real value comes
-              from. Belune hashes nothing: whatever is pasted here goes to Caddy
-              as it is. */}
+              route-feature-examples.ts): an example must never carry a
+              credential. The server hashes `password` before storing it, and
+              keeps a `hashed_password` as it is for someone who already has a
+              hash, so this says both. */}
           {newFeatureType === "basic_auth" && (
             <p id={configHintId} className="text-muted-foreground text-xs">
-              <code className="font-mono">hashed_password</code> must be a
-              bcrypt hash, not the password itself. Generate one with{" "}
-              <code className="font-mono">caddy hash-password</code>.
+              <code className="font-mono">password</code> is hashed with bcrypt
+              before it is stored, and never shown again. To use a hash you
+              already have, send{" "}
+              <code className="font-mono">hashed_password</code> instead (
+              <code className="font-mono">caddy hash-password</code> makes one).
             </p>
           )}
         </div>

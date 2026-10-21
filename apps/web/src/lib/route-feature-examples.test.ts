@@ -110,6 +110,9 @@ describe("CONFIG_EXAMPLES", () => {
   // one is enough to show the shape.
   const OMITTED_ON_PURPOSE: Record<string, string[]> = {
     headers: ["request"],
+    // The server needs one of password and hashed_password. The example sends
+    // password, which Belune hashes; hashed_password is for a hash you already have.
+    basic_auth: ["hashed_password"],
   };
   it.each(TYPES)(
     "%s: shows every top-level key its struct declares",
@@ -122,16 +125,16 @@ describe("CONFIG_EXAMPLES", () => {
     },
   );
 
-  // The one example that is NOT a working config, on purpose. Belune hashes
-  // nothing: hashed_password is passed straight to Caddy. A plausible fake hash
-  // would pass the API's non-empty check and then silently never authenticate,
-  // so this is empty and the server rejects it at once with "username and
-  // hashed_password are required" (features.go). If this test fails because
-  // someone filled the strings in, that is the bug being guarded.
+  // The one example that is NOT a working config, on purpose: an example must
+  // never carry a credential. A pre-filled username and password would become a
+  // real gate with a known password the moment someone clicked Add, so both are
+  // empty and the server refuses it until they are filled in ("username and
+  // password are required"). If this fails because someone put values in, that is
+  // the bug being guarded.
   it("basic_auth is empty on purpose, and so is the only example the server rejects", () => {
     expect(JSON.parse(CONFIG_EXAMPLES.basic_auth)).toEqual({
       username: "",
-      hashed_password: "",
+      password: "",
     });
   });
 

@@ -9,18 +9,21 @@ type FeatureType = RouteFeature["feature_type"];
 // Go structs, and route-feature-examples.test.ts re-derives them from that file
 // so a typo or a renamed field cannot ship.
 //
-// Every example is a working config, except basic_auth's, on purpose. Belune
-// never hashes a password: hashed_password goes straight into Caddy's
-// http_basic. A plausible-looking fake hash passes the API's non-empty check,
-// reaches Caddy, and then never authenticates anyone, so a basic-auth gate that
-// looks configured and is not. Empty strings fail at once and loudly instead
-// ("username and hashed_password are required"). The dialog says where the
-// real value comes from.
+// Every example is a working config, except basic_auth's, on purpose: an example
+// must never carry a credential. A pre-filled "admin" and "changeme" would become
+// a real gate with a known password the moment someone clicked Add, so basic_auth
+// shows the shape and leaves both values empty, and the server refuses it until
+// they are filled in ("username and password are required").
+//
+// It sends `password`, which the server hashes before storing (see
+// NormalizeFeatureConfig in apps/api/internal/proxy). `hashed_password` is the
+// other accepted key, for a bcrypt hash someone already has; the example omits it
+// because the server needs only one of the two.
 //
 // Exhaustive over the type union, so a new feature type without an example is a
 // compile error and not a field that silently falls back to "{}".
 export const CONFIG_EXAMPLES: Record<FeatureType, string> = {
-  basic_auth: '{"username":"","hashed_password":""}',
+  basic_auth: '{"username":"","password":""}',
   headers: '{"response":{"set":{"X-Frame-Options":["DENY"]}}}',
   // 203.0.113.0/24 is the RFC 5737 documentation range, so nobody mistakes it
   // for a network they should keep.

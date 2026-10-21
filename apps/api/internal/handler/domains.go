@@ -761,7 +761,29 @@ func (h *Handler) UpsertRouteFeature(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := proxy.ParseFeatureConfig(req.FeatureType, req.Config); err != nil {
+	// ⛔ What is STORED is the normalised config, never req.Config. Parsing only
+	// validates and its result is discarded, so storing what arrived would write a
+	// basic_auth plaintext password to Postgres, return it from every later read,
+	// and hand it to the route builder. NormalizeFeatureConfig hashes a password,
+	// leaves a supplied hash exactly as it came, and returns every other type
+	// byte-for-byte; the normalised form is then validated like any stored config.
+	//
+	// The saved row is passed along for every type and used only by basic_auth, so
+	// that re-saving an existing config is never judged as if it were new.
+	var storedConfig json.RawMessage
+	if stored, ok := h.storedRouteFeature(r, domainUUID, req.FeatureType); ok {
+		storedConfig = stored.Config
+	}
+	config, err := proxy.NormalizeFeatureConfig(req.FeatureType, req.Config, storedConfig)
+	if err != nil {
+		if errors.Is(err, proxy.ErrHashFailed) {
+			writeServerError(w, r, "failed to hash the basic_auth password", err)
+			return
+		}
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if _, err := proxy.ParseFeatureConfig(req.FeatureType, config); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -784,7 +806,7 @@ func (h *Handler) UpsertRouteFeature(w http.ResponseWriter, r *http.Request) {
 	feature, err := h.queries.UpsertRouteFeature(r.Context(), generated.UpsertRouteFeatureParams{
 		DomainID:    domainUUID,
 		FeatureType: req.FeatureType,
-		Config:      req.Config,
+		Config:      config,
 		Enabled:     req.Enabled,
 	})
 	if err != nil {
@@ -796,6 +818,21 @@ func (h *Handler) UpsertRouteFeature(w http.ResponseWriter, r *http.Request) {
 	h.rebuildDomainRoute(r, domainUUID)
 
 	writeJSON(w, http.StatusOK, feature)
+}
+
+// storedRouteFeature returns the saved row of a type for a domain. The second
+// result is false when there is none.
+func (h *Handler) storedRouteFeature(r *http.Request, domainID pgtype.UUID, featureType string) (generated.DomainRouteFeature, bool) {
+	rows, err := h.queries.ListRouteFeaturesByDomain(r.Context(), domainID)
+	if err != nil {
+		return generated.DomainRouteFeature{}, false
+	}
+	for _, f := range rows {
+		if f.FeatureType == featureType {
+			return f, true
+		}
+	}
+	return generated.DomainRouteFeature{}, false
 }
 
 //apidoc:tag applications/domains
@@ -830,6 +867,7 @@ func (h *Handler) DeleteRouteFeature(w http.ResponseWriter, r *http.Request) {
 	//
 	// 404 on no rows, so "belongs to another domain" and "does not exist" are
 	// the same answer — the id is the only thing protecting it.
+
 	deleted, err := h.queries.DeleteRouteFeature(r.Context(), generated.DeleteRouteFeatureParams{
 		ID:       featureUUID,
 		DomainID: domainUUID,

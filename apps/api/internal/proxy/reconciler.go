@@ -69,6 +69,20 @@ const (
 	caddyLostConfig                    // answered, and holds none of our routes
 )
 
+// String is the wire name; the zero value reads "unknown", which is also what a
+// nil reconciler reports, so "not asked yet" never renders as "healthy".
+func (s caddyState) String() string {
+	switch s {
+	case caddyUnreachable:
+		return "unreachable"
+	case caddyHealthy:
+		return "healthy"
+	case caddyLostConfig:
+		return "lost_config"
+	}
+	return "unknown"
+}
+
 // ReconcilerStatus is a snapshot of the reconciler's recent activity. It is
 // exposed over the admin API so operators can tell at a glance whether the
 // background loop is still healthy and whether Caddy has been drifting.
@@ -90,6 +104,11 @@ type ReconcilerStatus struct {
 	// their module. Derived afresh every pass rather than stored, so it clears
 	// itself the moment the module appears or the feature is removed.
 	Degraded []Degradation `json:"degraded,omitempty"`
+	// AdminState is what the 3s probe last concluded about Caddy's admin API:
+	// unknown (not probed yet), unreachable, healthy or lost_config. It is the
+	// state the reconciler ACTS on, exposed rather than re-derived, so the
+	// dashboard cannot hold a second opinion that disagrees with it.
+	AdminState string `json:"admin_state"`
 }
 
 // Degradation records one feature a route is being served without.
@@ -176,7 +195,9 @@ func (r *Reconciler) WithCapabilities(caps capability.Provider) *Reconciler {
 func (r *Reconciler) Status() ReconcilerStatus {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.status
+	st := r.status
+	st.AdminState = r.probe.String()
+	return st
 }
 
 // ReconcileNow runs a reconciliation pass on demand (the admin "reconcile

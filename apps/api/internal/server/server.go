@@ -76,6 +76,12 @@ func (s *Server) SetCapabilities(p capability.Provider) {
 	s.handler.SetCapabilities(p)
 }
 
+// SetAccessLog wires the request-log tailer's status into the handlers. Called
+// once at startup, before the server accepts requests.
+func (s *Server) SetAccessLog(p handler.AccessLogStatusProvider) {
+	s.handler.SetAccessLog(p)
+}
+
 func (s *Server) Router() chi.Router {
 	return s.router
 }

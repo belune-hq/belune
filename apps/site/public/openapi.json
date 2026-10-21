@@ -2604,7 +2604,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReconcilerStatus"
+                  "$ref": "#/components/schemas/proxyStatusResponse"
                 }
               }
             }
@@ -13966,6 +13966,17 @@
   },
   "components": {
     "schemas": {
+      "Admin": {
+        "properties": {
+          "state": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "AuthUserResult": {
         "properties": {
           "email": {
@@ -14038,6 +14049,17 @@
               "type": "string"
             },
             "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "Container": {
+        "properties": {
+          "state": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
           }
         },
         "type": "object"
@@ -14353,6 +14375,17 @@
             "type": "string"
           },
           "triggered_by": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Discovery": {
+        "properties": {
+          "container_name": {
+            "type": "string"
+          },
+          "source": {
             "type": "string"
           }
         },
@@ -15369,6 +15402,20 @@
         },
         "type": "object"
       },
+      "Modules": {
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "known": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
       "Notification": {
         "properties": {
           "body": {
@@ -15464,6 +15511,9 @@
       },
       "ReconcilerStatus": {
         "properties": {
+          "admin_state": {
+            "type": "string"
+          },
           "degraded": {
             "items": {
               "$ref": "#/components/schemas/Degradation"
@@ -15514,6 +15564,32 @@
           },
           "private": {
             "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "Report": {
+        "properties": {
+          "admin": {
+            "$ref": "#/components/schemas/Admin"
+          },
+          "container": {
+            "$ref": "#/components/schemas/Container"
+          },
+          "discovery": {
+            "$ref": "#/components/schemas/Discovery"
+          },
+          "image": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "modules": {
+            "$ref": "#/components/schemas/Modules"
+          },
+          "version": {
+            "$ref": "#/components/schemas/Version"
           }
         },
         "type": "object"
@@ -15604,6 +15680,57 @@
             "type": "string"
           },
           "user": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Status": {
+        "properties": {
+          "file": {
+            "type": "string"
+          },
+          "last_error": {
+            "type": "string"
+          },
+          "last_error_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_insert_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_line_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lines_read": {
+            "type": "integer"
+          },
+          "path": {
+            "type": "string"
+          },
+          "resolved_path": {
+            "type": "string"
+          },
+          "rows_inserted": {
+            "type": "integer"
+          },
+          "since": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "state": {
             "type": "string"
           }
         },
@@ -15708,6 +15835,29 @@
           },
           "memory_bytes": {
             "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "Version": {
+        "properties": {
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "upstream": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "value": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "type": "object"
@@ -16457,6 +16607,41 @@
           "retention": {
             "additionalProperties": {},
             "type": "object"
+          }
+        },
+        "type": "object"
+      },
+      "caddyPanel": {
+        "properties": {
+          "access_log": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "admin": {
+            "$ref": "#/components/schemas/Admin"
+          },
+          "container": {
+            "$ref": "#/components/schemas/Container"
+          },
+          "discovery": {
+            "$ref": "#/components/schemas/Discovery"
+          },
+          "features": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/featureCapability"
+            },
+            "type": "object"
+          },
+          "image": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "modules": {
+            "$ref": "#/components/schemas/Modules"
+          },
+          "version": {
+            "$ref": "#/components/schemas/Version"
           }
         },
         "type": "object"
@@ -18436,6 +18621,51 @@
           },
           "known": {
             "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "proxyStatusResponse": {
+        "properties": {
+          "admin_state": {
+            "type": "string"
+          },
+          "caddy": {
+            "$ref": "#/components/schemas/caddyPanel"
+          },
+          "degraded": {
+            "items": {
+              "$ref": "#/components/schemas/Degradation"
+            },
+            "type": "array"
+          },
+          "interval_seconds": {
+            "type": "integer"
+          },
+          "last_added": {
+            "type": "integer"
+          },
+          "last_duration_ms": {
+            "type": "integer"
+          },
+          "last_error": {
+            "type": "string"
+          },
+          "last_removed": {
+            "type": "integer"
+          },
+          "last_run_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "last_updated": {
+            "type": "integer"
+          },
+          "run_count": {
+            "type": "integer"
+          },
+          "total_drift": {
+            "type": "integer"
           }
         },
         "type": "object"

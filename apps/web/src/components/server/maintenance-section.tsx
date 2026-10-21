@@ -279,7 +279,7 @@ function ProxyBlock() {
           <RouteIcon className="text-text-muted size-4" />
           <Link
             to="/proxy"
-            search={{ tab: "caddy" }}
+            search={{ tab: undefined }}
             className="hover:text-brand-text text-sm font-medium hover:underline"
           >
             Proxy (Caddy)

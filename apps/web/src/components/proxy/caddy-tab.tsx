@@ -16,13 +16,16 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill } from "@/components/ui/status-pill";
 import { StatCard } from "@/lib/components/stats/stat-card";
 import {
   describeCaddy,
+  groupModules,
   summarize,
   type CaddyRow,
+  type ModuleApp,
 } from "@/components/proxy/caddy-panel";
 import { describeTraffic } from "@/components/proxy/proxy-traffic";
 import {
@@ -52,8 +55,8 @@ export function CaddyTab() {
         snapshotAt={dataUpdatedAt}
         loading={isLoading}
       />
-      <TrafficCard />
       <RoutesCard status={status} />
+      <TrafficCard />
       <ConfigCard />
     </div>
   );
@@ -116,17 +119,90 @@ function HealthCard({
           </dl>
         )}
         {status?.caddy.modules.known && (
-          <details className="text-xs">
-            <summary className="text-text-muted cursor-pointer select-none">
-              All {status.caddy.modules.ids.length} modules
-            </summary>
-            <p className="text-text-faint mt-2 font-mono break-words">
-              {status.caddy.modules.ids.join(" · ")}
-            </p>
-          </details>
+          <ModuleList ids={status.caddy.modules.ids} />
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Every module the running Caddy reports, grouped app → namespace. The filter
+ * is local state on purpose: the status query polls, and a value derived from
+ * props or query data would be wiped mid-sentence on each refetch.
+ */
+function ModuleList({ ids }: { ids: string[] }) {
+  const [query, setQuery] = useState("");
+  const apps = groupModules(ids, query);
+  const matched = apps.reduce((n, a) => n + a.count, 0);
+  const big = apps.filter((a) => a.count > 5);
+  const small = apps.filter((a) => a.count <= 5);
+
+  return (
+    <details className="text-xs">
+      <summary className="text-text-muted cursor-pointer select-none">
+        All {ids.length} modules
+      </summary>
+      <div className="mt-3 space-y-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <Input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Filter modules"
+            aria-label="Filter modules"
+            className="max-w-xs"
+          />
+          <span className="text-text-muted" aria-live="polite">
+            {matched} of {ids.length} match
+          </span>
+        </div>
+        {apps.length === 0 ? (
+          <p className="text-text-muted">No module matches “{query.trim()}”.</p>
+        ) : (
+          <>
+            {big.map((a) => (
+              <ModuleSection key={a.app} app={a} />
+            ))}
+            {small.length > 0 && (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {small.map((a) => (
+                  <ModuleSection key={a.app} app={a} />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </details>
+  );
+}
+
+function ModuleSection({ app }: { app: ModuleApp }) {
+  return (
+    <section className="space-y-2">
+      <h4 className="text-sm font-medium">
+        {app.app} <span className="text-text-faint">· {app.count}</span>
+      </h4>
+      {app.leaves.length > 0 && <ModuleLeaves leaves={app.leaves} />}
+      {app.groups.map((g) => (
+        <div key={g.namespace} className="pl-3">
+          <p className="text-text-muted">
+            {g.namespace}{" "}
+            <span className="text-text-faint">· {g.leaves.length}</span>
+          </p>
+          <ModuleLeaves leaves={g.leaves} />
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function ModuleLeaves({ leaves }: { leaves: string[] }) {
+  return (
+    <p className="text-text-faint font-mono break-words">
+      {leaves.join(" · ")}
+    </p>
   );
 }
 
@@ -277,9 +353,6 @@ function RoutesCard({ status }: { status: ReconcilerStatus | undefined }) {
 
             {degraded.length > 0 && (
               <div className="space-y-2">
-                <p className="text-sm font-medium">
-                  Served without a feature ({degraded.length})
-                </p>
                 <ul className="divide-y rounded-md border text-sm">
                   {degraded.map((d) => (
                     <li

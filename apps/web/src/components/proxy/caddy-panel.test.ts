@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { CaddyPanel } from "@/lib/types";
 import {
   describeCaddy,
+  groupModules,
   MISSING_LOG_GRACE_MS,
   summarize,
   type CaddyRow,
@@ -230,5 +231,75 @@ describe("describeCaddy", () => {
       const r = row(log({ state: "unknown", file: "" }), "access_log");
       expect(r.tone).toBe("neutral");
     });
+  });
+});
+
+describe("groupModules", () => {
+  // Real ids from a Belune Caddy, including the dotless apps and a two-segment id.
+  const ids = [
+    "admin.api.crowdsec",
+    "caddy.filesystems",
+    "crowdsec",
+    "http",
+    "http.handlers.crowdsec",
+    "http.handlers.rate_limit",
+    "http.handlers.waf",
+    "http.matchers.host",
+    "http.reverse_proxy.selection_policies.random",
+    "layer4",
+    "layer4.matchers.tls",
+  ];
+
+  it("groups app → namespace → leaf, biggest first", () => {
+    const apps = groupModules(ids);
+    expect(apps.map((a) => [a.app, a.count])).toEqual([
+      ["http", 6],
+      ["layer4", 2],
+      ["admin", 1],
+      ["caddy", 1],
+      ["crowdsec", 1],
+    ]);
+    const http = apps.find((a) => a.app === "http")!;
+    expect(http.leaves).toEqual(["http"]);
+    expect(http.groups).toEqual([
+      { namespace: "handlers", leaves: ["crowdsec", "rate_limit", "waf"] },
+      { namespace: "matchers", leaves: ["host"] },
+      { namespace: "reverse_proxy.selection_policies", leaves: ["random"] },
+    ]);
+  });
+
+  it("puts dotless and two-segment ids directly under their app", () => {
+    const apps = groupModules(ids);
+    expect(apps.find((a) => a.app === "crowdsec")).toMatchObject({
+      leaves: ["crowdsec"],
+      groups: [],
+    });
+    expect(apps.find((a) => a.app === "caddy")).toMatchObject({
+      leaves: ["filesystems"],
+      groups: [],
+    });
+    expect(apps.some((a) => a.app === "")).toBe(false);
+  });
+
+  it("filters on the full id, case-insensitively, and drops empty groups", () => {
+    const apps = groupModules(ids, "CrowdSec");
+    expect(apps.reduce((n, a) => n + a.count, 0)).toBe(3);
+    expect(apps.map((a) => a.app).sort()).toEqual([
+      "admin",
+      "crowdsec",
+      "http",
+    ]);
+    expect(groupModules(ids, "http.handlers")[0].groups).toHaveLength(1);
+    expect(groupModules(ids, "nope")).toEqual([]);
+    expect(groupModules(ids, "  ")).toEqual(groupModules(ids));
+  });
+
+  it("derives everything, so a stock Caddy has no layer4 section", () => {
+    const apps = groupModules(["http", "http.handlers.encode"]);
+    expect(apps.map((a) => a.app)).toEqual(["http"]);
+  });
+
+  it("is deterministic when counts tie", () => {
+    expect(groupModules(["b.x", "a.x"]).map((a) => a.app)).toEqual(["a", "b"]);
   });
 });

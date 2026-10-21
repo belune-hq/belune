@@ -134,7 +134,7 @@ export function describeTraffic(t: ProxyTraffic): TrafficDescription {
 function windowHint(t: ProxyTraffic): string {
   return t.window_seconds === null
     ? "to apps"
-    : `to apps · last ${Math.round(t.window_seconds)} s`;
+    : `to apps · last ${Math.round(t.window_seconds)}s`;
 }
 
 export type ModuleTabName = "crowdsec" | "waf";

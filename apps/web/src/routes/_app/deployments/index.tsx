@@ -275,7 +275,7 @@ function Deploy7dStrip() {
         value={total === 0 ? "—" : `${rate}%`}
         hint={
           total === 0
-            ? "No deploys in 7 days"
+            ? "no deploys in 7 days"
             : `${succeeded}/${total} succeeded`
         }
         footer={breakdown}
@@ -292,7 +292,7 @@ function Deploy7dStrip() {
         icon={<CircleXIcon className="size-3.5" />}
         tone={failed === 0 ? "ready" : "error"}
         value={failed}
-        hint={failed === 0 ? "All clear" : "needs attention"}
+        hint={failed === 0 ? "all clear" : "needs attention"}
       />
       <StatCard
         label="Median build · 7d"

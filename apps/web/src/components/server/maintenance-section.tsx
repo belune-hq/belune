@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import {
   ChevronDownIcon,
@@ -276,7 +277,13 @@ function ProxyBlock() {
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           <RouteIcon className="text-text-muted size-4" />
-          <p className="text-sm font-medium">Proxy (Caddy)</p>
+          <Link
+            to="/proxy"
+            search={{ tab: "caddy" }}
+            className="hover:text-brand-text text-sm font-medium hover:underline"
+          >
+            Proxy (Caddy)
+          </Link>
           {lastRun && (
             <span
               className={cn(

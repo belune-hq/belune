@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -38,7 +39,8 @@ import type { ProxyDegradation, ReconcilerStatus } from "@/lib/types";
  * route table and the reconciler rewrites anything it does not recognise within
  * 30 seconds, so an edit made here would look like it worked and silently not.
  * The one remedial action — Reconcile Routes — lives on the Server page beside
- * the other fix-it controls, and is linked to rather than repeated.
+ * the other fix-it controls, and is linked to (top right of the Health card)
+ * rather than repeated.
  */
 export function CaddyTab() {
   const { data: status, dataUpdatedAt, isLoading } = useReconcilerStatus();
@@ -86,16 +88,18 @@ function HealthCard({
           )}
         </CardTitle>
         <CardDescription>
-          What Belune can tell about the proxy itself.{" "}
+          What Belune can tell about the proxy itself.
+        </CardDescription>
+        <CardAction>
           <Link
             to="/server"
             search={{ tab: "configuration" }}
-            className="text-brand-text inline-flex items-center gap-0.5 hover:underline"
+            className="text-brand-text inline-flex items-center gap-0.5 text-sm whitespace-nowrap hover:underline"
           >
-            Reconcile Routes on the Server page
+            Reconcile Routes
             <ArrowUpRightIcon aria-hidden="true" className="size-3" />
           </Link>
-        </CardDescription>
+        </CardAction>
       </CardHeader>
       <CardContent className="space-y-4">
         {loading || !rows ? (
@@ -216,9 +220,20 @@ function RoutesCard({ status }: { status: ReconcilerStatus | undefined }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+        <CardTitle className="flex flex-wrap items-center gap-2">
           <RouteIcon aria-hidden="true" className="size-4" />
           Routes
+          {/* Not the Health pill: that is Caddy's own health, this is whether
+              the live table matches the database. Surfaced here so a degraded
+              route is visible without scrolling to the list. */}
+          {degraded.length > 0 && (
+            <StatusPill
+              status="degraded"
+              label={`${degraded.length} served without a feature`}
+              tone="building"
+              pulse={false}
+            />
+          )}
         </CardTitle>
         <CardDescription>
           How the live route table compares with the database. The reconciler
@@ -277,7 +292,8 @@ function RoutesCard({ status }: { status: ReconcilerStatus | undefined }) {
                       </span>
                       <span className="text-muted-foreground text-xs">
                         {d.feature.replace(/_/g, " ")} withheld —{" "}
-                        {REASON_TEXT[d.reason]}
+                        {REASON_TEXT[d.reason]} · since{" "}
+                        {formatRelativeTime(d.since)}
                       </span>
                     </li>
                   ))}

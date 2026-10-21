@@ -161,6 +161,14 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Prettier is the formatter `task fmt` already runs; this stops the
+      # repository drifting away from it again. Without the check, unformatted
+      # files accumulate silently and the next person to run `task fmt` drags an
+      # unrelated 68-file diff into their own pull request. Generated and build
+      # output are excluded in apps/web/.prettierignore.
+      - name: Format check
+        run: npm run format:check
+
   restore-drill:
     name: Restore drill
     runs-on: ubuntu-latest

@@ -7,7 +7,10 @@ import {
 import { GitBranch } from "lucide-react";
 import type { ComponentType } from "react";
 
-const ICONS: Record<string, ComponentType<{ size?: number; className?: string; color?: string }>> = {
+const ICONS: Record<
+  string,
+  ComponentType<{ size?: number; className?: string; color?: string }>
+> = {
   github: SiGithub,
   gitlab: SiGitlab,
   bitbucket: SiBitbucket,

@@ -23,7 +23,9 @@ const TABS: PageTab<DockerTab>[] = [
 ];
 
 function isTab(v: unknown): v is Exclude<DockerTab, "overview"> {
-  return v === "containers" || v === "images" || v === "volumes" || v === "networks";
+  return (
+    v === "containers" || v === "images" || v === "volumes" || v === "networks"
+  );
 }
 
 export const Route = createFileRoute("/_app/docker")({
@@ -42,7 +44,9 @@ function DockerPage() {
 
   const activeTab: DockerTab = isTab(tab) ? tab : "overview";
   const setTab = (next: DockerTab) =>
-    navigate({ search: () => ({ tab: next === "overview" ? undefined : next }) });
+    navigate({
+      search: () => ({ tab: next === "overview" ? undefined : next }),
+    });
 
   return (
     <div className="space-y-6">

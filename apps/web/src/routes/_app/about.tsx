@@ -23,7 +23,7 @@ function AboutPage() {
           {/* Brand tile, matching the sidebar identity block. */}
           <div
             aria-hidden="true"
-            className="grid size-16 place-items-center rounded-2xl text-brand-fg shadow-sm"
+            className="text-brand-fg grid size-16 place-items-center rounded-2xl shadow-sm"
             style={{
               background:
                 "linear-gradient(140deg, var(--brand), var(--brand-press))",
@@ -32,7 +32,9 @@ function AboutPage() {
             <BeluneLogo className="size-11" />
           </div>
 
-          <p className="text-text-faint text-sm">Designed by <b>Winnie Ha</b></p>
+          <p className="text-text-faint text-sm">
+            Designed by <b>Winnie Ha</b>
+          </p>
 
           <div className="space-y-0.5">
             <h1 className="text-xl font-semibold">{BRAND.name}</h1>

@@ -30,7 +30,11 @@ export function getQuota(scope: QuotaScope, scopeId: string) {
   return api.get<QuotaView>(`/quotas/${scope}/${scopeId}`);
 }
 
-export function upsertQuota(scope: QuotaScope, scopeId: string, limits: QuotaLimits) {
+export function upsertQuota(
+  scope: QuotaScope,
+  scopeId: string,
+  limits: QuotaLimits,
+) {
   return api.put<QuotaView>(`/quotas/${scope}/${scopeId}`, limits);
 }
 

@@ -19,13 +19,7 @@ export function Sparkline({
   const pts = values.filter((v): v is number => v != null && !isNaN(v));
 
   if (pts.length < 2) {
-    return (
-      <div
-        className={className}
-        style={{ height }}
-        aria-hidden="true"
-      />
-    );
+    return <div className={className} style={{ height }} aria-hidden="true" />;
   }
 
   const width = 100; // viewBox units; scaled to container via preserveAspectRatio

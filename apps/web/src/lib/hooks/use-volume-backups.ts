@@ -87,7 +87,8 @@ export function useCreateVolumeBackupConfig(
   return useMutation({
     mutationFn: (data: api.SaveVolumeBackupConfig) =>
       api.createVolumeBackupConfig(projectId, applicationId, volumeId, data),
-    onSuccess: () => invalidateVolumeConfigs(qc, projectId, applicationId, volumeId),
+    onSuccess: () =>
+      invalidateVolumeConfigs(qc, projectId, applicationId, volumeId),
   });
 }
 
@@ -107,7 +108,8 @@ export function useUpdateVolumeBackupConfig(
         configId,
         data,
       ),
-    onSuccess: () => invalidateVolumeConfigs(qc, projectId, applicationId, volumeId),
+    onSuccess: () =>
+      invalidateVolumeConfigs(qc, projectId, applicationId, volumeId),
   });
 }
 
@@ -119,8 +121,14 @@ export function useDeleteVolumeBackupConfig(
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (configId: string) =>
-      api.deleteVolumeBackupConfig(projectId, applicationId, volumeId, configId),
-    onSuccess: () => invalidateVolumeConfigs(qc, projectId, applicationId, volumeId),
+      api.deleteVolumeBackupConfig(
+        projectId,
+        applicationId,
+        volumeId,
+        configId,
+      ),
+    onSuccess: () =>
+      invalidateVolumeConfigs(qc, projectId, applicationId, volumeId),
   });
 }
 

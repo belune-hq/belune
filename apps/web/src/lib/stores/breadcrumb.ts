@@ -16,8 +16,6 @@ export const useBreadcrumbStore = create<BreadcrumbState>((set) => ({
   labels: {},
   setLabel: (id, label) =>
     set((s) =>
-      s.labels[id] === label
-        ? s
-        : { labels: { ...s.labels, [id]: label } },
+      s.labels[id] === label ? s : { labels: { ...s.labels, [id]: label } },
     ),
 }));

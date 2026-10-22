@@ -104,10 +104,10 @@ export function EnvVarCard({
               {model.key || <span className="text-muted-foreground">KEY</span>}
               {!model.isSecret && model.value && (
                 <>
-                <span className="ml-1">=</span>
-                <span className="text-muted-foreground ml-1 font-mono font-normal">
-                  {model.value}
-                </span>
+                  <span className="ml-1">=</span>
+                  <span className="text-muted-foreground ml-1 font-mono font-normal">
+                    {model.value}
+                  </span>
                 </>
               )}
             </p>

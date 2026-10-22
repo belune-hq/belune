@@ -21,7 +21,11 @@ export function AccentToggle() {
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <Button variant="ghost" size="icon" aria-label="Change accent color" />
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Change accent color"
+          />
         }
       >
         <Palette aria-hidden="true" className="h-4 w-4" />

@@ -289,12 +289,10 @@ function ConfigForm({
         <form.Field
           name="schedule"
           validators={{
-            onChange: z
-              .string()
-              .superRefine((v, ctx) => {
-                const msg = cronError(v);
-                if (msg) ctx.addIssue({ code: "custom", message: msg });
-              }),
+            onChange: z.string().superRefine((v, ctx) => {
+              const msg = cronError(v);
+              if (msg) ctx.addIssue({ code: "custom", message: msg });
+            }),
           }}
           children={(field) => {
             // Gated on isBlurred (or a submit attempt), not isTouched: TanStack sets

@@ -1,5 +1,8 @@
 import { useMemo, useState } from "react";
-import { LevelFilter, type LevelFilterValue } from "@/components/logs/level-filter";
+import {
+  LevelFilter,
+  type LevelFilterValue,
+} from "@/components/logs/level-filter";
 import { LogView } from "@/components/logs/log-view";
 import { parseLogBlob, type LogEntry } from "@/components/logs/parse";
 import { cn } from "@/lib/utils";

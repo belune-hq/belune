@@ -133,7 +133,9 @@ export function OperatorHealthStrip({ className }: { className?: string }) {
         icon={<TriangleAlertIcon className="size-3.5" />}
         tone={attention === 0 ? "ready" : "error"}
         value={attention}
-        hint={attention === 0 ? "all clear" : attention === 1 ? "issue" : "issues"}
+        hint={
+          attention === 0 ? "all clear" : attention === 1 ? "issue" : "issues"
+        }
         footer={
           attention === 0 ? undefined : (
             <>

@@ -140,7 +140,11 @@ export function IntegrationRepoPicker({
             </SelectTrigger>
             <SelectContent>
               {repos?.map((r) => (
-                <SelectItem key={r.full_name} value={r.full_name} icon={<FolderIcon />}>
+                <SelectItem
+                  key={r.full_name}
+                  value={r.full_name}
+                  icon={<FolderIcon />}
+                >
                   {r.full_name}
                 </SelectItem>
               ))}
@@ -158,7 +162,11 @@ export function IntegrationRepoPicker({
             </SelectTrigger>
             <SelectContent>
               {branches?.map((b) => (
-                <SelectItem key={b.name} value={b.name} icon={<GitBranchIcon />}>
+                <SelectItem
+                  key={b.name}
+                  value={b.name}
+                  icon={<GitBranchIcon />}
+                >
                   {b.name}
                 </SelectItem>
               ))}

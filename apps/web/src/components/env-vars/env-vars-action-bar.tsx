@@ -98,18 +98,33 @@ export function EnvVarsActionBar({
               value={sortKey}
               onValueChange={(v) => onSortKeyChange?.(v as EnvVarSortKey)}
             >
-              <SelectTrigger className="w-40 capitalize" aria-label="Sort variables">
+              <SelectTrigger
+                className="w-40 capitalize"
+                aria-label="Sort variables"
+              >
                 <span className="text-text-faint mr-1">Sort:</span>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="name" icon={<ArrowDownAZIcon />} className="capitalize">
+                <SelectItem
+                  value="name"
+                  icon={<ArrowDownAZIcon />}
+                  className="capitalize"
+                >
                   Name
                 </SelectItem>
-                <SelectItem value="created" icon={<ClockIcon />} className="capitalize">
+                <SelectItem
+                  value="created"
+                  icon={<ClockIcon />}
+                  className="capitalize"
+                >
                   Created
                 </SelectItem>
-                <SelectItem value="updated" icon={<HistoryIcon />} className="capitalize">
+                <SelectItem
+                  value="updated"
+                  icon={<HistoryIcon />}
+                  className="capitalize"
+                >
                   Updated
                 </SelectItem>
               </SelectContent>

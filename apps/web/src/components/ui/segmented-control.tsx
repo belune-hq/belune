@@ -58,15 +58,12 @@ function SegmentedControl({
   );
 }
 
-function SegmentedControlItem({
-  className,
-  ...props
-}: TogglePrimitive.Props) {
+function SegmentedControlItem({ className, ...props }: TogglePrimitive.Props) {
   return (
     <TogglePrimitive
       data-slot="segmented-control-item"
       className={cn(
-        "flex items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-pressed:bg-card aria-pressed:text-foreground aria-pressed:shadow-sm aria-pressed:ring-1 aria-pressed:ring-border-strong group-data-[fullwidth=true]/segmented:flex-1 group-data-[size=default]/segmented:px-3 group-data-[size=default]/segmented:py-2 group-data-[size=sm]/segmented:px-2.5 group-data-[size=sm]/segmented:py-1 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 aria-pressed:bg-card aria-pressed:text-foreground aria-pressed:ring-border-strong flex items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap transition-colors outline-none group-data-[fullwidth=true]/segmented:flex-1 group-data-[size=default]/segmented:px-3 group-data-[size=default]/segmented:py-2 group-data-[size=sm]/segmented:px-2.5 group-data-[size=sm]/segmented:py-1 focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50 aria-pressed:shadow-sm aria-pressed:ring-1 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className,
       )}
       {...props}

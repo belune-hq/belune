@@ -45,7 +45,12 @@ export function useUpdateFileMount(projectId: string, applicationId: string) {
     }: {
       fileMountId: string;
     } & Parameters<typeof fileMountsApi.updateFileMount>[3]) =>
-      fileMountsApi.updateFileMount(projectId, applicationId, fileMountId, data),
+      fileMountsApi.updateFileMount(
+        projectId,
+        applicationId,
+        fileMountId,
+        data,
+      ),
     // Also refresh the application: saving stamps the config-changed marker
     // server-side, and the header badge that reports it reads the application
     // detail. Without this the badge would not appear until the next poll.

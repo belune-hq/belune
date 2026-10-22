@@ -3,7 +3,10 @@ import { queryKeys } from "./query-keys";
 import * as configApi from "@/lib/api/database-backup-configs";
 import type { SaveBackupConfig } from "@/lib/api/database-backup-configs";
 
-export function useDatabaseBackupConfigs(projectId: string, databaseId: string) {
+export function useDatabaseBackupConfigs(
+  projectId: string,
+  databaseId: string,
+) {
   return useQuery({
     queryKey: queryKeys.databases.backupConfigs(projectId, databaseId),
     queryFn: () => configApi.listBackupConfigs(projectId, databaseId),

@@ -26,7 +26,11 @@ interface Props {
  * apply it — a reload is enough, since the profile is applied when the
  * container is created, not when the image is built.
  */
-export function RuntimeSection({ projectId, applicationId, application }: Props) {
+export function RuntimeSection({
+  projectId,
+  applicationId,
+  application,
+}: Props) {
   const update = useUpdateApplicationRuntime(projectId, applicationId);
 
   const [readonly, setReadonly] = useState(application.readonly_rootfs);
@@ -65,8 +69,9 @@ export function RuntimeSection({ projectId, applicationId, application }: Props)
               Read-only root filesystem
             </Label>
             <p className="text-muted-foreground mt-0.5 text-xs">
-              Blocks writes to the container filesystem except mounted volumes and{" "}
-              <code>/tmp</code>, <code>/run</code>. Some stock images need this off.
+              Blocks writes to the container filesystem except mounted volumes
+              and <code>/tmp</code>, <code>/run</code>. Some stock images need
+              this off.
             </p>
           </div>
           <Switch
@@ -82,14 +87,17 @@ export function RuntimeSection({ projectId, applicationId, application }: Props)
           <div className="min-w-0">
             <Label className="font-medium">Capabilities</Label>
             <p className="text-muted-foreground mt-0.5 text-xs">
-              <strong>Minimal</strong> drops all Linux capabilities (most hardened).{" "}
-              <strong>Standard</strong> grants Docker's default set — needed by images
-              that change file ownership or switch users at startup.
+              <strong>Minimal</strong> drops all Linux capabilities (most
+              hardened). <strong>Standard</strong> grants Docker's default set —
+              needed by images that change file ownership or switch users at
+              startup.
             </p>
           </div>
           <SegmentedControl
             value={caps}
-            onValueChange={(v) => setCaps(v === "standard" ? "standard" : "minimal")}
+            onValueChange={(v) =>
+              setCaps(v === "standard" ? "standard" : "minimal")
+            }
             size="sm"
           >
             <SegmentedControlItem value="minimal" disabled={update.isPending}>

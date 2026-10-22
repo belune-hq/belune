@@ -32,7 +32,7 @@ function AppLayout() {
   return (
     <div className="flex h-screen flex-col">
       {wsStatus === "failed" && (
-        <div className="flex items-center justify-center gap-3 border-b border-destructive/20 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+        <div className="border-destructive/20 bg-destructive/10 text-destructive flex items-center justify-center gap-3 border-b px-4 py-2 text-sm">
           <span>Real-time connection lost. Live updates are unavailable.</span>
           <button
             className="underline underline-offset-2"

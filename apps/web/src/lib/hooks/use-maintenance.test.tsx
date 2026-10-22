@@ -107,7 +107,10 @@ describe("useTriggerSelfUpdate", () => {
     // The step-up gate is method-agnostic by design, so the hook must not
     // invent a code or drop one.
     getSelfUpdateStatus.mockResolvedValue({ state: "idle" });
-    triggerSelfUpdate.mockResolvedValue({ status: "accepted", target: "0.1.17" });
+    triggerSelfUpdate.mockResolvedValue({
+      status: "accepted",
+      target: "0.1.17",
+    });
 
     const client = freshClient();
     const { result } = renderHook(useUpdateCard, {

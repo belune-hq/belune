@@ -29,7 +29,10 @@ describe("editor theme", () => {
   });
 
   it("draws every colour from a token", () => {
-    const colours = all.filter((v) => /var\(/.test(v));
+    // --code-editor-max-h is the caller's height cap, not a colour.
+    const colours = all.filter(
+      (v) => /var\(/.test(v) && !v.includes("--code-editor-max-h"),
+    );
     expect(colours.length).toBeGreaterThan(8);
     for (const v of colours) {
       // Every var() is a design token, and every mix is of tokens only.

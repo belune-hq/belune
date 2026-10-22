@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
 import {
   Annotation,
   Compartment,
@@ -7,6 +7,7 @@ import {
   type Extension,
 } from "@codemirror/state";
 import {
+  Decoration,
   EditorView,
   drawSelection,
   keymap,
@@ -17,6 +18,7 @@ import {
   HighlightStyle,
   bracketMatching,
   syntaxHighlighting,
+  type MatchResult,
 } from "@codemirror/language";
 import { json } from "@codemirror/lang-json";
 import { tags as t } from "@lezer/highlight";
@@ -32,9 +34,26 @@ import type {
  * split is that the app does not fetch it until a field actually renders one.
  */
 
+// "plain" is no parser at all: a mounted file is arbitrary, and no language pack
+// is worth shipping for a format Belune does not know.
 const LANGUAGES: Record<CodeEditorLanguage, () => Extension> = {
   json: () => json(),
+  plain: () => [],
 };
+
+const matchingMark = Decoration.mark({ class: "cm-matchingBracket" });
+
+// With no grammar an unmatched bracket is just a character (a shell `case x)`, a
+// smiley in a comment), so only a MATCH is worth showing. JSON keeps the default,
+// where an unmatched bracket is a fact about structure that JSON.parse would
+// reject too.
+function renderMatchOnly(match: MatchResult) {
+  if (!match.matched || !match.end) return [];
+  return [
+    matchingMark.range(match.start.from, match.start.to),
+    matchingMark.range(match.end.from, match.end.to),
+  ];
+}
 
 // Every colour below is a design token, never a literal. The app flips between
 // light and dark by redefining CSS variables, not by anything CodeMirror knows
@@ -50,8 +69,10 @@ export const THEME_SPEC = {
     color: "var(--foreground)",
     backgroundColor: "transparent",
     // Grow with the content, then scroll: a long config should not push the
-    // dialog's Add button off the screen.
-    maxHeight: "12rem",
+    // dialog's Add button off the screen. The cap is the caller's (the host sets
+    // --code-editor-max-h from the maxHeight prop); 12rem suits a small JSON
+    // object and nothing larger.
+    maxHeight: "var(--code-editor-max-h, 12rem)",
   },
   // The host element draws the focus ring, like Input does; a second
   // outline from CodeMirror would double it.
@@ -158,6 +179,9 @@ function settingsExtension(s: Settings): Extension {
   if (s.ariaDescribedBy) attributes["aria-describedby"] = s.ariaDescribedBy;
   return [
     LANGUAGES[s.language](),
+    bracketMatching(
+      s.language === "plain" ? { renderMatch: renderMatchOnly } : {},
+    ),
     s.placeholder ? placeholderExtension(s.placeholder) : [],
     // CodeMirror already gives the content role="textbox" and aria-multiline;
     // a <label for> cannot reach a contenteditable, so the name is set here.
@@ -170,6 +194,8 @@ export type CodeEditorViewProps = Omit<CodeEditorProps, "fallback">;
 export default function CodeEditorView({
   value,
   onChange,
+  onBlur,
+  maxHeight,
   language,
   placeholder,
   compact,
@@ -190,9 +216,9 @@ export default function CodeEditorView({
 
   // The mount effect and the update listener outlive any one render, so they
   // read the latest props through here rather than closing over the first.
-  const latest = useRef({ value, onChange, config });
+  const latest = useRef({ value, onChange, onBlur, config });
   useEffect(() => {
-    latest.current = { value, onChange, config };
+    latest.current = { value, onChange, onBlur, config };
   });
 
   useEffect(() => {
@@ -205,7 +231,6 @@ export default function CodeEditorView({
         extensions: [
           history(),
           drawSelection(),
-          bracketMatching(),
           highlight,
           // Long one-line JSON wraps inside the dialog instead of scrolling
           // sideways out of view.
@@ -214,6 +239,14 @@ export default function CodeEditorView({
           // users in the field. Tab moves on to the next control.
           keymap.of([...defaultKeymap, ...historyKeymap]),
           theme,
+          // blur, like the plain field's onBlur, reaches the caller: form
+          // libraries time their validation on it. Read through `latest`, so a
+          // handler that changes between renders is the one that runs.
+          EditorView.domEventHandlers({
+            blur: () => {
+              latest.current.onBlur?.();
+            },
+          }),
           EditorView.updateListener.of((update) => {
             if (!update.docChanged) return;
             if (update.transactions.some((tr) => tr.annotation(fromProps)))
@@ -273,6 +306,11 @@ export default function CodeEditorView({
         compact ? "min-h-8" : "min-h-16",
         className,
       )}
+      style={
+        maxHeight
+          ? ({ "--code-editor-max-h": maxHeight } as CSSProperties)
+          : undefined
+      }
     />
   );
 }

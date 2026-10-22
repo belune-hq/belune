@@ -3,13 +3,35 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
-export type CodeEditorLanguage = "json";
+/**
+ * "plain" has no grammar: no highlighting, and no opinion on brackets. It is for
+ * files whose format Belune does not know (a mounted nginx.conf, an ini, a shell
+ * script). It is not inferred from anything: choosing a language from a file's
+ * extension needs a mapping and a decision for when the extension lies, which is
+ * its own change.
+ */
+export type CodeEditorLanguage = "json" | "plain";
 
 export interface CodeEditorProps {
   value: string;
   onChange: (value: string) => void;
   language: CodeEditorLanguage;
   placeholder?: string;
+  /**
+   * Called when the field loses focus, as an <input>'s onBlur is. Form libraries
+   * key validation timing on it (@tanstack/react-form's `isBlurred`), so an
+   * editor that never reported blur would silently change when errors appear.
+   * The editor and the plain fallback both call it, or they would disagree about
+   * a form's state.
+   */
+  onBlur?: () => void;
+  /**
+   * Where the editor stops growing and scrolls, as a CSS length. Defaults to
+   * 12rem, which suits a two-key JSON object and not a config file. Set it at the
+   * call site, like the minimum height: the next field wants different numbers.
+   * Keep it at or above the minimum height, or the editor stops short of the box.
+   */
+  maxHeight?: string;
   /**
    * Starts one line tall, like an Input, and falls back to an Input.
    *
@@ -30,6 +52,20 @@ export interface CodeEditorProps {
 // Same text treatment on the editor and on the plain field, so swapping one for
 // the other changes nothing the eye can see.
 const TEXT = "font-mono text-xs";
+
+// Input and Textarea ship `text-base md:text-sm`, and tailwind-merge treats
+// `text-xs` and `md:text-sm` as different variants, so a caller's size loses to
+// the md rule from the breakpoint up: the plain field was 14px beside a 12px
+// editor on a desktop. Repeating the chosen size at md makes the two match at
+// every width. A size the caller gave at md is left alone.
+const SIZE = /(?:^|\s)(text-(?:xs|sm|base|lg|xl|2xl|3xl))(?=\s|$)/;
+const MD_SIZE = /(?:^|\s)md:text-(?:xs|sm|base|lg|xl|2xl|3xl)(?=\s|$)/;
+
+function plainText(className?: string): string {
+  const merged = cn(TEXT, className);
+  const size = SIZE.exec(merged)?.[1];
+  return size && !MD_SIZE.test(merged) ? cn(merged, `md:${size}`) : merged;
+}
 
 // A rejected React.lazy stays rejected for the life of the page, so a failed
 // load swaps in a fresh one and the next mount gets a real second attempt. The
@@ -77,6 +113,8 @@ export function CodeEditor({ compact, className, ...props }: CodeEditorProps) {
 function PlainField({
   value,
   onChange,
+  onBlur,
+  maxHeight,
   placeholder,
   compact,
   className,
@@ -88,15 +126,22 @@ function PlainField({
     value,
     placeholder,
     spellCheck: false,
-    className: cn(TEXT, className),
+    className: plainText(className),
     "aria-label": ariaLabel,
     "aria-labelledby": ariaLabelledBy,
     "aria-describedby": ariaDescribedBy,
+    onBlur: () => onBlur?.(),
   };
   return compact ? (
     <Input {...shared} onChange={(e) => onChange(e.target.value)} />
   ) : (
-    <Textarea {...shared} onChange={(e) => onChange(e.target.value)} />
+    // The cap applies here too: a Textarea grows with its content, and without
+    // one a long file would push the field, and the dialog around it, off screen.
+    <Textarea
+      {...shared}
+      style={maxHeight ? { maxHeight } : undefined}
+      onChange={(e) => onChange(e.target.value)}
+    />
   );
 }
 

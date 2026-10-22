@@ -269,3 +269,36 @@ func postRaw(t *testing.T, url, token string, body any) *http.Response {
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	return resp
 }
+
+// A TLS-off domain has no HTTPS listener to redirect to, so what is stored must
+// say so — whether the client sent true, or omitted it and the stale value would
+// have been carried forward.
+func TestDomains_ForceHTTPSIsFalseWhenTLSIsOff(t *testing.T) {
+	adminToken, _, projectID, appID, _ := dnsDomainFixture(t)
+	read := func(id string) bool {
+		var f bool
+		require.NoError(t, env.Pool.QueryRow(context.Background(), `SELECT force_https FROM domains WHERE id=$1`, id).Scan(&f))
+		return f
+	}
+
+	resp := env.DoRequest(t, "POST", domainsPath(projectID, appID), map[string]any{
+		"hostname": "off.example.com", "ssl_mode": "off", "force_https": true,
+	}, testutil.AuthHeader(adminToken))
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	id := extractID(testutil.ReadJSON(t, resp)["id"])
+	assert.False(t, read(id), "create must not persist force_https for an off domain")
+
+	// A legacy row holding the stale true is corrected by an omitting PUT.
+	_, err := env.Pool.Exec(context.Background(), `UPDATE domains SET force_https=true WHERE id=$1`, id)
+	require.NoError(t, err)
+	resp = env.DoRequest(t, "PUT", domainsPath(projectID, appID)+"/"+id,
+		map[string]any{"hostname": "off.example.com"}, testutil.AuthHeader(adminToken))
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.False(t, read(id))
+
+	// Turning TLS on and asking for the redirect is honoured.
+	resp = env.DoRequest(t, "PUT", domainsPath(projectID, appID)+"/"+id,
+		map[string]any{"hostname": "off.example.com", "ssl_mode": "automatic", "force_https": true}, testutil.AuthHeader(adminToken))
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.True(t, read(id))
+}

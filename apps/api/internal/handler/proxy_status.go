@@ -33,6 +33,10 @@ type caddyPanel struct {
 	// Features is the per-feature view of Report.Modules, with the same
 	// available / unavailable / unknown distinction as /api/proxy/capabilities.
 	Features map[string]featureCapability `json:"features"`
+	// OptionalModules is the same three-state view for modules no route feature
+	// uses yet (CrowdSec, WAF, layer 4). The page decides what to show from it, so
+	// the module IDs live here and not in the frontend.
+	OptionalModules map[string]featureCapability `json:"optional_modules"`
 	// AccessLog is state "unknown" when no tailer is wired.
 	AccessLog logtailer.Status `json:"access_log"`
 }
@@ -66,7 +70,13 @@ func (h *Handler) caddyPanel(r *http.Request, adminState string) caddyPanel {
 		features[t] = featureCapability{Module: module, State: featureState(set, module)}
 	}
 
-	panel := caddyPanel{Report: report, Features: features, AccessLog: logtailer.Status{State: "unknown"}}
+	optional := map[string]featureCapability{
+		"crowdsec": {Module: capability.ModuleCrowdSec, State: featureState(set, capability.ModuleCrowdSec)},
+		"waf":      {Module: capability.ModuleWAF, State: featureState(set, capability.ModuleWAF)},
+		"layer4":   {Module: capability.ModuleLayer4, State: featureState(set, capability.ModuleLayer4)},
+	}
+
+	panel := caddyPanel{Report: report, Features: features, OptionalModules: optional, AccessLog: logtailer.Status{State: "unknown"}}
 	if h.accessLog != nil {
 		panel.AccessLog = h.accessLog.Status()
 	}

@@ -228,6 +228,7 @@ func New(cfg *config.Config) (*App, error) {
 	httpSrv.SetCapabilities(caddyCaps)
 	logTailer := logtailer.New(cfg.AccessLogPath, queries, rdb)
 	httpSrv.SetAccessLog(logTailer)
+	httpSrv.SetProxyAdmin(caddyClient)
 
 	// Optional Prometheus-friendly bind. Serves /metrics without auth on the
 	// configured address (typically loopback). Keeps the main /metrics route

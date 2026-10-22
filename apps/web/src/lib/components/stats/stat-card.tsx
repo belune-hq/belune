@@ -43,7 +43,7 @@ export function StatCard({
           {value}
         </p>
         {hint != null && (
-          <p className="text-muted-foreground mt-0.5 truncate text-xs capitalize">
+          <p className="text-muted-foreground mt-0.5 truncate text-xs first-letter:uppercase">
             {hint}
           </p>
         )}

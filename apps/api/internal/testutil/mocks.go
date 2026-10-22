@@ -426,6 +426,34 @@ func (m *MockAccessLog) Status() logtailer.Status {
 	return m.st
 }
 
+// MockProxyAdmin implements handler.ProxyAdminReader.
+type MockProxyAdmin struct {
+	mu         sync.Mutex
+	MetricsOut string
+	MetricsErr error
+	Enabled    bool
+	ConfigOut  string
+	ConfigErr  error
+}
+
+func (m *MockProxyAdmin) Metrics(context.Context) ([]byte, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []byte(m.MetricsOut), m.MetricsErr
+}
+
+func (m *MockProxyAdmin) MetricsEnabled(context.Context) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.Enabled, nil
+}
+
+func (m *MockProxyAdmin) RunningConfig(context.Context) ([]byte, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []byte(m.ConfigOut), m.ConfigErr
+}
+
 // MockQueueInspector implements handler.QueueInspector for testing.
 type MockQueueInspector struct {
 	mu                  sync.Mutex

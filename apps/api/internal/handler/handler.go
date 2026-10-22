@@ -21,6 +21,7 @@ import (
 	"github.com/belune-hq/belune/internal/pkg/redact"
 	"github.com/belune-hq/belune/internal/proxy"
 	"github.com/belune-hq/belune/internal/proxy/caddyinfo"
+	"github.com/belune-hq/belune/internal/proxy/caddymetrics"
 	"github.com/belune-hq/belune/internal/proxy/capability"
 	"github.com/belune-hq/belune/internal/quota"
 	"github.com/belune-hq/belune/internal/runtime"
@@ -82,6 +83,9 @@ type Handler struct {
 	// (tests, a Caddy we do not manage) and then treated as "not known", never as
 	// "none present": see capabilitySet.
 	capabilities capability.Provider
+	// proxyAdmin reads Caddy's metrics and live config; nil when not wired.
+	proxyAdmin   ProxyAdminReader
+	proxyMetrics *caddymetrics.Observer
 	// accessLog reports the request-log tailer's health; nil until wired.
 	accessLog AccessLogStatusProvider
 	// caddyInspector is built on first use and kept: it holds the version cache.

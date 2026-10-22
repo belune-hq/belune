@@ -799,9 +799,22 @@ export interface ReconcilerStatus {
   last_error?: string;
   run_count: number;
   total_drift: number;
+  last_updated: number;
+  /** Routes served without a feature because the running Caddy lacks its module. */
+  degraded?: ProxyDegradation[];
   /** The 3s probe's reading of Caddy's admin API. "unknown" = not probed yet. */
   admin_state: CaddyAdminState;
   caddy: CaddyPanel;
+}
+
+export interface ProxyDegradation {
+  hostname: string;
+  path: string;
+  feature: string;
+  module: string;
+  /** module_absent = this Caddy lacks it; modules_unknown = Belune could not ask. */
+  reason: "module_absent" | "modules_unknown";
+  since: string;
 }
 
 export type CaddyAdminState =
@@ -830,6 +843,11 @@ export interface CaddyPanel {
   image: string | null;
   modules: { known: boolean; ids: string[] };
   features: Record<string, { module: string; state: FeatureAvailability }>;
+  /** Modules no route feature uses yet; same three states as `features`. */
+  optional_modules: Record<
+    "crowdsec" | "waf" | "layer4",
+    { module: string; state: FeatureAvailability }
+  >;
   access_log: AccessLogStatus;
 }
 
@@ -856,6 +874,36 @@ export interface AccessLogStatus {
   last_insert_at?: string;
   last_error?: string;
   last_error_at?: string;
+}
+
+export type ProxyTrafficState =
+  | "ok"
+  | "collecting"
+  | "no_data"
+  | "disabled"
+  | "unreachable"
+  | "unknown";
+
+/** Traffic through Caddy's reverse_proxy handler. A null number means it could
+ *  not be determined (or, for latency, that nothing completed) — never zero. */
+export interface ProxyTraffic {
+  state: ProxyTrafficState;
+  error?: string;
+  in_flight: number | null;
+  proxied_total: number | null;
+  window_seconds: number | null;
+  requests_per_second: number | null;
+  server_errors_per_second: number | null;
+  mean_seconds: number | null;
+  p50_seconds: number | null;
+  p95_seconds: number | null;
+  status_classes: Record<string, number> | null;
+}
+
+export interface ProxyConfig {
+  /** How many secret values the server replaced with a marker. */
+  redacted_fields: number;
+  config: unknown;
 }
 
 /** Whether the running Caddy has the module a route feature needs. "unknown"

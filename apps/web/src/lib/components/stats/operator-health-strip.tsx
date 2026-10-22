@@ -73,7 +73,7 @@ export function OperatorHealthStrip({ className }: { className?: string }) {
             <span className="text-text-faint">/{app_health.total}</span>
           </span>
         }
-        hint={app_health.total === 0 ? "No services yet" : "services running"}
+        hint={app_health.total === 0 ? "no services yet" : "services running"}
         footer={
           app_health.total === 0 ? undefined : (
             <>
@@ -133,7 +133,7 @@ export function OperatorHealthStrip({ className }: { className?: string }) {
         icon={<TriangleAlertIcon className="size-3.5" />}
         tone={attention === 0 ? "ready" : "error"}
         value={attention}
-        hint={attention === 0 ? "All clear" : attention === 1 ? "issue" : "issues"}
+        hint={attention === 0 ? "all clear" : attention === 1 ? "issue" : "issues"}
         footer={
           attention === 0 ? undefined : (
             <>
@@ -188,7 +188,7 @@ export function OperatorHealthStrip({ className }: { className?: string }) {
         value={deploy_7d.total === 0 ? "—" : `${deployRate}%`}
         hint={
           deploy_7d.total === 0
-            ? "No deploys in 7 days"
+            ? "no deploys in 7 days"
             : `${deploy_7d.succeeded} of ${deploy_7d.total} deploys`
         }
         footer={

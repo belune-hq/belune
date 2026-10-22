@@ -41,10 +41,12 @@ Belune manages Caddy entirely through its admin API; it never writes a Caddyfile
 
 Belune treats its own routes as the source of truth and re-asserts them every 30 seconds, so a host route you add to Caddy by hand will be removed. Optional modules are a bonus, never a requirement.
 
-## The Proxy Panel
+## The Proxy Page
 
-The Server page shows what Belune can tell about Caddy itself: which container it is and how that container was found, whether the admin API answers, the version and image, the loaded modules, and whether the request log is being read.
+Admins get a Proxy page in the sidebar, with a tab each for Caddy, CrowdSec and the WAF. The Caddy tab shows what Belune can tell about the proxy itself: which container it is and how that container was found, whether the admin API answers, the version and image, the loaded modules, whether the request log is being read, how much traffic Caddy is proxying to apps and how fast, and how the live routes compare with the database.
 
-Every line separates "could not be determined" from "not there". If Belune cannot list Caddy's modules because the proxy is restarting, the panel says the modules are unknown rather than that they are missing. When Caddy runs outside Docker there is no container to inspect, and the panel says so instead of reporting an error.
+Every line separates "could not be determined" from "not there". If Belune cannot list Caddy's modules because the proxy is restarting, the page says the modules are unknown rather than that they are missing. When Caddy runs outside Docker there is no container to inspect, and the page says so instead of reporting an error. The CrowdSec and WAF tabs report whether your Caddy includes the module; controls for them are not part of this release.
 
-The panel is read-only. Belune owns the route table and rewrites anything it does not recognise within thirty seconds, so Caddy's configuration cannot be edited from here.
+The traffic figures come from Caddy's own metrics, so they cover requests that reached an app and not redirects or the dashboard itself. They need `servers { metrics }` in the Caddyfile, which Belune's stack already sets. A Caddy you run yourself needs the same.
+
+The page is read-only. Belune owns the route table and rewrites anything it does not recognise within thirty seconds, so Caddy's configuration cannot be edited here. The running configuration can be viewed, with private keys and password hashes removed on the server. Reconcile Routes stays on the Server page, beside the other maintenance actions.

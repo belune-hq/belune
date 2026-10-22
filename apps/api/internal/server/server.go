@@ -82,6 +82,11 @@ func (s *Server) SetAccessLog(p handler.AccessLogStatusProvider) {
 	s.handler.SetAccessLog(p)
 }
 
+// SetProxyAdmin wires the read-only Caddy admin reader into the handlers.
+func (s *Server) SetProxyAdmin(a handler.ProxyAdminReader) {
+	s.handler.SetProxyAdmin(a)
+}
+
 func (s *Server) Router() chi.Router {
 	return s.router
 }

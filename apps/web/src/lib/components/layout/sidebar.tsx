@@ -9,6 +9,7 @@ import {
   Server,
   Users,
   Gauge,
+  Route as RouteIcon,
   GitBranch,
   Lock,
   BellRing,
@@ -48,6 +49,7 @@ const HOME_NAV: NavItem[] = [
 const SETTINGS_NAV: NavItem[] = [
   { to: "/server", label: "Server", Icon: Server, admin: true },
   { to: "/docker", label: "Docker", Icon: SiDocker, admin: true },
+  { to: "/proxy", label: "Proxy", Icon: RouteIcon, admin: true },
   { to: "/git", label: "Git", Icon: GitBranch },
   // Not admin-gated: the page shows a member the TLS state of their own
   // domains (see certificates.tsx, which splits by content). Certificate

@@ -284,3 +284,81 @@ export function summarize(rows: CaddyRow[]): {
   }
   return { tone: "ready", label: "OK" };
 }
+
+/** One namespace inside an app, e.g. `handlers` under `http`. */
+export interface ModuleGroup {
+  namespace: string;
+  leaves: string[];
+}
+
+/** An app section: the first segment of a module id, with everything under it. */
+export interface ModuleApp {
+  app: string;
+  count: number;
+  /** Ids with no namespace of their own: the app itself, or `app.leaf`. */
+  leaves: string[];
+  groups: ModuleGroup[];
+}
+
+const byCountThenName = <T extends { count: number }>(
+  a: T & { key: string },
+  b: T & { key: string },
+) => b.count - a.count || a.key.localeCompare(b.key);
+
+/**
+ * Groups module ids as app → namespace → leaf (`http.handlers.rate_limit` is
+ * app `http`, namespace `handlers`, leaf `rate_limit`). Everything is derived
+ * from the ids given, so a Caddy without layer4 simply has no layer4 section.
+ * `query` is a case-insensitive substring match on the FULL id, so "crowdsec"
+ * finds every module of that name wherever it sits and "http.handlers" works as
+ * a path filter. Leaves keep the input order (the API sorts them).
+ */
+export function groupModules(ids: string[], query = ""): ModuleApp[] {
+  const q = query.trim().toLowerCase();
+  const apps = new Map<
+    string,
+    { leaves: string[]; groups: Map<string, string[]>; count: number }
+  >();
+
+  for (const id of ids) {
+    if (q && !id.toLowerCase().includes(q)) continue;
+    const parts = id.split(".");
+    const app = parts[0];
+    const entry = apps.get(app) ?? {
+      leaves: [] as string[],
+      groups: new Map<string, string[]>(),
+      count: 0,
+    };
+    apps.set(app, entry);
+    entry.count++;
+    // `http` alone is the app itself; `caddy.filesystems` has an empty
+    // namespace. Neither earns a group of its own.
+    if (parts.length <= 2) {
+      entry.leaves.push(parts[parts.length - 1]);
+      continue;
+    }
+    const ns = parts.slice(1, -1).join(".");
+    const g = entry.groups.get(ns) ?? [];
+    g.push(parts[parts.length - 1]);
+    entry.groups.set(ns, g);
+  }
+
+  return [...apps.entries()]
+    .map(([app, e]) => ({
+      key: app,
+      app,
+      count: e.count,
+      leaves: e.leaves,
+      groups: [...e.groups.entries()]
+        .map(([namespace, leaves]) => ({
+          key: namespace,
+          namespace,
+          leaves,
+          count: leaves.length,
+        }))
+        .sort(byCountThenName)
+        .map(({ namespace, leaves }) => ({ namespace, leaves })),
+    }))
+    .sort(byCountThenName)
+    .map(({ app, count, leaves, groups }) => ({ app, count, leaves, groups }));
+}

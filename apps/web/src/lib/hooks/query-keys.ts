@@ -281,6 +281,8 @@ export const queryKeys = {
   tokens: ["tokens"] as const,
   invitations: ["invitations"] as const,
   proxyReconciler: ["proxy", "reconciler"] as const,
+  proxyMetrics: ["proxy", "metrics"] as const,
+  proxyConfig: ["proxy", "config"] as const,
   maintenanceQueue: ["maintenance", "queue"] as const,
   maintenancePlatformLogs: ["maintenance", "platform-logs"] as const,
   maintenanceServerIP: ["maintenance", "server-ip"] as const,

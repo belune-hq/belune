@@ -1,5 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getAlertPreferences, updateAlertPreferences } from "@/lib/api/alert-preferences";
+import {
+  getAlertPreferences,
+  updateAlertPreferences,
+} from "@/lib/api/alert-preferences";
 import type { AlertPreferences } from "@/lib/types";
 import { queryKeys } from "./query-keys";
 

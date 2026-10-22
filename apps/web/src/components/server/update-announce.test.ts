@@ -42,17 +42,15 @@ describe("nextAnnounce", () => {
     // The status query keeps returning the same failed attempt on every poll
     // and every refetch, and the toast uses a fixed id — re-raising it would
     // keep resetting a toast the operator is trying to dismiss.
-    expect(
-      announcements([running, failed, failed, failed, failed]),
-    ).toEqual([1]);
+    expect(announcements([running, failed, failed, failed, failed])).toEqual([
+      1,
+    ]);
   });
 
   it("announces a second update that fails the same way", () => {
     // The signature alone would suppress this, since target and reason repeat.
     // A non-failed reading in between is what clears it.
-    expect(
-      announcements([running, failed, running, failed]),
-    ).toEqual([1, 3]);
+    expect(announcements([running, failed, running, failed])).toEqual([1, 3]);
   });
 
   it("announces again when the same update fails for a new reason", () => {

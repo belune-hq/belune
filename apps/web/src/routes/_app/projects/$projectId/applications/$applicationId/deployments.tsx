@@ -1,6 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Loader2Icon } from "lucide-react";
-import { useDeployments, useRollbackDeployment } from "@/lib/hooks/use-deployments";
+import {
+  useDeployments,
+  useRollbackDeployment,
+} from "@/lib/hooks/use-deployments";
 import { useApplication } from "@/lib/hooks/use-applications";
 import { AutoDeploySection } from "@/components/applications/auto-deploy-section";
 import { useQueryClient } from "@tanstack/react-query";
@@ -29,7 +32,11 @@ import {
 import { useState, useCallback, useRef } from "react";
 import { useChannel } from "@/lib/hooks/use-websocket";
 import { BlobLogViewer } from "@/components/logs/blob-log-viewer";
-import { parseLogBlob, stripAnsi, type LogEntry } from "@/components/logs/parse";
+import {
+  parseLogBlob,
+  stripAnsi,
+  type LogEntry,
+} from "@/components/logs/parse";
 import { normalizeLevel } from "@/lib/logs/level";
 import { RouteError } from "@/lib/components/route-error";
 
@@ -135,7 +142,10 @@ function RollbackButton({
   projectId: string;
   applicationId: string;
 }) {
-  const { mutate: rollback, isPending } = useRollbackDeployment(projectId, applicationId);
+  const { mutate: rollback, isPending } = useRollbackDeployment(
+    projectId,
+    applicationId,
+  );
 
   return (
     <AlertDialog>
@@ -158,7 +168,10 @@ function RollbackButton({
             This will redeploy the image from{" "}
             <strong>{formatDateTimeShort(deployment.started_at)}</strong>
             {deployment.commit_sha && (
-              <> (commit <code>{deployment.commit_sha.slice(0, 7)}</code>)</>
+              <>
+                {" "}
+                (commit <code>{deployment.commit_sha.slice(0, 7)}</code>)
+              </>
             )}
             . A new deployment will be created with the stored image tag.
           </AlertDialogDescription>
@@ -210,19 +223,27 @@ function DeploymentCard({
   // Overall duration (started → finished)
   const totalDuration =
     d.finished_at && d.started_at
-      ? formatDuration(new Date(d.finished_at).getTime() - new Date(d.started_at).getTime())
+      ? formatDuration(
+          new Date(d.finished_at).getTime() - new Date(d.started_at).getTime(),
+        )
       : null;
 
   // Build phase: build_started_at → build_ended_at
   const buildDuration =
     d.build_started_at && d.build_ended_at
-      ? formatDuration(new Date(d.build_ended_at).getTime() - new Date(d.build_started_at).getTime())
+      ? formatDuration(
+          new Date(d.build_ended_at).getTime() -
+            new Date(d.build_started_at).getTime(),
+        )
       : null;
 
   // Deploy phase: deploy_started_at → finished_at
   const deployDuration =
     d.deploy_started_at && d.finished_at
-      ? formatDuration(new Date(d.finished_at).getTime() - new Date(d.deploy_started_at).getTime())
+      ? formatDuration(
+          new Date(d.finished_at).getTime() -
+            new Date(d.deploy_started_at).getTime(),
+        )
       : null;
 
   const hasSplit = buildDuration !== null && deployDuration !== null;
@@ -235,7 +256,10 @@ function DeploymentCard({
       <CardContent className="py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Badge variant={statusVariant[d.status] ?? "outline"} className="capitalize">
+            <Badge
+              variant={statusVariant[d.status] ?? "outline"}
+              className="capitalize"
+            >
               {d.status}
             </Badge>
             <span className="text-muted-foreground text-sm">
@@ -272,7 +296,9 @@ function DeploymentCard({
                   className="size-3.5 animate-spin"
                 />
               ) : hasSplit ? (
-                <span title={`Build: ${buildDuration} · Deploy: ${deployDuration}`}>
+                <span
+                  title={`Build: ${buildDuration} · Deploy: ${deployDuration}`}
+                >
                   {buildDuration} + {deployDuration}
                 </span>
               ) : totalDuration ? (
@@ -334,7 +360,11 @@ function DeploymentHistory({
   projectId: string;
   applicationId: string;
 }) {
-  const { data: deployments, isLoading, error } = useDeployments(projectId, applicationId);
+  const {
+    data: deployments,
+    isLoading,
+    error,
+  } = useDeployments(projectId, applicationId);
   const [page, setPage] = useState(0);
 
   if (isLoading) {
@@ -406,7 +436,8 @@ function DeploymentHistory({
             Previous
           </Button>
           <span className="text-muted-foreground text-sm">
-            {start + 1}–{Math.min(total, start + DEPLOYMENTS_PER_PAGE)} of {total}
+            {start + 1}–{Math.min(total, start + DEPLOYMENTS_PER_PAGE)} of{" "}
+            {total}
           </span>
           <Button
             variant="outline"

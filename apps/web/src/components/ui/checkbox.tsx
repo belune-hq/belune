@@ -15,10 +15,7 @@ import { cn } from "@/lib/utils";
  * reach for a Switch was appearance, not meaning, and reaching for one in a form
  * tells the user their change is already in effect when it is not.
  */
-function Checkbox({
-  className,
-  ...props
-}: CheckboxPrimitive.Root.Props) {
+function Checkbox({ className, ...props }: CheckboxPrimitive.Root.Props) {
   return (
     <CheckboxPrimitive.Root
       data-slot="checkbox"
@@ -28,7 +25,7 @@ function Checkbox({
         // 37% of its width and renders as a circle — indistinguishable from a
         // radio button. 4px keeps it legibly square at this size.
         "peer border-border-strong flex size-4 shrink-0 cursor-pointer items-center justify-center rounded-[4px] border shadow-xs transition-colors outline-none",
-        "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50",
+        "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
         "data-[checked]:bg-primary data-[checked]:border-primary data-[checked]:text-primary-foreground",
         "data-[indeterminate]:bg-primary data-[indeterminate]:border-primary data-[indeterminate]:text-primary-foreground",
         "disabled:cursor-not-allowed disabled:opacity-50",

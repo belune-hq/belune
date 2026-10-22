@@ -161,8 +161,7 @@ export function HostShellBlock() {
             <DialogHeader>
               <DialogTitle>Confirm it's you</DialogTitle>
               <DialogDescription>
-                Re-enter your Belune password to open a root shell on the
-                host.
+                Re-enter your Belune password to open a root shell on the host.
                 {totpEnabled &&
                   " Your authenticator code is required too — this is the most privileged action here."}
               </DialogDescription>

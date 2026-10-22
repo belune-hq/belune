@@ -18,7 +18,10 @@ export function usePreviews(projectId: string, applicationId: string) {
   });
 }
 
-export function useUpdatePreviewConfig(projectId: string, applicationId: string) {
+export function useUpdatePreviewConfig(
+  projectId: string,
+  applicationId: string,
+) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: Parameters<typeof previewsApi.updatePreviewConfig>[2]) =>

@@ -118,7 +118,9 @@ function AppChart({
     ? (last[dataKey as keyof AppMetricPoint] as number | null)
     : null;
   const summary =
-    lastValue == null ? "No data yet" : `Latest ${title}: ${formatter(lastValue)}`;
+    lastValue == null
+      ? "No data yet"
+      : `Latest ${title}: ${formatter(lastValue)}`;
   return (
     <div role="region" aria-label={title}>
       <p className="mb-2 text-sm font-medium">{title}</p>

@@ -21,7 +21,8 @@ export const Route = createFileRoute("/_app/git")({
   errorComponent: RouteError,
   validateSearch: (search: Record<string, unknown>) => ({
     tab: search.tab === "providers" ? ("providers" as const) : undefined,
-    connected: typeof search.connected === "string" ? search.connected : undefined,
+    connected:
+      typeof search.connected === "string" ? search.connected : undefined,
     error: typeof search.error === "string" ? search.error : undefined,
   }),
 });
@@ -39,7 +40,8 @@ function GitPage() {
   const isAdmin = useAuthStore((s) => s.user?.role === "admin");
 
   // Non-admins never get the Providers tab even if the URL asks for it.
-  const activeTab: GitTab = isAdmin && tab === "providers" ? "providers" : "connections";
+  const activeTab: GitTab =
+    isAdmin && tab === "providers" ? "providers" : "connections";
 
   // Surface OAuth-connect / GitHub-App-creation outcomes from the callback redirect.
   useEffect(() => {
@@ -52,11 +54,19 @@ function GitPage() {
       toast.error(`Failed to connect ${PROVIDER_LABELS[error] ?? error}`);
     }
     // Clear the one-shot params so the toast doesn't refire on refresh.
-    navigate({ search: (s) => ({ ...s, connected: undefined, error: undefined }), replace: true });
+    navigate({
+      search: (s) => ({ ...s, connected: undefined, error: undefined }),
+      replace: true,
+    });
   }, [connected, error, tab, navigate]);
 
   const setTab = (next: GitTab) =>
-    navigate({ search: (s) => ({ ...s, tab: next === "providers" ? "providers" : undefined }) });
+    navigate({
+      search: (s) => ({
+        ...s,
+        tab: next === "providers" ? "providers" : undefined,
+      }),
+    });
 
   return (
     <div className="space-y-6">
@@ -81,7 +91,11 @@ function GitPage() {
             value={activeTab}
             onValueChange={setTab}
           />
-          {activeTab === "providers" ? <ProvidersPanel /> : <ConnectionsPanel />}
+          {activeTab === "providers" ? (
+            <ProvidersPanel />
+          ) : (
+            <ConnectionsPanel />
+          )}
         </>
       ) : (
         <ConnectionsPanel />

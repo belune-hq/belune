@@ -41,7 +41,8 @@ function resolvedBrand(): string {
 }
 
 function apply(): void {
-  const href = "data:image/svg+xml," + encodeURIComponent(buildSvg(resolvedBrand()));
+  const href =
+    "data:image/svg+xml," + encodeURIComponent(buildSvg(resolvedBrand()));
   let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
   if (!link) {
     link = document.createElement("link");

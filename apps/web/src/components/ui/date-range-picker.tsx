@@ -5,7 +5,11 @@ import { CalendarIcon, XIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 interface DateRangePickerProps {
   value?: { from?: string; to?: string };
@@ -112,7 +116,7 @@ function DateRangePicker({
       {hasValue && (
         <button
           onClick={handleClear}
-          className="absolute right-2.5 flex items-center justify-center text-muted-foreground hover:text-foreground"
+          className="text-muted-foreground hover:text-foreground absolute right-2.5 flex items-center justify-center"
           aria-label="Clear date range"
         >
           <XIcon className="size-3.5" />

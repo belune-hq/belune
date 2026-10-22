@@ -64,7 +64,9 @@ function TerminalPage() {
       sessionId = res.session_id;
     } catch (err: unknown) {
       setConnState("error");
-      setErrorMsg(err instanceof Error ? err.message : "Failed to create session");
+      setErrorMsg(
+        err instanceof Error ? err.message : "Failed to create session",
+      );
       return;
     }
     sessionIdRef.current = sessionId;
@@ -100,13 +102,19 @@ function TerminalPage() {
       // Send initial resize
       const dims = fit.proposeDimensions();
       if (dims) {
-        ws.send(JSON.stringify({ type: "resize", cols: dims.cols, rows: dims.rows }));
+        ws.send(
+          JSON.stringify({ type: "resize", cols: dims.cols, rows: dims.rows }),
+        );
       }
     };
 
     ws.onmessage = (event) => {
       try {
-        const msg = JSON.parse(event.data as string) as { type: string; data?: string; message?: string };
+        const msg = JSON.parse(event.data as string) as {
+          type: string;
+          data?: string;
+          message?: string;
+        };
         if (msg.type === "output" && msg.data) {
           const bytes = atob(msg.data);
           term.write(bytes);
@@ -150,7 +158,11 @@ function TerminalPage() {
         const dims = fitRef.current.proposeDimensions();
         if (dims && wsRef.current?.readyState === WebSocket.OPEN) {
           wsRef.current.send(
-            JSON.stringify({ type: "resize", cols: dims.cols, rows: dims.rows }),
+            JSON.stringify({
+              type: "resize",
+              cols: dims.cols,
+              rows: dims.rows,
+            }),
           );
         }
       }
@@ -174,7 +186,10 @@ function TerminalPage() {
   const isConnecting = connState === "connecting";
 
   return (
-    <div className="flex flex-col gap-4" style={{ height: "calc(100vh - 280px)" }}>
+    <div
+      className="flex flex-col gap-4"
+      style={{ height: "calc(100vh - 280px)" }}
+    >
       {/* Toolbar */}
       <div className="flex items-center gap-3">
         <TerminalSquare className="text-muted-foreground h-4 w-4" />
@@ -183,7 +198,7 @@ function TerminalPage() {
           onValueChange={(v) => v && setShell(v)}
           disabled={isConnected || isConnecting}
         >
-          <SelectTrigger className="w-28 h-8 text-sm" aria-label="Shell">
+          <SelectTrigger className="h-8 w-28 text-sm" aria-label="Shell">
             <SelectValue placeholder="Shell" />
           </SelectTrigger>
           <SelectContent>
@@ -211,14 +226,24 @@ function TerminalPage() {
           </Button>
         )}
 
-        {(isConnected) && (
-          <Button size="sm" variant="outline" onClick={cleanup} className="gap-1">
+        {isConnected && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={cleanup}
+            className="gap-1"
+          >
             Disconnect
           </Button>
         )}
 
         {(connState === "disconnected" || connState === "error") && (
-          <Button size="sm" variant="outline" onClick={connect} className="gap-1">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={connect}
+            className="gap-1"
+          >
             <RefreshCw className="h-3.5 w-3.5" />
             Reconnect
           </Button>
@@ -228,16 +253,24 @@ function TerminalPage() {
           role="status"
           aria-live="polite"
           className={`text-xs ${
-          isConnected ? "text-green-500" :
-          isConnecting ? "text-yellow-500" :
-          connState === "error" ? "text-destructive" :
-          "text-muted-foreground"
-        }`}>
-          {connState === "idle" ? "Not connected" :
-           connState === "connecting" ? "Connecting…" :
-           connState === "connected" ? "Connected" :
-           connState === "disconnected" ? "Disconnected" :
-           `Error${errorMsg ? `: ${errorMsg}` : ""}`}
+            isConnected
+              ? "text-green-500"
+              : isConnecting
+                ? "text-yellow-500"
+                : connState === "error"
+                  ? "text-destructive"
+                  : "text-muted-foreground"
+          }`}
+        >
+          {connState === "idle"
+            ? "Not connected"
+            : connState === "connecting"
+              ? "Connecting…"
+              : connState === "connected"
+                ? "Connected"
+                : connState === "disconnected"
+                  ? "Disconnected"
+                  : `Error${errorMsg ? `: ${errorMsg}` : ""}`}
         </span>
       </div>
 
@@ -251,7 +284,7 @@ function TerminalPage() {
       />
 
       {connState === "idle" && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <p className="text-muted-foreground text-sm">
             Select a shell and click Connect to open a terminal session.
           </p>

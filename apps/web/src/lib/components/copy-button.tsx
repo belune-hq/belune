@@ -22,7 +22,11 @@ interface CopyButtonProps {
  * for ~2s after a successful copy. Uses the navigator.clipboard API with a
  * silent fallback on failure.
  */
-export function CopyButton({ value, size = "icon", className }: CopyButtonProps) {
+export function CopyButton({
+  value,
+  size = "icon",
+  className,
+}: CopyButtonProps) {
   const [copied, setCopied] = useState(false);
   const [hoverOpen, setHoverOpen] = useState(false);
 
@@ -43,7 +47,9 @@ export function CopyButton({ value, size = "icon", className }: CopyButtonProps)
           <Button
             variant="ghost"
             size={size === "icon" ? "icon" : "sm"}
-            className={size === "icon" ? `h-7 w-7 ${className ?? ""}` : className}
+            className={
+              size === "icon" ? `h-7 w-7 ${className ?? ""}` : className
+            }
             onClick={handleCopy}
             aria-label={copied ? "Copied!" : "Copy to clipboard"}
           />

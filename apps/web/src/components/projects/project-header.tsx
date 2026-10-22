@@ -10,13 +10,22 @@ interface Props {
 
 /** Two uppercase initials derived from the project name. */
 function initials(name: string): string {
-  const parts = name.trim().split(/[\s-_]+/).filter(Boolean);
+  const parts = name
+    .trim()
+    .split(/[\s-_]+/)
+    .filter(Boolean);
   if (parts.length === 0) return "··";
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[1][0]).toUpperCase();
 }
 
-const ERROR_STATES = new Set(["failed", "error", "crashed", "unhealthy", "exited"]);
+const ERROR_STATES = new Set([
+  "failed",
+  "error",
+  "crashed",
+  "unhealthy",
+  "exited",
+]);
 
 export function ProjectHeader({ project, applications, databases }: Props) {
   const services = [
@@ -27,7 +36,9 @@ export function ProjectHeader({ project, applications, databases }: Props) {
   const running = services.filter(
     (s) => s.toLowerCase() === "running" || s.toLowerCase() === "ready",
   ).length;
-  const errored = services.filter((s) => ERROR_STATES.has(s.toLowerCase())).length;
+  const errored = services.filter((s) =>
+    ERROR_STATES.has(s.toLowerCase()),
+  ).length;
 
   const name = project?.name ?? "Project";
 

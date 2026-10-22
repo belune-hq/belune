@@ -5,7 +5,10 @@ export type EnvVarSortKey = "name" | "created" | "updated";
 
 // Both saved rows always have a real timestamp — this is just a defensive
 // fallback, never expected to see an actual missing value in practice.
-function compareTimestamps(a: string | undefined, b: string | undefined): number {
+function compareTimestamps(
+  a: string | undefined,
+  b: string | undefined,
+): number {
   if (!a && !b) return 0;
   if (!a) return -1;
   if (!b) return 1;

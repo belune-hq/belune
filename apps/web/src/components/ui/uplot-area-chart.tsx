@@ -17,7 +17,9 @@ interface UPlotAreaChartProps {
 }
 
 function cssVar(name: string): string {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return getComputedStyle(document.documentElement)
+    .getPropertyValue(name)
+    .trim();
 }
 
 function colorWithAlpha(color: string, alpha: number): string {
@@ -107,7 +109,10 @@ export function UPlotAreaChart({
         // doesn't drift to y=0 (top of chart) when hovering over NaN gaps
         dataIdx: (u, seriesIdx, hoveredIdx) => {
           if (seriesIdx !== 1 || hoveredIdx == null) return hoveredIdx;
-          return nearestNonNull(u.data[1] as (number | undefined)[], hoveredIdx);
+          return nearestNonNull(
+            u.data[1] as (number | undefined)[],
+            hoveredIdx,
+          );
         },
         // Link cursors across charts that share a key, matching on the x scale
         // (the time axis) so the same time point is highlighted everywhere.
@@ -124,8 +129,7 @@ export function UPlotAreaChart({
           width: 1.5,
           spanGaps: true,
           points: { show: false },
-          value: (_, v) =>
-            v == null || isNaN(v) ? "—" : yFormatter(v),
+          value: (_, v) => (v == null || isNaN(v) ? "—" : yFormatter(v)),
         },
       ],
       axes: [
@@ -192,7 +196,7 @@ export function UPlotAreaChart({
         ],
       },
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [width, height, color, yDomain, syncKey]);
 
   // Live update: call setData directly without re-mounting
@@ -232,7 +236,7 @@ export function UPlotAreaChart({
       />
       {tooltip && (
         <div
-          className="pointer-events-none absolute z-10 rounded-md border bg-popover px-2 py-1.5 text-xs text-popover-foreground shadow-md"
+          className="bg-popover text-popover-foreground pointer-events-none absolute z-10 rounded-md border px-2 py-1.5 text-xs shadow-md"
           style={{ left: tooltip.left + 12, top: tooltip.top - 20 }}
         >
           <p className="font-medium">{tooltip.value}</p>

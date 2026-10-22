@@ -133,7 +133,7 @@ function BuildInfoCard({
       value: deploy?.image_tag ? (
         <span className="font-mono text-xs">{deploy.image_tag}</span>
       ) : (
-        app.source_image ?? "—"
+        (app.source_image ?? "—")
       ),
     },
     {
@@ -146,7 +146,10 @@ function BuildInfoCard({
     },
     ...(app.type === "git"
       ? [
-          { label: "Branch", value: app.branch ?? app.auto_deploy_branch ?? "—" },
+          {
+            label: "Branch",
+            value: app.branch ?? app.auto_deploy_branch ?? "—",
+          },
           {
             label: "Commit",
             value: deploy?.commit_sha ? (
@@ -174,7 +177,10 @@ function BuildInfoCard({
       </CardHeader>
       <CardContent className="space-y-2.5 text-sm">
         {rows.map((r) => (
-          <div key={r.label} className="flex items-center justify-between gap-3">
+          <div
+            key={r.label}
+            className="flex items-center justify-between gap-3"
+          >
             <span className="text-muted-foreground">{r.label}</span>
             <span className="min-w-0 truncate text-right">{r.value}</span>
           </div>

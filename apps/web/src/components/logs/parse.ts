@@ -159,7 +159,8 @@ function parseLine(line: string, id: string): LogEntry {
       // Read as UTC when Docker gave us nothing better. Containers run UTC, and
       // the platform viewer always requests Docker timestamps, so this fallback
       // only applies to stored blobs.
-      recordedAt: dockerTs ?? new Date(m[1].replace(" ", "T") + "Z").toISOString(),
+      recordedAt:
+        dockerTs ?? new Date(m[1].replace(" ", "T") + "Z").toISOString(),
     };
   }
 

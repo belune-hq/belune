@@ -10,10 +10,7 @@ import { cn } from "@/lib/utils";
  *                  only persisted when the surrounding form is submitted.
  * If a control saves the moment you click it, it should be a Switch.
  */
-function Switch({
-  className,
-  ...props
-}: SwitchPrimitive.Root.Props) {
+function Switch({ className, ...props }: SwitchPrimitive.Root.Props) {
   return (
     <SwitchPrimitive.Root
       data-slot="switch"

@@ -173,3 +173,66 @@ func TestWildcardRoutesSortAfterExactHosts(t *testing.T) {
 	assert.NotContains(t, id, "*")
 	assert.NotEqual(t, routeIDFor("wildcard.example.com", "/"), id)
 }
+
+// The case the wildcard tier could have broken. The anonymous default site that
+// comes back after a Caddy restart is a match-less route (host ""), and the
+// v0.2.0-rc1 blocker was exactly that route being keyed ahead of every hostname.
+// reorderRoutes now sets such routes aside before sorting; this pins the
+// comparator itself so a future caller that forgets cannot reintroduce it
+// through the new tier either.
+func TestSortRoutesBySpecificity_HostlessNeverOutranksAHostname(t *testing.T) {
+	mk := func(match any) json.RawMessage {
+		b, _ := json.Marshal(map[string]any{"match": match})
+		return b
+	}
+	host := func(h string) json.RawMessage {
+		return mk([]any{map[string]any{"host": []string{h}}})
+	}
+	routes := []json.RawMessage{
+		mk(nil), // hostless, match-less
+		host("*.example.com"),
+		host("b.example.com"),
+		host("a.example.com"),
+	}
+	sortRoutesBySpecificity(routes)
+
+	hostOf := func(r json.RawMessage) string {
+		var p struct {
+			Match []caddyMatch `json:"match"`
+		}
+		_ = json.Unmarshal(r, &p)
+		if len(p.Match) == 0 || len(p.Match[0].Host) == 0 {
+			return ""
+		}
+		return p.Match[0].Host[0]
+	}
+	var got []string
+	for _, r := range routes {
+		got = append(got, hostOf(r))
+	}
+	idx := func(h string) int {
+		for i, g := range got {
+			if g == h {
+				return i
+			}
+		}
+		return -1
+	}
+	assert.Less(t, idx("a.example.com"), idx(""), "a hostless route must not outrank a hostname: %v", got)
+	assert.Less(t, idx("b.example.com"), idx(""), "%v", got)
+
+	// Total and deterministic: any input order yields the same output.
+	want := append([]string(nil), got...)
+	for _, perm := range [][]int{{3, 2, 1, 0}, {1, 3, 0, 2}, {2, 0, 3, 1}} {
+		shuffled := make([]json.RawMessage, len(routes))
+		for i, p := range perm {
+			shuffled[i] = routes[p]
+		}
+		sortRoutesBySpecificity(shuffled)
+		var again []string
+		for _, r := range shuffled {
+			again = append(again, hostOf(r))
+		}
+		assert.Equal(t, want, again)
+	}
+}

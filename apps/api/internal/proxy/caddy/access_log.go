@@ -61,7 +61,19 @@ func (c *Client) ConfigureAccessLogs(ctx context.Context) error {
 						},
 					},
 				},
-				"level": "INFO",
+				// ⚠️ A named log with no `include` is a catch-all: Caddy sent it
+				// EVERY logger — ACME and TLS lines, and any module's own log, such
+				// as a WAF rule match carrying the request URI and matched payload.
+				// The filter above only rewrites `request>uri`, a field of access
+				// entries, so a line of any other shape reached this 0644 file
+				// unredacted. Scope it to the access entries the tailer reads
+				// (Caddy names them "http.log.access." + default_logger_name).
+				//
+				// This does not take those lines out of Caddy's stderr: the default
+				// log still carries them, and that is what the log collector and the
+				// TLS status pipeline read.
+				"include": []string{"http.log.access." + loggerName},
+				"level":   "INFO",
 			},
 		},
 	}

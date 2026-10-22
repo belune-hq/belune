@@ -17,6 +17,8 @@ type mockProxy struct {
 	routes  []proxy.RouteConfig // routes returned by ListRoutes
 	ensured []proxy.RouteConfig // what EnsureRoute was asked to make Caddy hold
 	skip    []string            // last auto-HTTPS skip list pushed
+	dns     []proxy.DNSPolicy   // last DNS-01 policy set pushed
+	dnsPush int                 // how many times it was pushed
 }
 
 func (m *mockProxy) AddRoute(_ context.Context, cfg proxy.RouteConfig) error {
@@ -45,6 +47,14 @@ func (m *mockProxy) SyncAutoHTTPS(_ context.Context, skip, _ []string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.skip = skip
+	return nil
+}
+
+func (m *mockProxy) SyncDNSPolicies(_ context.Context, p []proxy.DNSPolicy) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.dns = p
+	m.dnsPush++
 	return nil
 }
 

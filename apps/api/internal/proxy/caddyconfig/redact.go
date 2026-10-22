@@ -25,6 +25,11 @@ const Redacted = "[redacted]"
 // hiding a harmless field, which costs a reader a little detail, over leaking a
 // secret, which costs a certificate. Compared lower-cased.
 //
+// access_key_id (route53) is deliberately NOT here: AWS documents it as an
+// identifier, not a secret, and hiding it costs an operator the one way to tell
+// which IAM key a policy uses. TestRedactCoversEveryDNSProviderSecret pins that
+// decision — and fails if a provider gains a secret field this list lacks.
+//
 // "key" is the private key inside tls.certificates.load_pem[]; "password" holds
 // the bcrypt hash inside http_basic accounts.
 var secretKeys = map[string]struct{}{
@@ -37,6 +42,8 @@ var secretKeys = map[string]struct{}{
 	"api_key":           {},
 	"api_token":         {},
 	"auth_token":        {},
+	"zone_token":        {}, // cloudflare's optional Zone:Read token
+	"session_token":     {}, // route53's temporary-credentials token
 	"token":             {},
 	"credentials":       {},
 }

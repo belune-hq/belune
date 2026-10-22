@@ -252,6 +252,14 @@ func registerRoutes(r chi.Router, h *handler.Handler, auth *service.AuthService,
 				// are worse: they take over an EXISTING admin account with no
 				// re-verification at all. All require a session.
 				r.Get("/api/users", h.ListUsers)
+
+				// DNS-01 provider credentials. Admin-only for every verb, reads
+				// included: attaching one to a domain lets it obtain a certificate
+				// for any name in the token's zones, so members never see the list.
+				r.Get("/api/dns-providers", h.ListDNSProviders)
+				r.Post("/api/dns-providers", h.CreateDNSProvider)
+				r.Put("/api/dns-providers/{providerId}", h.UpdateDNSProvider)
+				r.Delete("/api/dns-providers/{providerId}", h.DeleteDNSProvider)
 				r.With(middleware.RequireSession()).Put("/api/users/{userId}/role", h.UpdateUserRole)
 				r.With(middleware.RequireSession()).Delete("/api/users/{userId}", h.DeleteUser)
 

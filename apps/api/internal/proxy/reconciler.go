@@ -359,6 +359,20 @@ func (r *Reconciler) reconcile(ctx context.Context) {
 	// skip computation" true. Removing a route here would have to remove it from
 	// both, or an ssl_mode=off host would start attracting certificate attempts.
 	expected, degraded = r.degrade(ctx, expected)
+
+	// DNS-01 policies come from the same pass as the routes, for the same reason:
+	// a policy for a name with no route would attract issuance nothing serves.
+	// A domain that cannot have its policy (module absent, no provider) is a
+	// Degradation, and its route stays.
+	dnsPlan, dnsDegraded, dnsErr := PlanDNSPolicies(ctx, r.queries, r.dec, r.caps)
+	if dnsErr != nil {
+		slog.Warn("proxy reconciler: dns challenge planning was incomplete", "error", dnsErr)
+		recordErr(dnsErr)
+	}
+	if len(dnsDegraded) > 0 {
+		degraded = append(degraded, dnsDegraded...)
+		sortDegradations(degraded)
+	}
 	r.mu.RLock()
 	degraded = carrySince(r.status.Degraded, degraded, start)
 	r.mu.RUnlock()
@@ -414,6 +428,17 @@ func (r *Reconciler) reconcile(ctx context.Context) {
 			skipCerts.add(dashboardHost)
 		}
 	}
+	// Before the routes, like the skip lists: a route that lands first starts an
+	// HTTP-01 attempt for a name that can only be validated over DNS. An empty
+	// plan from a failed read is NOT pushed, or one bad query would strip every
+	// policy and send every DNS-01 domain back to HTTP-01.
+	if dnsErr == nil || len(dnsPlan) > 0 {
+		if err := r.proxy.SyncDNSPolicies(ctx, dnsPlan); err != nil {
+			slog.Warn("proxy reconciler: failed to sync dns challenge policies", "error", err)
+			recordErr(err)
+		}
+	}
+
 	if err := r.proxy.SyncAutoHTTPS(ctx, skip.sorted(), skipCerts.sorted()); err != nil {
 		slog.Warn("proxy reconciler: failed to sync auto-HTTPS config", "error", err)
 		recordErr(err)
@@ -663,8 +688,15 @@ func (r *Reconciler) degrade(ctx context.Context, expected []RouteConfig) ([]Rou
 		}
 	}
 
-	sort.Slice(degraded, func(a, b int) bool {
-		x, y := degraded[a], degraded[b]
+	sortDegradations(degraded)
+	return out, degraded
+}
+
+// sortDegradations orders by hostname, path, feature, so the set compares equal
+// pass to pass — degradationsChanged is a value comparison.
+func sortDegradations(d []Degradation) {
+	sort.Slice(d, func(a, b int) bool {
+		x, y := d[a], d[b]
 		if x.Hostname != y.Hostname {
 			return x.Hostname < y.Hostname
 		}
@@ -673,7 +705,6 @@ func (r *Reconciler) degrade(ctx context.Context, expected []RouteConfig) ([]Rou
 		}
 		return x.Feature < y.Feature
 	})
-	return out, degraded
 }
 
 // ensureNetworks re-joins the proxy container to every project network it needs.

@@ -331,6 +331,8 @@ type MockProxyManager struct {
 	mu            sync.Mutex
 	AddedRoutes   []proxy.RouteConfig
 	RemovedRoutes []string
+	// DNSPolicies is the last set SyncDNSPolicies received.
+	DNSPolicies []proxy.DNSPolicy
 }
 
 func (m *MockProxyManager) AddRoute(_ context.Context, cfg proxy.RouteConfig) error {
@@ -350,6 +352,13 @@ func (m *MockProxyManager) RemoveRoute(_ context.Context, hostname, _ string) er
 func (m *MockProxyManager) SetupTLS(_ context.Context, _, _, _, _ string) error { return nil }
 
 func (m *MockProxyManager) SyncAutoHTTPS(_ context.Context, _, _ []string) error { return nil }
+
+func (m *MockProxyManager) SyncDNSPolicies(_ context.Context, policies []proxy.DNSPolicy) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.DNSPolicies = policies
+	return nil
+}
 
 func (m *MockProxyManager) SyncCertificates(_ context.Context, _ []proxy.HostCertificate) error {
 	return nil

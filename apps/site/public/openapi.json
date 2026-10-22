@@ -94,6 +94,9 @@
       "name": "Notification Channels (Admin)"
     },
     {
+      "name": "DNS Providers (Admin)"
+    },
+    {
       "name": "Users (Admin)"
     },
     {
@@ -1585,6 +1588,228 @@
         "security": [
           {
             "read": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/dns-providers": {
+      "get": {
+        "operationId": "ListDNSProviders",
+        "summary": "List Providers",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "DNS Providers (Admin)"
+        ],
+        "x-belune-order": 1,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/dnsProviderResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "read": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "CreateDNSProvider",
+        "summary": "Create Provider",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "DNS Providers (Admin)"
+        ],
+        "x-belune-order": 2,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/dnsProviderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/dnsProviderResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "write": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/dns-providers/{providerId}": {
+      "delete": {
+        "operationId": "DeleteDNSProvider",
+        "summary": "Delete Provider",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "DNS Providers (Admin)"
+        ],
+        "x-belune-order": 4,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "parameters": [
+          {
+            "name": "providerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "write": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "UpdateDNSProvider",
+        "summary": "Update Provider",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "DNS Providers (Admin)"
+        ],
+        "x-belune-order": 3,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "parameters": [
+          {
+            "name": "providerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/dnsProviderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/dnsProviderResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "write": []
           },
           {
             "session": []
@@ -14608,6 +14833,13 @@
               "null"
             ]
           },
+          "dns_provider_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "force_https": {
             "type": "boolean"
           },
@@ -14810,6 +15042,13 @@
           },
           "created_at": {
             "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dns_provider_id": {
+            "format": "uuid",
             "type": [
               "string",
               "null"
@@ -15191,6 +15430,13 @@
           },
           "created_at": {
             "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dns_provider_id": {
+            "format": "uuid",
             "type": [
               "string",
               "null"
@@ -16060,6 +16306,12 @@
           "container_port": {
             "type": [
               "integer",
+              "null"
+            ]
+          },
+          "dns_provider_id": {
+            "type": [
+              "string",
               "null"
             ]
           },
@@ -17518,6 +17770,48 @@
         },
         "type": "object"
       },
+      "dnsProviderRequest": {
+        "properties": {
+          "credentials": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "name": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "dnsProviderResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "domain_count": {
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "dockerContainerResponse": {
         "properties": {
           "created_at": {
@@ -17788,6 +18082,13 @@
               "null"
             ]
           },
+          "dns_provider_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "force_https": {
             "type": "boolean"
           },
@@ -17912,6 +18213,13 @@
           },
           "created_at": {
             "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dns_provider_id": {
+            "format": "uuid",
             "type": [
               "string",
               "null"
@@ -19658,8 +19966,17 @@
               "null"
             ]
           },
+          "dns_provider_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "force_https": {
-            "type": "boolean"
+            "type": [
+              "boolean",
+              "null"
+            ]
           },
           "hostname": {
             "type": "string"
@@ -19677,7 +19994,10 @@
             ]
           },
           "ssl_enabled": {
-            "type": "boolean"
+            "type": [
+              "boolean",
+              "null"
+            ]
           },
           "ssl_mode": {
             "type": "string"

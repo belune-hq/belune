@@ -12,9 +12,9 @@ import (
 )
 
 const createDomain = `-- name: CreateDomain :one
-INSERT INTO domains (application_id, hostname, ssl_enabled, container_port, force_https, ssl_mode, ssl_provider, ssl_credentials_encrypted, certificate_id, advanced_config, path, strip_path, internal_path)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-RETURNING id, application_id, hostname, ssl_enabled, caddy_config_id, container_port, force_https, ssl_mode, ssl_provider, ssl_credentials_encrypted, advanced_config, verified_at, created_at, certificate_id, tls_status, tls_issuer, tls_not_after, tls_last_checked_at, tls_error, tls_advisory, path, strip_path, internal_path
+INSERT INTO domains (application_id, hostname, ssl_enabled, container_port, force_https, ssl_mode, ssl_provider, ssl_credentials_encrypted, certificate_id, advanced_config, path, strip_path, internal_path, dns_provider_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+RETURNING id, application_id, hostname, ssl_enabled, caddy_config_id, container_port, force_https, ssl_mode, ssl_provider, ssl_credentials_encrypted, advanced_config, verified_at, created_at, certificate_id, tls_status, tls_issuer, tls_not_after, tls_last_checked_at, tls_error, tls_advisory, path, strip_path, internal_path, dns_provider_id
 `
 
 type CreateDomainParams struct {
@@ -31,6 +31,7 @@ type CreateDomainParams struct {
 	Path                    string      `json:"path"`
 	StripPath               bool        `json:"strip_path"`
 	InternalPath            string      `json:"internal_path"`
+	DnsProviderID           pgtype.UUID `json:"dns_provider_id"`
 }
 
 func (q *Queries) CreateDomain(ctx context.Context, arg CreateDomainParams) (Domain, error) {
@@ -48,6 +49,7 @@ func (q *Queries) CreateDomain(ctx context.Context, arg CreateDomainParams) (Dom
 		arg.Path,
 		arg.StripPath,
 		arg.InternalPath,
+		arg.DnsProviderID,
 	)
 	var i Domain
 	err := row.Scan(
@@ -74,6 +76,7 @@ func (q *Queries) CreateDomain(ctx context.Context, arg CreateDomainParams) (Dom
 		&i.Path,
 		&i.StripPath,
 		&i.InternalPath,
+		&i.DnsProviderID,
 	)
 	return i, err
 }
@@ -88,7 +91,7 @@ func (q *Queries) DeleteDomain(ctx context.Context, id pgtype.UUID) error {
 }
 
 const getDomain = `-- name: GetDomain :one
-SELECT id, application_id, hostname, ssl_enabled, caddy_config_id, container_port, force_https, ssl_mode, ssl_provider, ssl_credentials_encrypted, advanced_config, verified_at, created_at, certificate_id, tls_status, tls_issuer, tls_not_after, tls_last_checked_at, tls_error, tls_advisory, path, strip_path, internal_path FROM domains WHERE id = $1
+SELECT id, application_id, hostname, ssl_enabled, caddy_config_id, container_port, force_https, ssl_mode, ssl_provider, ssl_credentials_encrypted, advanced_config, verified_at, created_at, certificate_id, tls_status, tls_issuer, tls_not_after, tls_last_checked_at, tls_error, tls_advisory, path, strip_path, internal_path, dns_provider_id FROM domains WHERE id = $1
 `
 
 func (q *Queries) GetDomain(ctx context.Context, id pgtype.UUID) (Domain, error) {
@@ -118,12 +121,13 @@ func (q *Queries) GetDomain(ctx context.Context, id pgtype.UUID) (Domain, error)
 		&i.Path,
 		&i.StripPath,
 		&i.InternalPath,
+		&i.DnsProviderID,
 	)
 	return i, err
 }
 
 const getDomainByHostname = `-- name: GetDomainByHostname :one
-SELECT id, application_id, hostname, ssl_enabled, caddy_config_id, container_port, force_https, ssl_mode, ssl_provider, ssl_credentials_encrypted, advanced_config, verified_at, created_at, certificate_id, tls_status, tls_issuer, tls_not_after, tls_last_checked_at, tls_error, tls_advisory, path, strip_path, internal_path FROM domains WHERE hostname = $1 ORDER BY created_at ASC LIMIT 1
+SELECT id, application_id, hostname, ssl_enabled, caddy_config_id, container_port, force_https, ssl_mode, ssl_provider, ssl_credentials_encrypted, advanced_config, verified_at, created_at, certificate_id, tls_status, tls_issuer, tls_not_after, tls_last_checked_at, tls_error, tls_advisory, path, strip_path, internal_path, dns_provider_id FROM domains WHERE hostname = $1 ORDER BY created_at ASC LIMIT 1
 `
 
 // hostname stopped being unique in migration 000039: one host can now be split
@@ -159,12 +163,13 @@ func (q *Queries) GetDomainByHostname(ctx context.Context, hostname string) (Dom
 		&i.Path,
 		&i.StripPath,
 		&i.InternalPath,
+		&i.DnsProviderID,
 	)
 	return i, err
 }
 
 const getDomainForRequest = `-- name: GetDomainForRequest :one
-SELECT id, application_id, hostname, ssl_enabled, caddy_config_id, container_port, force_https, ssl_mode, ssl_provider, ssl_credentials_encrypted, advanced_config, verified_at, created_at, certificate_id, tls_status, tls_issuer, tls_not_after, tls_last_checked_at, tls_error, tls_advisory, path, strip_path, internal_path FROM domains
+SELECT id, application_id, hostname, ssl_enabled, caddy_config_id, container_port, force_https, ssl_mode, ssl_provider, ssl_credentials_encrypted, advanced_config, verified_at, created_at, certificate_id, tls_status, tls_issuer, tls_not_after, tls_last_checked_at, tls_error, tls_advisory, path, strip_path, internal_path, dns_provider_id FROM domains
 WHERE hostname = $1
   AND (
     $2::text = rtrim(path, '/')
@@ -212,6 +217,7 @@ func (q *Queries) GetDomainForRequest(ctx context.Context, arg GetDomainForReque
 		&i.Path,
 		&i.StripPath,
 		&i.InternalPath,
+		&i.DnsProviderID,
 	)
 	return i, err
 }
@@ -244,7 +250,7 @@ func (q *Queries) GetDomainOwnerUserID(ctx context.Context, id pgtype.UUID) (Get
 }
 
 const getDomainWithFeatures = `-- name: GetDomainWithFeatures :one
-SELECT d.id, d.application_id, d.hostname, d.ssl_enabled, d.caddy_config_id, d.container_port, d.force_https, d.ssl_mode, d.ssl_provider, d.ssl_credentials_encrypted, d.advanced_config, d.verified_at, d.created_at, d.certificate_id, d.tls_status, d.tls_issuer, d.tls_not_after, d.tls_last_checked_at, d.tls_error, d.tls_advisory, d.path, d.strip_path, d.internal_path, COALESCE(
+SELECT d.id, d.application_id, d.hostname, d.ssl_enabled, d.caddy_config_id, d.container_port, d.force_https, d.ssl_mode, d.ssl_provider, d.ssl_credentials_encrypted, d.advanced_config, d.verified_at, d.created_at, d.certificate_id, d.tls_status, d.tls_issuer, d.tls_not_after, d.tls_last_checked_at, d.tls_error, d.tls_advisory, d.path, d.strip_path, d.internal_path, d.dns_provider_id, COALESCE(
     (SELECT json_agg(json_build_object(
         'id', f.id, 'feature_type', f.feature_type,
         'config', f.config, 'enabled', f.enabled
@@ -279,6 +285,7 @@ type GetDomainWithFeaturesRow struct {
 	Path                    string             `json:"path"`
 	StripPath               bool               `json:"strip_path"`
 	InternalPath            string             `json:"internal_path"`
+	DnsProviderID           pgtype.UUID        `json:"dns_provider_id"`
 	RouteFeatures           interface{}        `json:"route_features"`
 }
 
@@ -312,13 +319,14 @@ func (q *Queries) GetDomainWithFeatures(ctx context.Context, id pgtype.UUID) (Ge
 		&i.Path,
 		&i.StripPath,
 		&i.InternalPath,
+		&i.DnsProviderID,
 		&i.RouteFeatures,
 	)
 	return i, err
 }
 
 const listDomainsByApplication = `-- name: ListDomainsByApplication :many
-SELECT id, application_id, hostname, ssl_enabled, caddy_config_id, container_port, force_https, ssl_mode, ssl_provider, ssl_credentials_encrypted, advanced_config, verified_at, created_at, certificate_id, tls_status, tls_issuer, tls_not_after, tls_last_checked_at, tls_error, tls_advisory, path, strip_path, internal_path FROM domains WHERE application_id = $1 ORDER BY created_at DESC
+SELECT id, application_id, hostname, ssl_enabled, caddy_config_id, container_port, force_https, ssl_mode, ssl_provider, ssl_credentials_encrypted, advanced_config, verified_at, created_at, certificate_id, tls_status, tls_issuer, tls_not_after, tls_last_checked_at, tls_error, tls_advisory, path, strip_path, internal_path, dns_provider_id FROM domains WHERE application_id = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListDomainsByApplication(ctx context.Context, applicationID pgtype.UUID) ([]Domain, error) {
@@ -354,6 +362,7 @@ func (q *Queries) ListDomainsByApplication(ctx context.Context, applicationID pg
 			&i.Path,
 			&i.StripPath,
 			&i.InternalPath,
+			&i.DnsProviderID,
 		); err != nil {
 			return nil, err
 		}
@@ -366,7 +375,7 @@ func (q *Queries) ListDomainsByApplication(ctx context.Context, applicationID pg
 }
 
 const listDomainsByApplicationWithFeatures = `-- name: ListDomainsByApplicationWithFeatures :many
-SELECT d.id, d.application_id, d.hostname, d.ssl_enabled, d.caddy_config_id, d.container_port, d.force_https, d.ssl_mode, d.ssl_provider, d.ssl_credentials_encrypted, d.advanced_config, d.verified_at, d.created_at, d.certificate_id, d.tls_status, d.tls_issuer, d.tls_not_after, d.tls_last_checked_at, d.tls_error, d.tls_advisory, d.path, d.strip_path, d.internal_path, COALESCE(
+SELECT d.id, d.application_id, d.hostname, d.ssl_enabled, d.caddy_config_id, d.container_port, d.force_https, d.ssl_mode, d.ssl_provider, d.ssl_credentials_encrypted, d.advanced_config, d.verified_at, d.created_at, d.certificate_id, d.tls_status, d.tls_issuer, d.tls_not_after, d.tls_last_checked_at, d.tls_error, d.tls_advisory, d.path, d.strip_path, d.internal_path, d.dns_provider_id, COALESCE(
     (SELECT json_agg(json_build_object(
         'id', f.id, 'feature_type', f.feature_type,
         'config', f.config, 'enabled', f.enabled
@@ -402,6 +411,7 @@ type ListDomainsByApplicationWithFeaturesRow struct {
 	Path                    string             `json:"path"`
 	StripPath               bool               `json:"strip_path"`
 	InternalPath            string             `json:"internal_path"`
+	DnsProviderID           pgtype.UUID        `json:"dns_provider_id"`
 	RouteFeatures           interface{}        `json:"route_features"`
 }
 
@@ -438,6 +448,7 @@ func (q *Queries) ListDomainsByApplicationWithFeatures(ctx context.Context, appl
 			&i.Path,
 			&i.StripPath,
 			&i.InternalPath,
+			&i.DnsProviderID,
 			&i.RouteFeatures,
 		); err != nil {
 			return nil, err
@@ -451,7 +462,7 @@ func (q *Queries) ListDomainsByApplicationWithFeatures(ctx context.Context, appl
 }
 
 const listDomainsByHostname = `-- name: ListDomainsByHostname :many
-SELECT id, application_id, hostname, ssl_enabled, caddy_config_id, container_port, force_https, ssl_mode, ssl_provider, ssl_credentials_encrypted, advanced_config, verified_at, created_at, certificate_id, tls_status, tls_issuer, tls_not_after, tls_last_checked_at, tls_error, tls_advisory, path, strip_path, internal_path FROM domains WHERE hostname = $1 ORDER BY created_at ASC
+SELECT id, application_id, hostname, ssl_enabled, caddy_config_id, container_port, force_https, ssl_mode, ssl_provider, ssl_credentials_encrypted, advanced_config, verified_at, created_at, certificate_id, tls_status, tls_issuer, tls_not_after, tls_last_checked_at, tls_error, tls_advisory, path, strip_path, internal_path, dns_provider_id FROM domains WHERE hostname = $1 ORDER BY created_at ASC
 `
 
 // Every row serving a hostname — one per path since migration 000039.
@@ -491,6 +502,7 @@ func (q *Queries) ListDomainsByHostname(ctx context.Context, hostname string) ([
 			&i.Path,
 			&i.StripPath,
 			&i.InternalPath,
+			&i.DnsProviderID,
 		); err != nil {
 			return nil, err
 		}
@@ -790,9 +802,9 @@ UPDATE domains SET
     hostname = $2, ssl_enabled = $3, container_port = $4, force_https = $5,
     ssl_mode = $6, ssl_provider = $7, ssl_credentials_encrypted = $8,
     certificate_id = $9, advanced_config = $10, path = $11, strip_path = $12,
-    internal_path = $13
+    internal_path = $13, dns_provider_id = $14
 WHERE id = $1
-RETURNING id, application_id, hostname, ssl_enabled, caddy_config_id, container_port, force_https, ssl_mode, ssl_provider, ssl_credentials_encrypted, advanced_config, verified_at, created_at, certificate_id, tls_status, tls_issuer, tls_not_after, tls_last_checked_at, tls_error, tls_advisory, path, strip_path, internal_path
+RETURNING id, application_id, hostname, ssl_enabled, caddy_config_id, container_port, force_https, ssl_mode, ssl_provider, ssl_credentials_encrypted, advanced_config, verified_at, created_at, certificate_id, tls_status, tls_issuer, tls_not_after, tls_last_checked_at, tls_error, tls_advisory, path, strip_path, internal_path, dns_provider_id
 `
 
 type UpdateDomainParams struct {
@@ -809,6 +821,7 @@ type UpdateDomainParams struct {
 	Path                    string      `json:"path"`
 	StripPath               bool        `json:"strip_path"`
 	InternalPath            string      `json:"internal_path"`
+	DnsProviderID           pgtype.UUID `json:"dns_provider_id"`
 }
 
 func (q *Queries) UpdateDomain(ctx context.Context, arg UpdateDomainParams) (Domain, error) {
@@ -826,6 +839,7 @@ func (q *Queries) UpdateDomain(ctx context.Context, arg UpdateDomainParams) (Dom
 		arg.Path,
 		arg.StripPath,
 		arg.InternalPath,
+		arg.DnsProviderID,
 	)
 	var i Domain
 	err := row.Scan(
@@ -852,6 +866,7 @@ func (q *Queries) UpdateDomain(ctx context.Context, arg UpdateDomainParams) (Dom
 		&i.Path,
 		&i.StripPath,
 		&i.InternalPath,
+		&i.DnsProviderID,
 	)
 	return i, err
 }

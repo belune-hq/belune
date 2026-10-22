@@ -9,6 +9,7 @@
     "git",
     "certificates",
     "notification-channels",
+    "dns-providers",
     "users",
     "quotas",
     "audit-logs",

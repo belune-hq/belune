@@ -55,9 +55,10 @@ func (p *failingProxy) AddRoute(_ context.Context, cfg proxy.RouteConfig) error 
 	return errors.New("proxy unavailable")
 }
 
-func (p *failingProxy) RemoveRoute(_ context.Context, hostname, _ string) error { return nil }
-func (p *failingProxy) SetupTLS(_ context.Context, _, _, _, _ string) error     { return nil }
-func (p *failingProxy) SyncAutoHTTPS(_ context.Context, _, _ []string) error    { return nil }
+func (p *failingProxy) RemoveRoute(_ context.Context, hostname, _ string) error      { return nil }
+func (p *failingProxy) SetupTLS(_ context.Context, _, _, _, _ string) error          { return nil }
+func (p *failingProxy) SyncAutoHTTPS(_ context.Context, _, _ []string) error         { return nil }
+func (p *failingProxy) SyncDNSPolicies(_ context.Context, _ []proxy.DNSPolicy) error { return nil }
 func (p *failingProxy) SyncCertificates(_ context.Context, _ []proxy.HostCertificate) error {
 	return nil
 }

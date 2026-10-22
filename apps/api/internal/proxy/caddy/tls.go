@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sort"
+	"strings"
 
 	"github.com/belune-hq/belune/internal/pkg/metrics"
 	"github.com/belune-hq/belune/internal/proxy"
@@ -45,11 +46,12 @@ func (c *Client) SetupTLS(ctx context.Context, hostname, sslMode, certPEM, keyPE
 		slog.Debug("TLS will be auto-provisioned by Caddy", "hostname", hostname)
 		return nil
 
-	case "dns_challenge":
-		// Withdrawn, and rejected at the API. Reachable only for a domain created
-		// before that: the stock caddy image carries no DNS provider modules, so a
-		// policy referencing one would be refused here anyway.
-		return fmt.Errorf("DNS challenge is not supported; switch this domain to Automatic or Custom")
+	case proxy.SSLModeDNSChallenge:
+		// Nothing to push per hostname: issuance is configured by the automation
+		// policy SyncDNSPolicies owns, which the route's host matcher then selects.
+		// If the policy is absent the reconciler reports the domain as degraded.
+		slog.Debug("TLS will be issued over the DNS challenge", "hostname", hostname)
+		return nil
 
 	case proxy.SSLModeCustom:
 		if certPEM == "" || keyPEM == "" {
@@ -275,4 +277,163 @@ func (c *Client) UsesInternalIssuer(ctx context.Context) (used bool, err error) 
 		}
 	}
 	return false, nil
+}
+
+// SyncDNSPolicies makes the DNS-01 automation policies in Caddy match the given
+// set, leaving every policy Belune does not own untouched (development's
+// local_certs issuer lives in the same list).
+//
+// Read-modify-write on the policies array, skipped when nothing changed: any
+// write here reloads Caddy's whole TLS app, and the reconciler calls this every
+// pass. Ours go first so a specific DNS policy is not shadowed by a catch-all.
+//
+// Unlike the config writers around it this returns Caddy's refusal. doConfig only
+// logs a 4xx, which suits a best-effort route push but would hide the one failure
+// that matters here: Caddy rejecting a policy (an unknown provider field) leaves
+// the domain on HTTP-01 for a name HTTP-01 can never validate.
+func (c *Client) SyncDNSPolicies(ctx context.Context, policies []proxy.DNSPolicy) (err error) {
+	defer func() { metrics.RecordCaddyCall("sync_dns_policies", err) }()
+
+	automation, err := c.readAutomation(ctx)
+	if err != nil {
+		return err
+	}
+
+	var foreign []json.RawMessage
+	var currentOurs []json.RawMessage
+	if raw, ok := automation["policies"]; ok {
+		var existing []json.RawMessage
+		if err := json.Unmarshal(raw, &existing); err != nil {
+			return fmt.Errorf("decode tls policies: %w", err)
+		}
+		for _, p := range existing {
+			if isOurPolicy(p) {
+				currentOurs = append(currentOurs, p)
+			} else {
+				foreign = append(foreign, p)
+			}
+		}
+	}
+
+	desired := make([]json.RawMessage, 0, len(policies))
+	for _, p := range policies {
+		raw, err := json.Marshal(p.CaddyPolicy())
+		if err != nil {
+			return fmt.Errorf("marshal dns policy: %w", err)
+		}
+		desired = append(desired, raw)
+	}
+
+	if sameJSONSet(currentOurs, desired) {
+		return nil
+	}
+	// Nothing of ours to remove and nothing to add: do not create an automation
+	// object on a Caddy that never had one.
+	if len(desired) == 0 && len(currentOurs) == 0 {
+		return nil
+	}
+
+	automation["policies"] = mustMarshal(append(desired, foreign...))
+	return c.writeAutomation(ctx, automation)
+}
+
+// readAutomation returns the tls automation object as raw members, or an empty
+// map when Caddy has none — the production case, in either of the shapes the
+// reader above also accepts.
+func (c *Client) readAutomation(ctx context.Context) (map[string]json.RawMessage, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.adminURL+automationPath, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		if isTransportError(err) {
+			return nil, fmt.Errorf("%w: %v", ErrCaddyUnreachable, err)
+		}
+		return nil, fmt.Errorf("get tls automation: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusBadRequest {
+		return map[string]json.RawMessage{}, nil
+	}
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("get tls automation: HTTP %d: %s", resp.StatusCode, string(body))
+	}
+	out := map[string]json.RawMessage{}
+	// A null body (the tls app exists, automation does not) decodes to the empty map.
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("decode tls automation: %w", err)
+	}
+	if out == nil {
+		out = map[string]json.RawMessage{}
+	}
+	return out, nil
+}
+
+// writeAutomation replaces the automation object. PUT creates it where absent
+// (including the parent tls app, as the certificates writer relies on); an
+// existing one answers 409 and is replaced with PATCH.
+func (c *Client) writeAutomation(ctx context.Context, automation map[string]json.RawMessage) error {
+	status, err := c.doConfig(ctx, http.MethodPut, automationPath, automation)
+	if err == nil && status == http.StatusConflict {
+		status, err = c.doConfig(ctx, http.MethodPatch, automationPath, automation)
+	}
+	if err != nil {
+		return fmt.Errorf("write tls automation: %w", err)
+	}
+	switch {
+	case status == 0:
+		return fmt.Errorf("%w: write tls automation", ErrCaddyUnreachable)
+	case status >= 400:
+		return fmt.Errorf("write tls automation: HTTP %d (see the caddy config update warning above)", status)
+	}
+	return nil
+}
+
+// isOurPolicy reports whether a policy carries Belune's @id prefix.
+func isOurPolicy(raw json.RawMessage) bool {
+	var p struct {
+		ID string `json:"@id"`
+	}
+	return json.Unmarshal(raw, &p) == nil && strings.HasPrefix(p.ID, proxy.PolicyIDPrefix)
+}
+
+// sameJSONSet compares two policy lists by canonical JSON, order-insensitively.
+// Caddy returns members re-encoded with its own key order, so raw bytes differ
+// from ours for the same policy.
+func sameJSONSet(a, b []json.RawMessage) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	canon := func(list []json.RawMessage) []string {
+		out := make([]string, 0, len(list))
+		for _, raw := range list {
+			var v any
+			if json.Unmarshal(raw, &v) != nil {
+				out = append(out, string(raw))
+				continue
+			}
+			norm, _ := json.Marshal(v) // map keys marshal sorted
+			out = append(out, string(norm))
+		}
+		sort.Strings(out)
+		return out
+	}
+	ca, cb := canon(a), canon(b)
+	for i := range ca {
+		if ca[i] != cb[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func mustMarshal(v any) json.RawMessage {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		panic(err) // only plain maps and RawMessages reach here
+	}
+	return raw
 }

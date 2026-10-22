@@ -125,6 +125,11 @@
         "title": "Notification Channels"
       },
       {
+        "slug": "dns-providers",
+        "tag": "DNS Providers (Admin)",
+        "title": "DNS Providers"
+      },
+      {
         "slug": "users",
         "tag": "Users (Admin)",
         "title": "Users"

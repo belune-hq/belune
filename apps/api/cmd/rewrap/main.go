@@ -58,6 +58,7 @@ var targets = []target{
 	{"git_integrations", "id", "config_encrypted"},
 	{"backup_destinations", "id", "credentials_encrypted"},
 	{"notification_channels", "id", "config_encrypted"},
+	{"dns_providers", "id", "credentials_encrypted"},
 	{"users", "id", "totp_secret_encrypted"},
 	// A tombstone holds the deleted database's credentials so a replacement
 	// restore can bring applications back without an env-var edit. Same secret,

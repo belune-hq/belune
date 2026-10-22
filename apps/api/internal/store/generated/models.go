@@ -362,6 +362,15 @@ type Deployment struct {
 	CommitAuthor    pgtype.Text        `json:"commit_author"`
 }
 
+type DnsProvider struct {
+	ID                   pgtype.UUID        `json:"id"`
+	Name                 string             `json:"name"`
+	Provider             string             `json:"provider"`
+	CredentialsEncrypted []byte             `json:"credentials_encrypted"`
+	CreatedAt            pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Domain struct {
 	ID                      pgtype.UUID        `json:"id"`
 	ApplicationID           pgtype.UUID        `json:"application_id"`
@@ -386,6 +395,7 @@ type Domain struct {
 	Path                    string             `json:"path"`
 	StripPath               bool               `json:"strip_path"`
 	InternalPath            string             `json:"internal_path"`
+	DnsProviderID           pgtype.UUID        `json:"dns_provider_id"`
 }
 
 type DomainRouteFeature struct {

@@ -29,13 +29,17 @@ const (
 	SSLModeAutomatic = "automatic"
 	// SSLModeCustom serves an operator-uploaded certificate from the store.
 	SSLModeCustom = "custom"
+	// SSLModeDNSChallenge obtains a certificate over ACME DNS-01 with a stored DNS
+	// provider credential. The only mode that can issue a wildcard, and the one
+	// that works for a hostname behind a CDN that never lets HTTP-01 through.
+	SSLModeDNSChallenge = "dns_challenge"
 )
 
 // ValidSSLMode reports whether mode is one the proxy knows how to serve. Empty
 // counts as automatic, which is the historical default.
 func ValidSSLMode(mode string) bool {
 	switch mode {
-	case "", SSLModeOff, SSLModeAutomatic, SSLModeCustom:
+	case "", SSLModeOff, SSLModeAutomatic, SSLModeCustom, SSLModeDNSChallenge:
 		return true
 	}
 	return false
@@ -67,7 +71,7 @@ type RouteConfig struct {
 	TargetURL    string `json:"target_url"`
 	TLS          bool   `json:"tls"`
 	ForceHTTPS   bool   `json:"force_https"`
-	SSLMode      string `json:"ssl_mode"`     // automatic, custom, off (dns_challenge is withdrawn)
+	SSLMode      string `json:"ssl_mode"`     // automatic, custom, off, dns_challenge
 	SSLProvider  string `json:"ssl_provider"` // e.g. cloudflare
 	// CertPEM/KeyPEM carry the decrypted certificate for ssl_mode=custom. They are
 	// pushed to Caddy in-band (load_pem) rather than written to disk, so the key
@@ -161,4 +165,8 @@ type ProxyManager interface {
 	// restarted Caddy comes back up with only its static Caddyfile, so the HTTPS
 	// listener and these lists have to be re-applied the same way routes are.
 	SyncAutoHTTPS(ctx context.Context, skip, skipCertificates []string) error
+
+	// SyncDNSPolicies makes the DNS-01 TLS automation policies match the given
+	// set, leaving policies Belune does not own alone. An empty set removes ours.
+	SyncDNSPolicies(ctx context.Context, policies []DNSPolicy) error
 }

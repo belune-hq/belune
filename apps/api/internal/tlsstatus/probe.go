@@ -52,6 +52,17 @@ type ProbeResult struct {
 	Error    string
 }
 
+// ProbeName is the name to handshake and verify against for a domain's hostname.
+// A wildcard ("*.example.com") is not a name a client can ask for, so it is probed
+// as a label under it: the handshake then proves the wildcard certificate is the
+// one Caddy selects, which is exactly the claim the status makes.
+func ProbeName(hostname string) string {
+	if rest, ok := strings.CutPrefix(hostname, "*."); ok {
+		return "belune-tls-probe." + rest
+	}
+	return hostname
+}
+
 // Probe completes a TLS handshake against addr with hostname as SNI and returns
 // the leaf certificate presented. The certificate is inspected, never trusted: it
 // may legitimately be self-signed, expired, or for the wrong host — which is

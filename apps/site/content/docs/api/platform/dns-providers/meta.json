@@ -1,0 +1,9 @@
+{
+  "title": "DNS Providers",
+  "pages": [
+    "list-dns-providers",
+    "create-dns-provider",
+    "update-dns-provider",
+    "delete-dns-provider"
+  ]
+}

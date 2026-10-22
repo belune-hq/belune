@@ -154,25 +154,3 @@ func TestCertificates_RequireAdmin(t *testing.T) {
 	resp := env.DoRequest(t, "GET", "/api/certificates", nil, testutil.AuthHeader(memberToken))
 	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
 }
-
-func TestAddDomain_RejectsDNSChallenge(t *testing.T) {
-	resetDB(t)
-	token := env.SetupAdmin(t, "admin@test.com", "password123")
-	project := env.CreateProject(t, token, "DNS Project", "dns-project")
-	projectID := extractID(project["id"])
-	app := env.CreateApplication(t, token, projectID, map[string]any{
-		"name": "DNS App", "type": "git", "build_type": "dockerfile", "source_repo": "https://github.com/test/repo",
-	})
-	appID := extractID(app["id"])
-
-	// The stock Caddy image has no DNS provider modules, so this mode could only
-	// ever leave the domain stuck on "pending". Refuse it with a reason rather
-	// than accepting a configuration that cannot work.
-	resp := env.DoRequest(t, "POST", fmt.Sprintf("/api/projects/%s/applications/%s/domains", projectID, appID), map[string]any{
-		"hostname": "dns.example.com", "ssl_enabled": true, "ssl_mode": "dns_challenge",
-	}, testutil.AuthHeader(token))
-	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
-
-	body := testutil.ReadJSON(t, resp)
-	assert.Contains(t, fmt.Sprint(body["error"]), "DNS challenge is not supported")
-}

@@ -21,6 +21,8 @@ export function addDomain(
     ssl_mode?: string;
     ssl_provider?: string;
     certificate_id?: string;
+    /** Absent keeps the stored provider; "" detaches it. */
+    dns_provider_id?: string;
   },
 ) {
   return api.post<DomainExpanded>(
@@ -39,10 +41,13 @@ export function updateDomain(
     strip_path?: boolean;
     internal_path?: string;
     container_port?: number | null;
+    ssl_enabled?: boolean;
     force_https?: boolean;
     ssl_mode?: string;
     ssl_provider?: string;
     certificate_id?: string;
+    /** Absent keeps the stored provider; "" detaches it. */
+    dns_provider_id?: string;
   },
 ) {
   return api.put<DomainExpanded>(

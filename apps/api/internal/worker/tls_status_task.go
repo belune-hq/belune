@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -68,7 +69,9 @@ func (h *TaskHandler) probeDomain(ctx context.Context, d generated.ListDomainsFo
 	// that isn't us" — is what a proxy in front of us looks like, and issuance
 	// through one works, so it is surfaced without condemning the domain.
 	var advisory string
-	if d.SslMode != proxy.SSLModeOff {
+	// A wildcard has no record of its own name to resolve; the apex and each
+	// subdomain are what DNS holds, and the probe below covers the certificate.
+	if d.SslMode != proxy.SSLModeOff && !strings.HasPrefix(d.Hostname, "*.") {
 		if msg, fatal := h.checkDNS(ctx, d.Hostname); msg != "" {
 			if fatal {
 				recordedErr = msg
@@ -78,8 +81,9 @@ func (h *TaskHandler) probeDomain(ctx context.Context, d generated.ListDomainsFo
 		}
 	}
 
-	leaf, dialErr := tlsstatus.Probe(ctx, h.Config.CaddyTLSProbeAddr, d.Hostname)
-	res := tlsstatus.Derive(d.SslMode, leaf, d.Hostname, dialErr, recordedErr, time.Now(), internalIssuer)
+	probeName := tlsstatus.ProbeName(d.Hostname)
+	leaf, dialErr := tlsstatus.Probe(ctx, h.Config.CaddyTLSProbeAddr, probeName)
+	res := tlsstatus.Derive(d.SslMode, leaf, probeName, dialErr, recordedErr, time.Now(), internalIssuer)
 
 	// The advisory is persisted to its own column, never to tls_error. Writing it
 	// to tls_error made it indistinguishable from a real ACME failure when the

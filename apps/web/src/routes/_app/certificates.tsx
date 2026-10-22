@@ -13,6 +13,7 @@ import {
   useDomainTLSStatus,
 } from "@/lib/hooks/use-certificates";
 import type { Certificate, DomainTLSStatus } from "@/lib/api/certificates";
+import { DNSProvidersCard } from "@/components/dns-providers/dns-providers-card";
 import { ExpiryCell } from "@/components/certificates/expiry-cell";
 import { EXPIRY_WARNING_DAYS, daysUntil } from "@/lib/expiry";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -251,6 +252,8 @@ function CertificatesContent() {
           />
         </CardContent>
       </Card>
+
+      <DNSProvidersCard />
 
       <DomainTLSTable />
 

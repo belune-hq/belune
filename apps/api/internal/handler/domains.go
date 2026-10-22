@@ -18,6 +18,7 @@ import (
 
 	"github.com/belune-hq/belune/internal/naming"
 	"github.com/belune-hq/belune/internal/proxy"
+	"github.com/belune-hq/belune/internal/server/middleware"
 	"github.com/belune-hq/belune/internal/service"
 	"github.com/belune-hq/belune/internal/store/generated"
 )
@@ -40,27 +41,109 @@ var validFeatureTypes = map[string]bool{
 }
 
 var validSSLModes = map[string]bool{
-	"automatic": true,
-	"custom":    true,
-	"off":       true,
+	"automatic":               true,
+	"custom":                  true,
+	"off":                     true,
+	proxy.SSLModeDNSChallenge: true,
 }
 
-// sslModeDNSChallenge is accepted by the database CHECK (and may exist on rows
-// created before it was withdrawn) but can no longer be set: it needs a Caddy
-// build carrying DNS provider modules, which the stock image does not have, so a
-// domain using it would sit on "pending" forever. Rejecting it with a reason
-// beats silently accepting a mode that cannot work.
-const sslModeDNSChallenge = "dns_challenge"
-
-// validateSSLMode returns a user-facing reason when the mode cannot be used.
+// validateSSLMode returns a user-facing reason when the mode is not one of the
+// four. Whether this Caddy can SERVE dns_challenge is a separate question,
+// answered by checkDNSChallenge, because it depends on state and on who asks.
 func validateSSLMode(mode string) string {
-	if mode == sslModeDNSChallenge {
-		return "DNS challenge is not supported. Use Automatic, or upload a certificate and choose Custom."
-	}
 	if !validSSLModes[mode] {
-		return "invalid ssl_mode: must be automatic, custom, or off"
+		return "invalid ssl_mode: must be automatic, custom, dns_challenge, or off"
 	}
 	return ""
+}
+
+// validDomainHostname accepts an RFC 1123 hostname, or "*." followed by one. The
+// wildcard form is syntactically valid here and rejected by wildcardNeedsDNS
+// unless the domain uses the DNS challenge: Let's Encrypt issues wildcards over
+// DNS-01 only, so anywhere else the domain would sit on "pending" for ever.
+func validDomainHostname(hostname string) bool {
+	return hostnameRegex.MatchString(strings.TrimPrefix(hostname, "*."))
+}
+
+// wildcardNeedsDNS returns a reason when a wildcard hostname is paired with a
+// mode that cannot issue for it.
+func wildcardNeedsDNS(hostname, sslMode string) string {
+	if strings.HasPrefix(hostname, "*.") && sslMode != proxy.SSLModeDNSChallenge {
+		return "wildcard hostnames need the DNS challenge: set ssl_mode to dns_challenge and choose a DNS provider"
+	}
+	return ""
+}
+
+// checkDNSChallenge applies the rules for the resolved dns_challenge state and
+// returns the HTTP status and reason for a refusal, or 0.
+//
+// Only a CHANGE is gated — entering the mode, or switching provider. A save that
+// leaves both alone (the dashboard re-sends every field on every edit) must not
+// start failing because the proxy is mid-restart, nor because the row predates
+// the withdrawal and has no provider; the reconciler degrades such a domain
+// visibly instead. This is the enable-time gate; the reconciler is the other.
+//
+// Admin only: the provider's token can edit every zone it covers, so letting a
+// project member point a domain at it lets them obtain a certificate for any name
+// there.
+func (h *Handler) checkDNSChallenge(r *http.Request, hostname, sslMode string, providerID pgtype.UUID, stored *generated.Domain) (int, string) {
+	if sslMode != proxy.SSLModeDNSChallenge {
+		return 0, ""
+	}
+	// The hostname is part of "unchanged": it is the input that decides WHICH names
+	// the credential issues for. Left out, a member could rename an admin's
+	// dns_challenge domain to "*.zone.com" and have the whole zone issued.
+	unchanged := stored != nil &&
+		stored.SslMode == proxy.SSLModeDNSChallenge &&
+		stored.DnsProviderID == providerID &&
+		stored.Hostname == hostname
+	if unchanged {
+		return 0, ""
+	}
+	if middleware.RoleFromContext(r.Context()) != "admin" {
+		return http.StatusForbidden, "only an administrator can use the DNS challenge, because it issues with a DNS credential that can edit whole zones"
+	}
+	if !providerID.Valid {
+		return http.StatusBadRequest, "the DNS challenge needs dns_provider_id: choose the provider that manages this domain's DNS"
+	}
+	prov, err := h.dnsProviderSvc.Get(r.Context(), providerID)
+	if err != nil {
+		return http.StatusBadRequest, "dns_provider_id does not match a DNS provider"
+	}
+
+	caps := h.capabilitySet(r)
+	// "Could not ask" and "does not have it" send the operator different places,
+	// so they are never merged into one message.
+	if !caps.Known() {
+		return http.StatusServiceUnavailable, "Belune could not reach the proxy to check it supports the DNS challenge. Try again in a moment."
+	}
+	module := proxy.DNSProviders[prov.Provider].Module
+	if !caps.Has(module) {
+		return http.StatusBadRequest, fmt.Sprintf(
+			"this proxy does not include the %s module. The DNS challenge needs the Belune Caddy image (BELUNE_CADDY_IMAGE); the stock caddy image has no DNS provider modules.", module)
+	}
+	return 0, ""
+}
+
+// resolveDNSProviderID decides which provider a write stores. A request that is
+// not in dns_challenge mode clears it, like certificate_id leaves custom; one in
+// that mode keeps the stored provider when it omits the field, so an unrelated
+// edit cannot detach it.
+func resolveDNSProviderID(sslMode string, requested *string, stored pgtype.UUID) (pgtype.UUID, error) {
+	if sslMode != proxy.SSLModeDNSChallenge {
+		return pgtype.UUID{}, nil
+	}
+	if requested == nil {
+		return stored, nil
+	}
+	if *requested == "" {
+		return pgtype.UUID{}, nil
+	}
+	var id pgtype.UUID
+	if err := id.Scan(*requested); err != nil {
+		return pgtype.UUID{}, fmt.Errorf("invalid dns_provider_id")
+	}
+	return id, nil
 }
 
 // normalizeDomainPath puts a public path prefix into the one shape the database
@@ -150,7 +233,7 @@ func validateInternalPath(p string) string {
 //
 // excludeID skips the row being updated, which would otherwise conflict with
 // itself.
-func (h *Handler) checkHostTLSAgreement(ctx context.Context, hostname, sslMode string, certID, excludeID pgtype.UUID) string {
+func (h *Handler) checkHostTLSAgreement(ctx context.Context, hostname, sslMode string, certID, dnsProviderID, excludeID pgtype.UUID) string {
 	siblings, err := h.queries.ListDomainsByHostname(ctx, hostname)
 	if err != nil {
 		// Not worth failing the request over — the reconciler still guards it.
@@ -165,6 +248,12 @@ func (h *Handler) checkHostTLSAgreement(ctx context.Context, hostname, sslMode s
 			return fmt.Sprintf(
 				"%s is already served with TLS mode %q on path %s. Every path on one hostname shares a certificate, so they must all use the same mode.",
 				hostname, s.SslMode, s.Path,
+			)
+		}
+		if sslMode == proxy.SSLModeDNSChallenge && s.DnsProviderID != dnsProviderID {
+			return fmt.Sprintf(
+				"%s already uses a different DNS provider on path %s. Every path on one hostname shares a certificate, so they must use the same provider.",
+				hostname, s.Path,
 			)
 		}
 		if sslMode == proxy.SSLModeCustom && s.CertificateID != certID {
@@ -327,16 +416,18 @@ func (h *Handler) GetDomain(w http.ResponseWriter, r *http.Request) {
 }
 
 type addDomainRequest struct {
-	Hostname       string          `json:"hostname"`
-	Path           string          `json:"path,omitempty"`
-	StripPath      bool            `json:"strip_path,omitempty"`
-	InternalPath   string          `json:"internal_path,omitempty"`
-	SSLEnabled     bool            `json:"ssl_enabled"`
-	ContainerPort  *int32          `json:"container_port,omitempty"`
-	ForceHTTPS     *bool           `json:"force_https,omitempty"`
-	SSLMode        string          `json:"ssl_mode,omitempty"`
-	SSLProvider    string          `json:"ssl_provider,omitempty"`
-	CertificateID  string          `json:"certificate_id,omitempty"`
+	Hostname      string `json:"hostname"`
+	Path          string `json:"path,omitempty"`
+	StripPath     bool   `json:"strip_path,omitempty"`
+	InternalPath  string `json:"internal_path,omitempty"`
+	SSLEnabled    bool   `json:"ssl_enabled"`
+	ContainerPort *int32 `json:"container_port,omitempty"`
+	ForceHTTPS    *bool  `json:"force_https,omitempty"`
+	SSLMode       string `json:"ssl_mode,omitempty"`
+	SSLProvider   string `json:"ssl_provider,omitempty"`
+	CertificateID string `json:"certificate_id,omitempty"`
+	// DNSProviderID selects the DNS provider for ssl_mode=dns_challenge.
+	DNSProviderID  *string         `json:"dns_provider_id,omitempty"`
 	AdvancedConfig json.RawMessage `json:"advanced_config,omitempty"`
 }
 
@@ -366,7 +457,7 @@ func (h *Handler) AddDomain(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "hostname is required")
 		return
 	}
-	if !hostnameRegex.MatchString(req.Hostname) {
+	if !validDomainHostname(req.Hostname) {
 		writeError(w, http.StatusBadRequest, "invalid hostname format")
 		return
 	}
@@ -380,6 +471,10 @@ func (h *Handler) AddDomain(w http.ResponseWriter, r *http.Request) {
 		}
 		sslMode = req.SSLMode
 	}
+	if reason := wildcardNeedsDNS(req.Hostname, sslMode); reason != "" {
+		writeError(w, http.StatusBadRequest, reason)
+		return
+	}
 	forceHTTPS := req.SSLEnabled
 	if req.ForceHTTPS != nil {
 		forceHTTPS = *req.ForceHTTPS
@@ -388,6 +483,15 @@ func (h *Handler) AddDomain(w http.ResponseWriter, r *http.Request) {
 	certUUID, err := parseCertificateID(sslMode, req.CertificateID)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	dnsProviderID, err := resolveDNSProviderID(sslMode, req.DNSProviderID, pgtype.UUID{})
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if status, reason := h.checkDNSChallenge(r, req.Hostname, sslMode, dnsProviderID, nil); reason != "" {
+		writeError(w, status, reason)
 		return
 	}
 
@@ -401,7 +505,7 @@ func (h *Handler) AddDomain(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, reason)
 		return
 	}
-	if reason := h.checkHostTLSAgreement(r.Context(), req.Hostname, sslMode, certUUID, pgtype.UUID{}); reason != "" {
+	if reason := h.checkHostTLSAgreement(r.Context(), req.Hostname, sslMode, certUUID, dnsProviderID, pgtype.UUID{}); reason != "" {
 		writeError(w, http.StatusBadRequest, reason)
 		return
 	}
@@ -414,6 +518,7 @@ func (h *Handler) AddDomain(w http.ResponseWriter, r *http.Request) {
 		SslMode:        sslMode,
 		SslProvider:    pgtype.Text{String: req.SSLProvider, Valid: req.SSLProvider != ""},
 		CertificateID:  certUUID,
+		DnsProviderID:  dnsProviderID,
 		AdvancedConfig: req.AdvancedConfig,
 		Path:           path,
 		StripPath:      req.StripPath,
@@ -454,15 +559,20 @@ type updateDomainRequest struct {
 	// Pointers, so "field absent" and "field set to root" stay distinguishable. A
 	// client that does not know about paths must leave a domain's path alone, not
 	// silently move it back to the root.
-	Path           *string         `json:"path,omitempty"`
-	StripPath      *bool           `json:"strip_path,omitempty"`
-	InternalPath   *string         `json:"internal_path,omitempty"`
-	SSLEnabled     bool            `json:"ssl_enabled"`
-	ContainerPort  *int32          `json:"container_port,omitempty"`
-	ForceHTTPS     bool            `json:"force_https"`
-	SSLMode        string          `json:"ssl_mode"`
-	SSLProvider    string          `json:"ssl_provider,omitempty"`
-	CertificateID  string          `json:"certificate_id,omitempty"`
+	Path         *string `json:"path,omitempty"`
+	StripPath    *bool   `json:"strip_path,omitempty"`
+	InternalPath *string `json:"internal_path,omitempty"`
+	// Pointers for the same reason: UpdateDomain writes both unconditionally, and
+	// a bool decodes an absent field as false, so omitting them used to switch a
+	// domain's TLS flag and HTTPS redirect off.
+	SSLEnabled    *bool  `json:"ssl_enabled"`
+	ContainerPort *int32 `json:"container_port,omitempty"`
+	ForceHTTPS    *bool  `json:"force_https"`
+	SSLMode       string `json:"ssl_mode"`
+	SSLProvider   string `json:"ssl_provider,omitempty"`
+	CertificateID string `json:"certificate_id,omitempty"`
+	// DNSProviderID: absent keeps the stored provider, "" detaches it.
+	DNSProviderID  *string         `json:"dns_provider_id,omitempty"`
 	AdvancedConfig json.RawMessage `json:"advanced_config,omitempty"`
 }
 
@@ -492,7 +602,7 @@ func (h *Handler) UpdateDomain(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "hostname is required")
 		return
 	}
-	if !hostnameRegex.MatchString(req.Hostname) {
+	if !validDomainHostname(req.Hostname) {
 		writeError(w, http.StatusBadRequest, "invalid hostname format")
 		return
 	}
@@ -539,6 +649,22 @@ func (h *Handler) UpdateDomain(w http.ResponseWriter, r *http.Request) {
 		// silently serve a certificate the caller never re-specified.
 		certUUID = pgtype.UUID{}
 	}
+	// Resolved the same way as the certificate: the stored provider is kept when
+	// the request omits it, and cleared on leaving the mode so a later switch back
+	// cannot pick up a credential nobody re-chose.
+	dnsProviderID, err := resolveDNSProviderID(sslMode, req.DNSProviderID, oldDomain.DnsProviderID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if reason := wildcardNeedsDNS(req.Hostname, sslMode); reason != "" {
+		writeError(w, http.StatusBadRequest, reason)
+		return
+	}
+	if status, reason := h.checkDNSChallenge(r, req.Hostname, sslMode, dnsProviderID, &oldDomain); reason != "" {
+		writeError(w, status, reason)
+		return
+	}
 
 	path, stripPath := oldDomain.Path, oldDomain.StripPath
 	internalPath := oldDomain.InternalPath
@@ -563,20 +689,44 @@ func (h *Handler) UpdateDomain(w http.ResponseWriter, r *http.Request) {
 	// ⚠️ sslMode, not req.SSLMode: the resolved mode is what will be written,
 	// and an omitted field is "" — which every sibling row mismatches, so the
 	// request got refused for disagreeing with the mode it was about to keep.
-	if reason := h.checkHostTLSAgreement(r.Context(), req.Hostname, sslMode, certUUID, domainUUID); reason != "" {
+	if reason := h.checkHostTLSAgreement(r.Context(), req.Hostname, sslMode, certUUID, dnsProviderID, domainUUID); reason != "" {
 		writeError(w, http.StatusBadRequest, reason)
 		return
 	}
 
+	// ⚠️ Every column UpdateDomain writes falls back to storage when the request
+	// omits it. This statement has wiped ssl_mode (v0.1.20) and container_port
+	// (v0.1.23), each time while a sibling field sat unprotected beside it, so the
+	// audit here is of the WHOLE statement: ssl_enabled and force_https (a bool
+	// decodes absent as false), ssl_provider, ssl_credentials_encrypted (never
+	// written by any request — passing nothing sent NULL), and advanced_config.
+	sslEnabled, forceHTTPS := oldDomain.SslEnabled, oldDomain.ForceHttps
+	if req.SSLEnabled != nil {
+		sslEnabled = *req.SSLEnabled
+	}
+	if req.ForceHTTPS != nil {
+		forceHTTPS = *req.ForceHTTPS
+	}
+	sslProvider := oldDomain.SslProvider
+	if req.SSLProvider != "" {
+		sslProvider = pgtype.Text{String: req.SSLProvider, Valid: true}
+	}
+	advancedConfig := oldDomain.AdvancedConfig
+	if len(req.AdvancedConfig) > 0 {
+		advancedConfig = req.AdvancedConfig
+	}
+
 	params := generated.UpdateDomainParams{
-		ID:             domainUUID,
-		Hostname:       req.Hostname,
-		SslEnabled:     req.SSLEnabled,
-		ForceHttps:     req.ForceHTTPS,
-		SslMode:        sslMode,
-		SslProvider:    pgtype.Text{String: req.SSLProvider, Valid: req.SSLProvider != ""},
-		CertificateID:  certUUID,
-		AdvancedConfig: req.AdvancedConfig,
+		ID:                      domainUUID,
+		Hostname:                req.Hostname,
+		SslEnabled:              sslEnabled,
+		ForceHttps:              forceHTTPS,
+		SslMode:                 sslMode,
+		SslProvider:             sslProvider,
+		SslCredentialsEncrypted: oldDomain.SslCredentialsEncrypted,
+		CertificateID:           certUUID,
+		DnsProviderID:           dnsProviderID,
+		AdvancedConfig:          advancedConfig,
 		// Carried over unless the request says otherwise. The update statement
 		// writes path unconditionally, so defaulting here would quietly move a
 		// domain back to the root every time anyone edited its port or TLS mode.
@@ -609,6 +759,12 @@ func (h *Handler) UpdateDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Policies first, route after: see syncDNSPolicies. Also when LEAVING the mode,
+	// so the policy stops naming a hostname it no longer issues for.
+	if oldDomain.SslMode == proxy.SSLModeDNSChallenge || sslMode == proxy.SSLModeDNSChallenge {
+		h.syncDNSPolicies(r.Context())
+	}
+
 	// Rebuild proxy route: remove old hostname (which may equal new), then
 	// AddRoute below installs the fresh config. Failure here is logged but
 	// non-fatal — a stale route is preferable to a 500 on the update endpoint.
@@ -634,14 +790,14 @@ func (h *Handler) UpdateDomain(w http.ResponseWriter, r *http.Request) {
 	if err := h.proxy.AddRoute(r.Context(), proxy.RouteConfig{
 		Hostname:       req.Hostname,
 		TargetURL:      fmt.Sprintf("http://%s:%d", containerName, port),
-		TLS:            req.SSLEnabled,
-		ForceHTTPS:     req.ForceHTTPS,
-		SSLMode:        req.SSLMode,
-		SSLProvider:    req.SSLProvider,
+		TLS:            sslEnabled,
+		ForceHTTPS:     forceHTTPS,
+		SSLMode:        sslMode,
+		SSLProvider:    sslProvider.String,
 		CertPEM:        cert.CertPEM,
 		KeyPEM:         cert.KeyPEM,
 		Features:       features,
-		AdvancedConfig: req.AdvancedConfig,
+		AdvancedConfig: advancedConfig,
 	}); err != nil {
 		slog.Error("failed to update proxy route", "hostname", req.Hostname, "error", err)
 	}
@@ -990,6 +1146,10 @@ func (h *Handler) RemoveDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if domain.SslMode == proxy.SSLModeDNSChallenge {
+		h.syncDNSPolicies(r.Context())
+	}
+
 	h.audit(r, "remove_domain", "domain", domainID, map[string]any{"hostname": domain.Hostname})
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
@@ -1047,6 +1207,10 @@ func (h *Handler) createDomainRecord(ctx context.Context, applicationID string, 
 	port := proxy.ResolveUpstreamPort(params.ContainerPort, row.ContainerPort)
 	cert := h.domainCertificate(ctx, domain)
 	containerName := naming.ContainerName(row.ProjectSlug, row.Slug, applicationID)
+
+	if domain.SslMode == proxy.SSLModeDNSChallenge {
+		h.syncDNSPolicies(ctx)
+	}
 
 	if err := h.proxy.AddRoute(ctx, proxy.RouteConfig{
 		Hostname:       params.Hostname,
@@ -1109,7 +1273,7 @@ func (h *Handler) ProvisionDomain(ctx context.Context, applicationID pgtype.UUID
 	// shares a certificate, so a hostname already served with TLS cannot gain
 	// an "off" row beside it — a state REST refuses and this path would
 	// otherwise have written in one tool call, with no tool to undo it.
-	if reason := h.checkHostTLSAgreement(ctx, hostname, proxy.SSLModeOff, pgtype.UUID{}, pgtype.UUID{}); reason != "" {
+	if reason := h.checkHostTLSAgreement(ctx, hostname, proxy.SSLModeOff, pgtype.UUID{}, pgtype.UUID{}, pgtype.UUID{}); reason != "" {
 		return generated.Domain{}, fmt.Errorf("%w: %s", errDomainTLSDisagreement, reason)
 	}
 	return h.createDomainRecord(ctx, uuidToString(applicationID), applicationID, generated.CreateDomainParams{

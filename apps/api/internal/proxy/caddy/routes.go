@@ -242,6 +242,10 @@ func pathMatcher(path string) []string {
 // is what actually guarantees uniqueness — "/api/v2" and "/api-v2" slugify the
 // same but must never collide onto one route.
 func routeIDFor(hostname, path string) string {
+	// A wildcard host ("*.example.com", ssl_mode=dns_challenge) keeps its "*" out
+	// of the id: it is an admin-API path segment, and the "_" cannot appear in a
+	// hostname we accept, so this cannot collide with a real "wildcard.example.com".
+	hostname = strings.Replace(hostname, "*.", "_wildcard_.", 1)
 	if isRootPath(path) {
 		return fmt.Sprintf("route-%s", hostname)
 	}
@@ -688,22 +692,25 @@ func (c *Client) reorderRoutes(ctx context.Context) error {
 // sortRoutesBySpecificity orders routes longest-path-first, so /api/v2 is
 // consulted before /api and both before the whole-host route for the same name.
 //
-// The ordering is total and deterministic — depth, then path, then host — not
+// The ordering is total and deterministic — exact before wildcard hosts, then
+// depth, then path, then host — not
 // merely "sorted enough". Two routes that compare equal would be left in
 // fetch order, which Caddy does not promise to be stable, so the config would
 // churn between passes and every reconcile would look like drift.
 func sortRoutesBySpecificity(routes []json.RawMessage) {
 	type key struct {
-		depth int
-		path  string
-		host  string
+		hostless bool
+		wild     bool
+		depth    int
+		path     string
+		host     string
 	}
 	keyOf := func(raw json.RawMessage) key {
 		var probe struct {
 			Match []caddyMatch `json:"match"`
 		}
 		if err := json.Unmarshal(raw, &probe); err != nil || len(probe.Match) == 0 {
-			return key{}
+			return key{hostless: true}
 		}
 		var host string
 		if len(probe.Match[0].Host) > 0 {
@@ -715,11 +722,25 @@ func sortRoutesBySpecificity(routes []json.RawMessage) {
 		if !isRootPath(path) {
 			depth = strings.Count(strings.Trim(path, "/"), "/") + 1
 		}
-		return key{depth: depth, path: path, host: host}
+		return key{hostless: host == "", wild: strings.HasPrefix(host, "*."), depth: depth, path: path, host: host}
 	}
 
 	sort.SliceStable(routes, func(i, j int) bool {
 		a, b := keyOf(routes[i]), keyOf(routes[j])
+		// A route with no host matcher matches EVERY request, so it goes last of
+		// all. reorderRoutes already sets such routes aside before sorting; this is
+		// the comparator not depending on that, because the v0.2.0-rc1 blocker was
+		// exactly a match-less route keyed ahead of every hostname (its empty path
+		// sorts before "/").
+		if a.hostless != b.hostless {
+			return !a.hostless
+		}
+		// Every exact host before any wildcard: "*.example.com" also matches
+		// app.example.com, and depth alone would let a wildcard's /api route
+		// outrank the exact host's whole-host route and steal its traffic.
+		if a.wild != b.wild {
+			return !a.wild
+		}
 		if a.depth != b.depth {
 			return a.depth > b.depth // deeper prefix wins
 		}

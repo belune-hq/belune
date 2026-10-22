@@ -311,6 +311,27 @@ else
   fail "request_logs is empty after 5 requests" "${perm:-the access-log tailer is reading nothing}"
 fi
 
+# Caught by reading the file, not the tailer: a named Caddy log with no `include`
+# receives EVERY logger, so ACME and TLS lines — and any module's own log line,
+# such as a WAF rule match carrying the request URI and matched payload — sat in
+# this world-readable, week-long file beside entries whose URI is redacted. The
+# tailer skips them (no request.host), so request_logs looked perfectly healthy.
+# The first count is the anti-vacuity guard: an empty or missing file has no stray
+# lines either, and must not pass for a clean one.
+count_in_access_log() {
+  "${COMPOSE[@]}" exec -T caddy sh -c "grep $1 '\"request\":' /var/log/caddy/access.log || true" 2>/dev/null | tr -d '[:space:]' || true
+}
+entries="$(count_in_access_log -c)"
+stray="$(count_in_access_log -vc)"
+if [[ "${entries:-0}" -eq 0 ]]; then
+  fail "the access log holds no access entries" "request_logs has rows, so the file should too — is the check reading the right path?"
+elif [[ "${stray:-0}" -eq 0 ]]; then
+  pass "the access log holds only access entries ($entries), no other Caddy logger"
+else
+  fail "$stray non-access lines in the world-readable access log" \
+    "$("${COMPOSE[@]}" exec -T caddy sh -c "grep -v -m1 '\"request\":' /var/log/caddy/access.log" 2>/dev/null | cut -c1-200)"
+fi
+
 info "9. Nothing is silently failing in a retry loop"
 # The failure mode this whole drill is about: a warning, on a loop, that no one
 # reads, while a feature does nothing.

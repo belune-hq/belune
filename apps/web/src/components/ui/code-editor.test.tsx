@@ -204,3 +204,189 @@ describe("CodeEditor", () => {
     );
   });
 });
+
+describe("onBlur", () => {
+  it("reports the editor losing focus", async () => {
+    const onBlur = vi.fn();
+    const { container } = render(
+      <CodeEditor language="plain" value="x" onChange={noop} onBlur={onBlur} />,
+    );
+    const view = await mounted(container);
+
+    fireEvent.blur(view.contentDOM);
+
+    expect(onBlur).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls the handler it has now, not the one it mounted with", async () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const { container, rerender } = render(
+      <CodeEditor language="plain" value="x" onChange={noop} onBlur={first} />,
+    );
+    const view = await mounted(container);
+
+    rerender(
+      <CodeEditor language="plain" value="x" onChange={noop} onBlur={second} />,
+    );
+    fireEvent.blur(view.contentDOM);
+
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledTimes(1);
+  });
+
+  it("is optional", async () => {
+    const { container } = render(
+      <CodeEditor language="plain" value="x" onChange={noop} />,
+    );
+    const view = await mounted(container);
+    expect(() => fireEvent.blur(view.contentDOM)).not.toThrow();
+  });
+});
+
+// A mounted file is arbitrary: nginx.conf, ini, a shell script. "plain" is no
+// parser, and it must not offer opinions about a format it does not know.
+describe("the plain language", () => {
+  it("highlights nothing, where JSON highlights keys and strings", async () => {
+    // Syntax spans only: a matched bracket pair is marked in both languages.
+    const styled = (container: HTMLElement) =>
+      container.querySelectorAll(
+        ".cm-line span:not(.cm-matchingBracket):not(.cm-nonmatchingBracket)",
+      ).length;
+    const json = render(
+      <CodeEditor language="json" value='{"a": "b"}' onChange={noop} />,
+    );
+    await mounted(json.container);
+    expect(styled(json.container)).toBeGreaterThan(0);
+    json.unmount();
+
+    const plain = render(
+      <CodeEditor language="plain" value='{"a": "b"}' onChange={noop} />,
+    );
+    await mounted(plain.container);
+    expect(styled(plain.container)).toBe(0);
+  });
+
+  // An unmatched bracket is a fact about structure in JSON, which JSON.parse
+  // rejects too. In a file with no grammar it is just a character (a shell
+  // `case x)`, a smiley in a comment), and tinting it would be a verdict the
+  // editor has no basis for.
+  it("does not flag an unmatched bracket, and still shows a match", async () => {
+    const at = (view: EditorView, anchor: number) =>
+      view.dispatch({ selection: { anchor } });
+
+    const plain = render(
+      <CodeEditor language="plain" value="(oops" onChange={noop} />,
+    );
+    const plainView = await mounted(plain.container);
+    at(plainView, 1);
+    expect(plain.container.querySelector(".cm-nonmatchingBracket")).toBeNull();
+    plain.unmount();
+
+    const matched = render(
+      <CodeEditor language="plain" value="(ok)" onChange={noop} />,
+    );
+    const matchedView = await mounted(matched.container);
+    at(matchedView, 1);
+    expect(
+      matched.container.querySelectorAll(".cm-matchingBracket"),
+    ).toHaveLength(2);
+    matched.unmount();
+
+    // JSON keeps the default, so the difference above is the plain path's own.
+    const json = render(
+      <CodeEditor language="json" value='{"a":' onChange={noop} />,
+    );
+    const jsonView = await mounted(json.container);
+    at(jsonView, 1);
+    expect(
+      json.container.querySelector(".cm-nonmatchingBracket"),
+    ).not.toBeNull();
+  });
+
+  it("shows its placeholder like any other language", async () => {
+    const { container } = render(
+      <CodeEditor
+        language="plain"
+        value=""
+        onChange={noop}
+        placeholder="file contents..."
+      />,
+    );
+    await mounted(container);
+    expect(container.querySelector(".cm-placeholder")?.textContent).toBe(
+      "file contents...",
+    );
+  });
+});
+
+describe("maxHeight and text size", () => {
+  const host = (container: HTMLElement) =>
+    container.querySelector<HTMLElement>("[data-slot=code-editor]")!;
+
+  it("takes the height cap from the caller, and leaves the default alone without one", async () => {
+    const capped = render(
+      <CodeEditor
+        language="plain"
+        value="x"
+        onChange={noop}
+        maxHeight="32rem"
+      />,
+    );
+    await mounted(capped.container);
+    expect(
+      host(capped.container).style.getPropertyValue("--code-editor-max-h"),
+    ).toBe("32rem");
+    capped.unmount();
+
+    const plain = render(
+      <CodeEditor language="plain" value="x" onChange={noop} />,
+    );
+    await mounted(plain.container);
+    expect(
+      host(plain.container).style.getPropertyValue("--code-editor-max-h"),
+    ).toBe("");
+  });
+
+  // This field is text-sm today and the primitive defaults to text-xs. The
+  // caller's class lands after the default in cn(), so it should win: checked,
+  // not assumed, because a naive switch would silently shrink every mounted file.
+  it("lets the caller's text size win over the default", async () => {
+    const small = render(
+      <CodeEditor
+        language="plain"
+        value="x"
+        onChange={noop}
+        className="text-sm"
+      />,
+    );
+    await mounted(small.container);
+    const classes = host(small.container).classList;
+    expect(classes.contains("text-sm")).toBe(true);
+    expect(classes.contains("text-xs")).toBe(false);
+    small.unmount();
+
+    const dflt = render(
+      <CodeEditor language="plain" value="x" onChange={noop} />,
+    );
+    await mounted(dflt.container);
+    expect(host(dflt.container).classList.contains("text-xs")).toBe(true);
+  });
+});
+
+// Opening a file must not rewrite it. CodeMirror normalises line endings the way
+// a <textarea> does, but only when the person edits: a value it merely displays
+// must not be reported back as a change.
+describe("a value the editor only displays", () => {
+  it("is not reported as a change, even when the editor normalises it", async () => {
+    const onChange = vi.fn();
+    const crlf = "server {\r\n  listen 80;\r\n}\r\n";
+    const { container } = render(
+      <CodeEditor language="plain" value={crlf} onChange={onChange} />,
+    );
+    const view = await mounted(container);
+
+    expect(view.state.doc.toString()).toBe("server {\n  listen 80;\n}\n");
+    expect(onChange).not.toHaveBeenCalled();
+  });
+});

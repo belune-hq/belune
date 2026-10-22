@@ -13,6 +13,7 @@ import {
 import type { FileMount } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { CodeEditor } from "@/components/ui/code-editor";
 import { IconAction } from "@/components/ui/icon-action";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,7 +26,6 @@ import {
 import { fieldError } from "@/lib/utils/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -342,7 +342,10 @@ function FileMountForm({
           children={(field) => (
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <Label htmlFor="fm-content">Content</Label>
+                {/* An id, not htmlFor: a <label for> cannot reach the editor's
+                    contenteditable, so the editor is named through
+                    aria-labelledby instead. */}
+                <Label id="fm-content-label">Content</Label>
                 {editing && editing.is_secret && !revealed && (
                   <Button
                     type="button"
@@ -359,9 +362,30 @@ function FileMountForm({
                   </Button>
                 )}
               </div>
-              <Textarea
-                id="fm-content"
-                className="min-h-40 font-mono text-sm"
+              {/* Block, never `compact`: a mounted file is multi-line by
+                  definition, and compact falls back to an <input>, which
+                  strips newlines. If the editor chunk had not loaded, the
+                  first keystroke would flatten someone's nginx.conf.
+
+                  "plain": a mounted file can be anything, so there is no
+                  grammar to offer, and the language is deliberately not
+                  guessed from the mount path's extension (that needs a
+                  mapping, and a decision for when the extension lies).
+
+                  Size and cap live here, not in the primitive. text-sm is what
+                  this field has always been (the primitive defaults to
+                  text-xs). The textarea this replaced grew without limit in a
+                  dialog that cannot scroll, so a long file pushed Save off the
+                  screen; the cap is 24rem, or 40% of the viewport on a short
+                  one, which keeps the dialog's other rows and its buttons
+                  reachable. */}
+              <CodeEditor
+                language="plain"
+                className="min-h-40 text-sm"
+                maxHeight="min(24rem, 40vh)"
+                // For a hidden secret the box is empty because the value is
+                // hidden, not because there is nothing there: that is what this
+                // tells someone, and it must survive the move to the editor.
                 placeholder={
                   editing && editing.is_secret && !revealed
                     ? "•••••••• hidden — reveal to edit, or type to replace"
@@ -369,7 +393,8 @@ function FileMountForm({
                 }
                 value={field.state.value}
                 onBlur={field.handleBlur}
-                onChange={(e) => field.handleChange(e.target.value)}
+                onChange={field.handleChange}
+                aria-labelledby="fm-content-label"
               />
             </div>
           )}

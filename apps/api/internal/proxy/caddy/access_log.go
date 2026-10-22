@@ -20,6 +20,20 @@ func (c *Client) ConfigureAccessLogs(ctx context.Context) error {
 	// the host at a different path (e.g. infra/caddy/logs/access.log).
 	const caddyLogPath = "/var/log/caddy/access.log"
 
+	uriRedaction := map[string]any{
+		"filter": "regexp",
+		// Only the secret is replaced; the route stays intact so these requests
+		// remain greppable. Go expands a group that did not take part in the match
+		// to nothing, so each alternative keeps just its own prefix. The groups
+		// are braced so an edit to the value cannot change what they mean: Go
+		// reads "$1REDACTED" as a group named "1REDACTED", which is empty, and
+		// the prefix would vanish without an error.
+		//
+		// The second alternative needs the ? or & so that `access_token=` and the
+		// like are left alone, and stops at & so later parameters survive.
+		"regexp": `(/api/webhooks/deploy/)[^/?\s]+|([?&]token=)[^&\s]+`,
+		"value":  "${1}${2}[REDACTED]",
+	}
 	// Step 1: create/replace the named logger. The logging section may not exist
 	// yet (fresh Caddy) or may already be there (API restart against a live
 	// Caddy), so neither PUT nor PATCH alone suffices.
@@ -44,21 +58,26 @@ func (c *Client) ConfigureAccessLogs(ctx context.Context) error {
 					// precisely because 0644 makes a leak here cheap to exploit.
 					"mode": "0644",
 				},
-				// The deploy-hook token travels in the request path, and an access
-				// log records the request line verbatim — so the raw URI would
-				// persist here as a working credential. The filter encoder wraps
-				// the JSON encoder and rewrites just that one field.
+				// Two credentials reach an access entry in the clear, and an access
+				// log records the request line verbatim, so each would persist here
+				// as a working one: the deploy-hook token in the request path, and
+				// the single-use `?token=` of the password-reset and invitation
+				// links. The filter encoder wraps the JSON encoder and rewrites
+				// named fields.
+				//
+				// ⚠️ It takes ONE filter per field, so both patterns share one
+				// regexp. Adding a second filter for the same field would not add a
+				// redaction, it would replace this one — and drop whichever came
+				// first without any error.
 				"encoder": map[string]any{
 					"format": "filter",
 					"wrap":   map[string]any{"format": "json"},
 					"fields": map[string]any{
-						"request>uri": map[string]any{
-							"filter": "regexp",
-							// Only the token segment is replaced; the route stays
-							// intact so these requests remain greppable.
-							"regexp": `/api/webhooks/deploy/[^/?\s]+`,
-							"value":  "/api/webhooks/deploy/[REDACTED]",
-						},
+						"request>uri": uriRedaction,
+						// A browser sends the page's own URL as Referer on every
+						// same-origin request it makes, so loading /reset-password?token=…
+						// logs the token again against each asset and API call after it.
+						"request>headers>Referer": uriRedaction,
 					},
 				},
 				// ⚠️ A named log with no `include` is a catch-all: Caddy sent it
@@ -74,6 +93,20 @@ func (c *Client) ConfigureAccessLogs(ctx context.Context) error {
 				// TLS status pipeline read.
 				"include": []string{"http.log.access." + loggerName},
 				"level":   "INFO",
+			},
+			// ⚠️ The access entries are ALSO copied to Caddy's default log — stderr,
+			// so Docker's json-file logs and the Maintenance panel — and nothing
+			// there filters them, so the redaction above would protect the file
+			// and leave the same credentials in the container log. Requests belong
+			// in the request log (fed by the tailer from the file), not in the
+			// proxy's diagnostics.
+			//
+			// Only the access logger is excluded: ACME/TLS lines and every
+			// module's own log still reach stderr, which is where the TLS status
+			// pipeline reads them. Naming the default log writes it explicitly,
+			// so its writer and encoder are left to Caddy's own defaults.
+			"default": map[string]any{
+				"exclude": []string{"http.log.access." + loggerName},
 			},
 		},
 	}

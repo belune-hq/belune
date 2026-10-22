@@ -17,7 +17,13 @@
 	}
 }
 
-# Default site — Belune dashboard (not logged — internal traffic only).
+# Default site — Belune dashboard. It is access-logged like every other site:
+# request logging is configured on the server (srv0) by the API at startup, not
+# per site, so dashboard requests land in the same world-readable file as app
+# traffic. The request-log tailer skips them (not an application domain), and
+# the log's encoder redacts the secrets that travel in their URLs — the deploy
+# hook token and the ?token= of the reset and invitation links. See
+# ConfigureAccessLogs in proxy/caddy/access_log.go before changing either.
 #
 # This declares :80 only, yet srv0 ends up listening on :443 as well. The
 # HTTPS listener is added at runtime by the API (proxy/caddy.ensureServer),

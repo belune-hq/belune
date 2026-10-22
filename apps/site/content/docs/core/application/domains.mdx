@@ -26,11 +26,7 @@ Before adding a domain for the application, add an **A** or **AAAA** record on t
 
 Force HTTPS is unavailable when TLS is off, for the obvious reason: there's nothing to redirect to.
 
-<Callout type="info">
-  The DNS-01 challenge isn't offered on any domain, including wildcards. It needs an API token for your DNS provider, and Belune has nowhere to store one yet — so a domain relying on it would only ever sit at *Pending*. The Caddy image Belune ships already carries the Cloudflare, Route 53 and DigitalOcean DNS modules, so adding DNS-01 later won't need a new image.
-
-  To use a wildcard domain today, upload a custom certificate instead.
-</Callout>
+- **DNS Challenge** — Caddy proves ownership by creating a DNS record through a provider you've configured under **Settings → Certificates → DNS Providers**, instead of answering over HTTP. It is the only mode that can issue a wildcard (`*.example.com`), and it works for a domain behind Cloudflare's proxy, where the HTTP challenge can never succeed. Administrators only, and it needs the Belune Caddy image; see [Certificates](/docs/core/server/certificates#dns-challenge-and-wildcards).
 
 ## Routing Hostnames to Different Ports
 

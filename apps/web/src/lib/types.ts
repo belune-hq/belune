@@ -512,6 +512,8 @@ export interface DomainExpanded extends Domain {
   ssl_mode: string;
   ssl_provider?: string | null;
   certificate_id?: string | null;
+  /** The DNS provider issuing this domain's certificate (ssl_mode dns_challenge). */
+  dns_provider_id?: string | null;
   advanced_config?: unknown;
   /** The API names this `route_features` (the SQL alias is returned verbatim).
    *  It was declared here as `features`, so every read was silently undefined:

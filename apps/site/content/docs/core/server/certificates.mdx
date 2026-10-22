@@ -114,9 +114,26 @@ echo | openssl s_client -connect <server-ip>:443 -servername belune.example.com 
   before one expires.
 </Callout>
 
-## Wildcards
+## DNS Challenge and Wildcards
 
-Let's Encrypt only issues wildcards over a DNS challenge, which the stock Caddy
-image can't do. Each app domain gets its own certificate automatically, which
-covers the normal case. If you genuinely need a wildcard, issue it elsewhere and
-upload it as a **Custom** certificate.
+Let's Encrypt only issues wildcards over a DNS challenge, and a domain behind
+Cloudflare's proxy can never pass the HTTP one. The DNS challenge solves both:
+Caddy creates a TXT record through your DNS provider's API instead of answering
+on port 80.
+
+1. Under **DNS Providers**, add a provider (Cloudflare, Route 53 or
+   DigitalOcean) with a token that can edit DNS records for your zones. The
+   token is encrypted at rest and never shown again; to change it, edit the
+   provider and enter a new one.
+2. On the domain, set **SSL Mode** to **DNS Challenge** and pick the provider.
+   For a wildcard, use `*.example.com` as the hostname.
+
+Choosing the DNS challenge is an administrator action, because the token can
+edit every record in its zone, and the same goes for renaming a domain that
+already uses it. A provider can't be deleted while a domain still uses it.
+
+<Callout type="warn">
+  This needs the Belune Caddy image. On the stock `caddy` image the domain stays
+  on its route but shows as degraded in the Proxy page, because Caddy has no
+  DNS provider module to issue with.
+</Callout>

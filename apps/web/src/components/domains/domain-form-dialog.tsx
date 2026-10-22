@@ -41,32 +41,30 @@ import {
   useCertificates,
   useUsableCertificates,
 } from "@/lib/hooks/use-certificates";
+import { useDNSProviders } from "@/lib/hooks/use-dns-providers";
 import { useAuthStore } from "@/lib/stores/auth";
 import type { DomainExpanded } from "@/lib/types";
 
 const HOSTNAME_REGEX =
   /^([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
 
-// DNS Challenge is deliberately absent: it needs a Caddy build carrying DNS
-// provider modules, which the stock image does not have, so offering it would
-// only ever produce a domain stuck on "pending". The API rejects it too. A domain
-// created before this was removed still renders (see legacyModeFor) so it can be
-// switched to something that works.
+// A wildcard is the same hostname behind "*.", and only the DNS challenge can
+// issue one — Let's Encrypt validates wildcards over DNS-01 alone.
+const isWildcard = (hostname: string) => hostname.startsWith("*.");
+const hostnameValid = (hostname: string) =>
+  HOSTNAME_REGEX.test(isWildcard(hostname) ? hostname.slice(2) : hostname);
+
+const DNS_MODE = {
+  value: "dns_challenge",
+  label: "DNS Challenge (wildcard)",
+  Icon: GlobeIcon,
+} as const;
+
 const SSL_MODES = [
   { value: "automatic", label: "Automatic (ACME)", Icon: ShieldCheckIcon },
   { value: "custom", label: "Custom Certificate", Icon: KeyRoundIcon },
   { value: "off", label: "Off", Icon: ShieldOffIcon },
 ] as const;
-
-/** An unsupported mode a domain is already on, so the Select is never blank. */
-function legacyModeFor(mode: string | undefined) {
-  if (!mode || SSL_MODES.some((m) => m.value === mode)) return null;
-  return {
-    value: mode,
-    label: `${mode.replace(/_/g, " ")} (no longer supported)`,
-    Icon: GlobeIcon,
-  } as const;
-}
 
 interface Props {
   projectId: string;
@@ -129,7 +127,13 @@ function DomainForm({
   // certificate covers. Both hooks are called unconditionally and gated by
   // `enabled`, since a hook cannot be called conditionally.
   const isAdmin = useAuthStore((s) => s.user?.role === "admin");
-  const legacyMode = legacyModeFor(domain?.ssl_mode);
+  // The DNS challenge issues with a credential that can edit whole zones, so the
+  // API reserves choosing it for admins. A member still sees it on a domain that
+  // already uses it, so the Select is never blank.
+  const dnsModeAvailable = isAdmin || domain?.ssl_mode === DNS_MODE.value;
+  const sslModes = dnsModeAvailable ? [...SSL_MODES, DNS_MODE] : SSL_MODES;
+  const { data: dnsProviders = [], isLoading: dnsProvidersLoading } =
+    useDNSProviders(isAdmin);
 
   const form = useForm({
     defaultValues: {
@@ -144,6 +148,7 @@ function DomainForm({
       container_port: domain?.container_port?.toString() ?? "",
       force_https: domain?.force_https ?? true,
       certificate_id: domain?.certificate_id ?? "",
+      dns_provider_id: domain?.dns_provider_id ?? "",
     },
     onSubmit: ({ value }) => {
       const trimmed = value.hostname.trim();
@@ -169,6 +174,7 @@ function DomainForm({
               path,
               strip_path: stripPath,
               internal_path: internalPath,
+              ssl_enabled: value.ssl_mode !== "off",
               ssl_mode: value.ssl_mode,
               force_https: value.force_https,
               // 0, not null, to clear the override. The server reads an absent
@@ -178,6 +184,10 @@ function DomainForm({
               // pointer. 0 is the documented way to remove an override.
               container_port: portNum ?? 0,
               certificate_id: value.certificate_id || undefined,
+              dns_provider_id:
+                value.ssl_mode === "dns_challenge"
+                  ? value.dns_provider_id || undefined
+                  : undefined,
             })
           : addDomain.mutateAsync({
               hostname: trimmed,
@@ -189,6 +199,10 @@ function DomainForm({
               force_https: value.force_https,
               container_port: portNum ?? undefined,
               certificate_id: value.certificate_id || undefined,
+              dns_provider_id:
+                value.ssl_mode === "dns_challenge"
+                  ? value.dns_provider_id || undefined
+                  : undefined,
             });
 
       toast.promise(
@@ -253,10 +267,19 @@ function DomainForm({
           <form.Field
             name="hostname"
             validators={{
-              onChange: z
-                .string()
-                .min(1, "Hostname is required")
-                .regex(HOSTNAME_REGEX, "Invalid hostname format"),
+              onChangeListenTo: ["ssl_mode"],
+              onChange: ({ value, fieldApi }) => {
+                const host = value.trim();
+                if (!host) return "Hostname is required";
+                if (!hostnameValid(host)) return "Invalid hostname format";
+                if (
+                  isWildcard(host) &&
+                  fieldApi.form.getFieldValue("ssl_mode") !== "dns_challenge"
+                ) {
+                  return "A wildcard needs the DNS Challenge SSL mode";
+                }
+                return undefined;
+              },
             }}
             children={(field) => {
               const error = fieldError(field.state.meta.errors);
@@ -496,22 +519,98 @@ function DomainForm({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {[...SSL_MODES, ...(legacyMode ? [legacyMode] : [])].map(
-                      (m) => (
-                        <SelectItem
-                          key={m.value}
-                          value={m.value}
-                          icon={<m.Icon />}
-                          className="capitalize"
-                        >
-                          {m.label}
-                        </SelectItem>
-                      ),
-                    )}
+                    {sslModes.map((m) => (
+                      <SelectItem
+                        key={m.value}
+                        value={m.value}
+                        icon={<m.Icon />}
+                        className="capitalize"
+                      >
+                        {m.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
             )}
+          />
+          <form.Subscribe
+            selector={(s) => s.values.ssl_mode}
+            children={(sslMode) =>
+              sslMode === "dns_challenge" ? (
+                <form.Field
+                  name="dns_provider_id"
+                  validators={{
+                    onChangeListenTo: ["ssl_mode"],
+                    onChange: ({ value, fieldApi }) =>
+                      fieldApi.form.getFieldValue("ssl_mode") ===
+                        "dns_challenge" &&
+                      !value &&
+                      // A member editing an admin's domain cannot list providers
+                      // and is not changing it; the server keeps the stored one.
+                      isAdmin
+                        ? "Select a DNS provider"
+                        : undefined,
+                  }}
+                  children={(field) => {
+                    const error = fieldError(field.state.meta.errors);
+                    return (
+                      <Field data-invalid={!!error}>
+                        <FieldLabel>DNS Provider</FieldLabel>
+                        <Select
+                          value={field.state.value}
+                          onValueChange={(v) => field.handleChange(v ?? "")}
+                          disabled={!isAdmin || dnsProvidersLoading}
+                        >
+                          <SelectTrigger
+                            className="w-full min-w-0"
+                            aria-invalid={!!error}
+                          >
+                            <SelectValue
+                              placeholder={
+                                dnsProvidersLoading
+                                  ? "Loading…"
+                                  : "Select a DNS provider"
+                              }
+                            >
+                              {(value: unknown) =>
+                                dnsProviders.find((p) => p.id === value)
+                                  ?.name ??
+                                (value
+                                  ? "Selected provider"
+                                  : "Select a DNS provider")
+                              }
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            {dnsProviders.map((p) => (
+                              <SelectItem key={p.id} value={p.id}>
+                                {p.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {isAdmin &&
+                          !dnsProvidersLoading &&
+                          dnsProviders.length === 0 && (
+                            <p className="text-muted-foreground text-xs">
+                              No DNS providers yet. Add one under Certificates →
+                              DNS Providers.
+                            </p>
+                          )}
+                        {error && <FieldError>{error}</FieldError>}
+                        <p className="text-muted-foreground text-xs">
+                          Issues by editing a DNS record, so the domain need not
+                          be reachable over HTTP. Use{" "}
+                          <code className="font-mono">*.example.com</code> as
+                          the hostname for a wildcard.
+                        </p>
+                      </Field>
+                    );
+                  }}
+                />
+              ) : null
+            }
           />
           <form.Subscribe
             selector={(s) => s.values.ssl_mode}

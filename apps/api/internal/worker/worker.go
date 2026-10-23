@@ -158,6 +158,10 @@ func (w *Worker) Start() error {
 		w.handler.HandleTLSStatusSweep(ctx)
 		return nil
 	})
+	mux.HandleFunc(TypeWAFEventsSweep, func(ctx context.Context, t *asynq.Task) error {
+		w.handler.HandleWAFEventsSweep(ctx)
+		return nil
+	})
 	mux.HandleFunc(TypeTemplateFinalize, w.handler.HandleTemplateFinalizeTask)
 	mux.HandleFunc(TypeNotifyDeliver, w.handler.HandleNotifyDeliverTask)
 	mux.HandleFunc(TypeTLSProbe, func(ctx context.Context, t *asynq.Task) error {
@@ -236,6 +240,13 @@ func (w *Worker) StartScheduler() (*asynq.Scheduler, error) {
 	// rather than never.
 	tlsSweepTask := asynq.NewTask(TypeTLSStatusSweep, nil)
 	if _, err := scheduler.Register("@every 1m", tlsSweepTask, asynq.Queue("low")); err != nil {
+		return nil, err
+	}
+
+	// WAF detection events: age and row cap. Every 10 minutes rather than daily,
+	// because the row cap is there for the moment an attack starts writing.
+	wafSweepTask := asynq.NewTask(TypeWAFEventsSweep, nil)
+	if _, err := scheduler.Register("@every 10m", wafSweepTask, asynq.Queue("low")); err != nil {
 		return nil, err
 	}
 

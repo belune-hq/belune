@@ -12,6 +12,9 @@
     "get-queue-status",
     "get-proxy-config",
     "clear-pending-queue",
-    "clear-queue"
+    "clear-queue",
+    "get-waf-status",
+    "update-waf",
+    "list-waf-events"
   ]
 }

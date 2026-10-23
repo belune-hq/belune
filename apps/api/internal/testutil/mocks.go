@@ -13,6 +13,7 @@ import (
 	"github.com/belune-hq/belune/internal/proxy"
 	"github.com/belune-hq/belune/internal/proxy/capability"
 	"github.com/belune-hq/belune/internal/runtime"
+	"github.com/belune-hq/belune/internal/waf"
 )
 
 // MockContainerRuntime implements runtime.ContainerRuntime for testing.
@@ -333,6 +334,8 @@ type MockProxyManager struct {
 	RemovedRoutes []string
 	// DNSPolicies is the last set SyncDNSPolicies received.
 	DNSPolicies []proxy.DNSPolicy
+	// WAFSyncs is every config SyncWAF received, in order.
+	WAFSyncs []proxy.WAFConfig
 }
 
 func (m *MockProxyManager) AddRoute(_ context.Context, cfg proxy.RouteConfig) error {
@@ -360,6 +363,13 @@ func (m *MockProxyManager) SyncDNSPolicies(_ context.Context, policies []proxy.D
 	return nil
 }
 
+func (m *MockProxyManager) SyncWAF(_ context.Context, cfg proxy.WAFConfig) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.WAFSyncs = append(m.WAFSyncs, cfg)
+	return nil
+}
+
 func (m *MockProxyManager) SyncCertificates(_ context.Context, _ []proxy.HostCertificate) error {
 	return nil
 }
@@ -381,6 +391,13 @@ type MockReconciler struct {
 	ReconcileNowCalls int
 	Status_           proxy.ReconcilerStatus
 	ReconcileErr      error
+	WAF_              proxy.WAFState
+}
+
+func (m *MockReconciler) WAF() proxy.WAFState {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.WAF_
 }
 
 func (m *MockReconciler) Status() proxy.ReconcilerStatus {
@@ -430,6 +447,24 @@ func (m *MockAccessLog) Set(s logtailer.Status) {
 }
 
 func (m *MockAccessLog) Status() logtailer.Status {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.st
+}
+
+// MockWAFStats implements handler.WAFStatsProvider.
+type MockWAFStats struct {
+	mu sync.Mutex
+	st waf.Stats
+}
+
+func (m *MockWAFStats) Set(s waf.Stats) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.st = s
+}
+
+func (m *MockWAFStats) Stats() waf.Stats {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.st

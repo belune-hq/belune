@@ -19,6 +19,8 @@ type mockProxy struct {
 	skip    []string            // last auto-HTTPS skip list pushed
 	dns     []proxy.DNSPolicy   // last DNS-01 policy set pushed
 	dnsPush int                 // how many times it was pushed
+	waf     []proxy.WAFConfig   // every WAF config pushed, in order
+	wafErr  error               // returned by SyncWAF when set
 }
 
 func (m *mockProxy) AddRoute(_ context.Context, cfg proxy.RouteConfig) error {
@@ -55,6 +57,16 @@ func (m *mockProxy) SyncDNSPolicies(_ context.Context, p []proxy.DNSPolicy) erro
 	defer m.mu.Unlock()
 	m.dns = p
 	m.dnsPush++
+	return nil
+}
+
+func (m *mockProxy) SyncWAF(_ context.Context, cfg proxy.WAFConfig) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.wafErr != nil {
+		return m.wafErr
+	}
+	m.waf = append(m.waf, cfg)
 	return nil
 }
 

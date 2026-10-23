@@ -19,6 +19,10 @@ const (
 	// SettingDashboardCertificateID names the uploaded certificate to serve when
 	// the mode is custom. Ignored otherwise.
 	SettingDashboardCertificateID = "dashboard_certificate_id"
+
+	// SettingWAFEnabled is the operator's switch for the WAF: "true" turns it on,
+	// anything else is off. One switch for the whole install — see WAFConfig.
+	SettingWAFEnabled = "waf_enabled"
 )
 
 const (
@@ -43,6 +47,25 @@ func ValidSSLMode(mode string) bool {
 		return true
 	}
 	return false
+}
+
+// WAFConfig is the desired state of the WAF, which is one route in front of every
+// application route rather than a feature of each.
+//
+// Global, deliberately: a per-route WAF would put it into the route-feature model,
+// its normalisation and the reconciler's determinism, for a first phase that only
+// observes. The cost is that one noisy application's false positives share the one
+// detection log, which is tolerable while nothing is blocked and is exactly why
+// enforcement will need to be per application.
+type WAFConfig struct {
+	// Enabled is the operator's switch AND the module being present; the caller has
+	// already decided both. False removes the route.
+	Enabled bool
+	// Hosts are the application hostnames the WAF inspects. The dashboard is left
+	// out: its own API takes commands, scripts and credentials as ordinary input,
+	// which a generic rule set reads as attacks, and an admin panel is not what the
+	// WAF is here to watch. No hosts means no route.
+	Hosts []string
 }
 
 // RouteFeature represents a middleware feature applied to a route.
@@ -143,6 +166,11 @@ type ProxyManager interface {
 	// HTTPS on an ssl_mode=off dashboard would bounce the operator to a port with
 	// no certificate and lock them out of their own panel.
 	SetDashboardRoute(ctx context.Context, hostname, sslMode string) error
+
+	// SyncWAF makes the proxy's WAF route match cfg, and does nothing when it
+	// already does. Like routes, it is lost when Caddy restarts, so the reconciler
+	// re-asserts it every pass.
+	SyncWAF(ctx context.Context, cfg WAFConfig) error
 
 	// SyncCertificates makes the proxy's loaded certificates match the given set,
 	// keyed by hostname. Like routes, certificates pushed over the admin API are

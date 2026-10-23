@@ -45,8 +45,25 @@ Belune treats its own routes as the source of truth and re-asserts them every 30
 
 Admins get a Proxy page in the sidebar, with a tab each for Caddy, CrowdSec and the WAF. The Caddy tab shows what Belune can tell about the proxy itself: which container it is and how that container was found, whether the admin API answers, the version and image, the loaded modules, whether the request log is being read, how much traffic Caddy is proxying to apps and how fast, and how the live routes compare with the database.
 
-Every line separates "could not be determined" from "not there". If Belune cannot list Caddy's modules because the proxy is restarting, the page says the modules are unknown rather than that they are missing. When Caddy runs outside Docker there is no container to inspect, and the page says so instead of reporting an error. The CrowdSec and WAF tabs report whether your Caddy includes the module; controls for them are not part of this release.
+Every line separates "could not be determined" from "not there". If Belune cannot list Caddy's modules because the proxy is restarting, the page says the modules are unknown rather than that they are missing. When Caddy runs outside Docker there is no container to inspect, and the page says so instead of reporting an error. The CrowdSec tab reports whether your Caddy includes the module; its controls are not part of this release. The WAF tab is described below.
 
 The traffic figures come from Caddy's own metrics, so they cover requests that reached an app and not redirects or the dashboard itself. They need `servers { metrics }` in the Caddyfile, which Belune's stack already sets. A Caddy you run yourself needs the same.
+
+## The WAF
+
+The WAF tab turns on a web application firewall in front of your applications, and it **only detects**. Nothing is blocked. With it on, requests to your applications are checked against the [OWASP Core Rule Set](https://coreruleset.org/) by the `http.handlers.waf` module (Coraza) that the Belune Caddy image carries, and each rule that matches is recorded so you can see what would have been blocked. It is off until you turn it on, and the switch covers every application at once.
+
+What to know before turning it on:
+
+- **It inspects your applications, not the dashboard.** The dashboard's own API takes commands, scripts and credentials as ordinary input, which a generic rule set reads as attacks.
+- **Large uploads are never touched.** Request bodies over 128 KiB, or of unknown length, are not inspected, so a payload inside one goes unseen. The module's defaults were measured to stall and truncate bodies over about 1 MiB even in detection-only mode, so this is what keeps uploads working. URLs, headers, query strings and smaller bodies are inspected.
+- **Only the rule, severity, client address and host are stored.** The request, its URL and the matched text are not, because they can carry your users' credentials. Each row is one rule matching one request, so a single request can produce several.
+- **False positives are shared.** One noisy application fills the same detection log as the rest. That is tolerable while nothing is blocked, and it is the reason blocking, when it arrives, will be per application.
+
+Detections are kept for seven days and at most 200,000 are kept, whichever limit is reached first, so an attack cannot fill the disk. The retention is a setting on the Server page. If events are lost, because Belune was too busy to record them or a log line did not have the expected format, the tab says so rather than showing a count that quietly reads low.
+
+The three states of "does this Caddy have the module" stay separate here too. If Belune cannot list Caddy's modules, the tab says it cannot tell yet and still lets you turn the switch on, which then takes effect once Belune can ask. Only a Caddy that is known to lack the module is refused. With stock Caddy the WAF is simply not available, and everything else keeps working.
+
+The rule matches also appear in the proxy's log on the Server page. Because they carry the matched text, that view shows each one as a summary, the rule, the client and the host, with the payload and URL withheld. The unredacted lines stay in Docker's own log for the proxy container on the host.
 
 The page is read-only. Belune owns the route table and rewrites anything it does not recognise within thirty seconds, so Caddy's configuration cannot be edited here. The running configuration can be viewed, with private keys and password hashes removed on the server. Reconcile Routes stays on the Server page, beside the other maintenance actions.

@@ -19,6 +19,7 @@ import (
 	"github.com/belune-hq/belune/internal/proxy"
 	"github.com/belune-hq/belune/internal/service"
 	"github.com/belune-hq/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/waf"
 )
 
 type settingResponse struct {
@@ -202,6 +203,17 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 			}
 			req[i].Value = v
 
+		// The WAF's own reader takes 1–365 and falls back to a default outside it, so
+		// the ceiling here is the reader's, not the 3650 the others allow: a value
+		// accepted here and ignored there would read back correctly and do nothing.
+		case waf.SettingRetentionDays:
+			v, errMsg := validateRetentionSetting(s.Value, 1, 365)
+			if errMsg != "" {
+				writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid %s: %s", s.Key, errMsg))
+				return
+			}
+			req[i].Value = v
+
 		// Hours, not days — the only knob measured that way. The ceiling is ten
 		// years, generous enough that no existing value can be rejected by it.
 		case "host_metrics_retention_hours":
@@ -313,6 +325,7 @@ var updatableSettings = map[string]bool{
 	"audit_log_retention_days":                  true,
 	"orphaned_backup_retention_days":            true,
 	"host_metrics_retention_hours":              true,
+	waf.SettingRetentionDays:                    true,
 	// ⚠️ update_latest_* and update_last_checked_at are deliberately absent:
 	// they are the update-check worker's own cache (worker/update_check_task.go)
 	// and must never be writable through this endpoint — an admin PAT with

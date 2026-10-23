@@ -44,3 +44,10 @@ func CarrySince(prev, next []Degradation, now time.Time) []Degradation {
 func DegradationsChanged(prev, next []Degradation) bool {
 	return degradationsChanged(prev, next)
 }
+
+// SyncWAF exposes the WAF step of a pass, with the operator's switch supplied by
+// the test, so it can be exercised without a database.
+func (r *Reconciler) SyncWAF(ctx context.Context, expected []RouteConfig, dashboardHost string, wanted func(context.Context) (bool, error)) error {
+	r.wafSwitch = wanted
+	return r.syncWAF(ctx, expected, dashboardHost)
+}

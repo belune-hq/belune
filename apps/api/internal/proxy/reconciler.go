@@ -50,6 +50,11 @@ type Reconciler struct {
 	// probe is what the last cheap probe saw. Both feed probeLostConfig.
 	lastExpected int
 	probe        caddyState
+
+	// waf is what the last pass did about the WAF; see syncWAF.
+	waf WAFState
+	// wafSwitch replaces the database read of the operator's switch. Tests only.
+	wafSwitch func(ctx context.Context) (bool, error)
 }
 
 // caddyProbeInterval is how often Run checks whether Caddy still holds our
@@ -520,6 +525,13 @@ func (r *Reconciler) reconcile(ctx context.Context) {
 				removed++
 			}
 		}
+	}
+
+	// Last, so the host list the WAF route carries is the one the application
+	// routes above now have.
+	if err := r.syncWAF(ctx, expected, dashboardHost); err != nil {
+		slog.Warn("proxy reconciler: failed to sync the WAF route", "error", err)
+		recordErr(err)
 	}
 
 	if added > 0 || removed > 0 {

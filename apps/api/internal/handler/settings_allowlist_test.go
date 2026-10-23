@@ -1,8 +1,10 @@
 package handler_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -10,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/belune-hq/belune/internal/testutil"
+	"github.com/belune-hq/belune/internal/waf"
 )
 
 func putSettings(t *testing.T, token string, kv ...[2]string) *http.Response {
@@ -189,4 +192,48 @@ func TestUpdateSettings_BooleanDefaultsAreNotNormalised(t *testing.T) {
 		assert.Equal(t, "", got,
 			"%s must store blank verbatim — rewriting it to true or false flips one of the two default directions", key)
 	}
+}
+
+// The WAF's detection log has its own retention, and its reader falls back to a
+// default outside 1–365. The endpoint must refuse what the reader would ignore,
+// or an accepted value would read back correctly and change nothing.
+func TestUpdateSettings_WAFRetentionIsValidatedAgainstItsReader(t *testing.T) {
+	resetDB(t)
+	adminToken := env.SetupAdmin(t, "admin@test.com", "password123")
+	// The settings table is not truncated between tests, and a leftover value would
+	// change what the next test sees as the default.
+	t.Cleanup(func() {
+		_, _ = env.Pool.Exec(context.Background(), `DELETE FROM settings WHERE key = 'waf_events_retention_days'`)
+	})
+
+	for _, bad := range []string{"0", "-1", "366", "abc", "1.5"} {
+		resp := putSettings(t, adminToken, [2]string{"waf_events_retention_days", bad})
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode, "%q", bad)
+		resp.Body.Close()
+	}
+	_, saved := settingValue(t, adminToken, "waf_events_retention_days")
+	assert.False(t, saved, "a refused value is not stored")
+
+	for _, good := range []string{"1", "30", "365"} {
+		resp := putSettings(t, adminToken, [2]string{"waf_events_retention_days", good})
+		require.Equal(t, http.StatusOK, resp.StatusCode, "%q", good)
+		resp.Body.Close()
+		got, _ := settingValue(t, adminToken, "waf_events_retention_days")
+		assert.Equal(t, good, got)
+		assert.Equal(t, mustAtoi(t, good), waf.RetentionDays(context.Background(), env.Queries),
+			"what the endpoint accepts is what the sweep uses")
+	}
+
+	// Blank is how every retention knob says "use the default", and the reader agrees.
+	resp := putSettings(t, adminToken, [2]string{"waf_events_retention_days", ""})
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
+	assert.Equal(t, waf.DefaultRetentionDays, waf.RetentionDays(context.Background(), env.Queries))
+}
+
+func mustAtoi(t *testing.T, s string) int {
+	t.Helper()
+	n, err := strconv.Atoi(s)
+	require.NoError(t, err)
+	return n
 }

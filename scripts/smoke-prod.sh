@@ -316,20 +316,78 @@ fi
 # such as a WAF rule match carrying the request URI and matched payload — sat in
 # this world-readable, week-long file beside entries whose URI is redacted. The
 # tailer skips them (no request.host), so request_logs looked perfectly healthy.
+#
+# An access entry is recognised by its LOGGER, not by having a "request" object:
+# Caddy's error-log entries (http.log.error) carry one too, so keying on it would
+# count a stray line as an access entry and report clean.
+#
 # The first count is the anti-vacuity guard: an empty or missing file has no stray
 # lines either, and must not pass for a clean one.
+ACCESS_ENTRY='"logger":"http.log.access.'
+# grep FLAGS PATTERN over the file inside the proxy container, as a bare number.
+# -F throughout: the patterns below contain [ ] ? and are meant literally.
 count_in_access_log() {
-  "${COMPOSE[@]}" exec -T caddy sh -c "grep $1 '\"request\":' /var/log/caddy/access.log || true" 2>/dev/null | tr -d '[:space:]' || true
+  "${COMPOSE[@]}" exec -T caddy sh -c "grep $1 -- '$2' /var/log/caddy/access.log || true" 2>/dev/null | tr -d '[:space:]' || true
 }
-entries="$(count_in_access_log -c)"
-stray="$(count_in_access_log -vc)"
+entries="$(count_in_access_log -cF "$ACCESS_ENTRY")"
+stray="$(count_in_access_log -vcF "$ACCESS_ENTRY")"
 if [[ "${entries:-0}" -eq 0 ]]; then
   fail "the access log holds no access entries" "request_logs has rows, so the file should too — is the check reading the right path?"
 elif [[ "${stray:-0}" -eq 0 ]]; then
   pass "the access log holds only access entries ($entries), no other Caddy logger"
 else
   fail "$stray non-access lines in the world-readable access log" \
-    "$("${COMPOSE[@]}" exec -T caddy sh -c "grep -v -m1 '\"request\":' /var/log/caddy/access.log" 2>/dev/null | cut -c1-200)"
+    "$("${COMPOSE[@]}" exec -T caddy sh -c "grep -vF -m1 -- '$ACCESS_ENTRY' /var/log/caddy/access.log" 2>/dev/null | cut -c1-200)"
+fi
+
+# A request IS an access entry, so scoping the file cannot help here. The dashboard
+# serves single-use secrets IN THE URL — the reset and invitation links carry
+# ?token=<plaintext>, and the invitation lookup is a GET with it too — and the
+# deploy-hook token is a path segment. Caddy records the request line verbatim, and
+# a browser repeats the page URL as Referer on every request that page makes. The
+# file is world-readable and kept for a week, and Caddy's own log (the container's
+# stderr) held a second, unfiltered copy of every entry.
+#
+# A unique marker is sent through each shape, and must appear nowhere. Separately,
+# the probes must be PRESENT in the file — redacted or not — which is the
+# anti-vacuity guard: a request that never reached Caddy leaves no marker behind
+# either, and would pass for a fix. It counts the probe by its path and not by
+# its redacted form, so a regression is reported as a leak, not as a missing probe.
+LEAK="smoke-secret-${RANDOM}${RANDOM}"
+for path in "/reset-password?token=$LEAK" "/accept-invite?token=$LEAK" \
+            "/api/auth/invitation?token=$LEAK" "/api/webhooks/deploy/$LEAK"; do
+  curl -sS -o /dev/null -H "Host: $DASHBOARD_HOST" "$CADDY_URL$path" 2>/dev/null || true
+done
+curl -sS -o /dev/null -H "Host: $DASHBOARD_HOST" \
+  -H "Referer: http://$DASHBOARD_HOST/reset-password?token=$LEAK" "$CADDY_URL/" 2>/dev/null || true
+
+deadline=$((SECONDS + 30))
+probed=0
+hooked=0
+while [[ $SECONDS -lt $deadline ]]; do
+  probed="$(count_in_access_log -cF '?token=')"           # reset, accept-invite, invitation lookup, Referer
+  hooked="$(count_in_access_log -cF '/api/webhooks/deploy/')"
+  [[ "${probed:-0}" -ge 3 && "${hooked:-0}" -ge 1 ]] && break
+  sleep 1
+done
+leaked_file="$(count_in_access_log -cF "$LEAK")"
+caddy_log="$("${COMPOSE[@]}" logs --no-log-prefix caddy 2>&1 || true)"
+leaked_stderr="$(printf '%s\n' "$caddy_log" | grep -cF -- "$LEAK" || true)"
+access_in_stderr="$(printf '%s\n' "$caddy_log" | grep -cF -- "$ACCESS_ENTRY" || true)"
+if [[ "${probed:-0}" -lt 3 || "${hooked:-0}" -lt 1 ]]; then
+  fail "the probe requests never reached the access log (${probed:-0} ?token= entries, ${hooked:-0} deploy-hook entries; expected 3 and 1)" \
+    "the redaction check would pass vacuously, so it was not trusted"
+elif [[ -z "$caddy_log" ]]; then
+  fail "could not read the proxy container's log" "the stderr check would pass vacuously"
+else
+  [[ "${leaked_file:-0}" -eq 0 ]] \
+    && pass "no ?token= or deploy-hook secret reaches the world-readable access log ($probed probe entries, all redacted)" \
+    || fail "$leaked_file access-log lines still carry a plaintext secret" \
+       "$("${COMPOSE[@]}" exec -T caddy sh -c "grep -F -m1 -- '$LEAK' /var/log/caddy/access.log" 2>/dev/null | cut -c1-240)"
+  [[ "${leaked_stderr:-0}" -eq 0 && "${access_in_stderr:-0}" -eq 0 ]] \
+    && pass "the proxy's own log carries no access entries, so no second unfiltered copy of those URLs" \
+    || fail "the proxy's own log holds ${access_in_stderr:-0} access entries, ${leaked_stderr:-0} with the plaintext secret" \
+       "the default log must exclude the access logger"
 fi
 
 info "9. Nothing is silently failing in a retry loop"

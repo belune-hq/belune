@@ -139,8 +139,9 @@ The token **is** the credential — anyone holding the URL can trigger a deploy.
 - 32 bytes of entropy; stored only as a SHA-256 hash, so a database dump yields
   no working tokens.
 - Redacted from Belune's request log and from Caddy's access log, both of which
-  would otherwise record the full URL. Note that any reverse proxy *in front of*
-  Belune, and your own CI logs, still see it.
+  would otherwise record the full URL. The proxy container's own log no longer
+  carries request lines at all, so it holds no second copy. Note that any
+  reverse proxy *in front of* Belune, and your own CI logs, still see it.
 - **Regenerate** issues a new token and kills the old one immediately — any CI
   still using it starts getting `404`s.
 - Turning the switch off deletes the token permanently; re-enabling issues a

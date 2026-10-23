@@ -919,6 +919,100 @@ export interface ProxyCapabilities {
   features: Record<string, { module: string; state: FeatureAvailability }>;
 }
 
+/** Why the WAF is switched on but not active. The first two are the probe's two
+ *  different answers, and must not be collapsed: `modules_unknown` means Belune
+ *  could not ask Caddy, not that the module is missing. */
+export type WafReason = "module_absent" | "modules_unknown" | "no_applications";
+
+export interface WafState {
+  /** The WAF route is in Caddy now. */
+  active: boolean;
+  /** Application hostnames it inspects. */
+  hosts: number;
+  reason?: WafReason;
+  /** The last refusal, when Caddy would not take the route. */
+  error?: string;
+}
+
+/** What the recorder has done since Belune started. Dropped and malformed are
+ *  the two ways a detection is lost without leaving a row. */
+export interface WafRecorderStats {
+  since: string;
+  recorded: number;
+  dropped: number;
+  malformed: number;
+  last_error?: string;
+  last_error_at?: string;
+}
+
+export interface WafTopRule {
+  rule_id: number;
+  message: string;
+  category: string;
+  events: number;
+}
+
+export interface WafTopClient {
+  client_ip: string;
+  events: number;
+  last_seen: string;
+}
+
+export interface WafSummary {
+  window_hours: number;
+  events: number;
+  requests: number;
+  clients: number;
+  top_rules: WafTopRule[];
+  top_clients: WafTopClient[];
+}
+
+export interface WafStatus {
+  capability: { module: string; state: FeatureAvailability };
+  /** The operator's switch. */
+  enabled: boolean;
+  mode: "detection_only";
+  state: WafState;
+  recorder: WafRecorderStats;
+  retention_days: number;
+  max_events: number;
+  summary: WafSummary;
+}
+
+/** Coraza reports "unknown" for a rule that declares no severity, which includes
+ *  the anomaly-score rule that says a request would have been blocked. */
+export type WafSeverity =
+  | "emergency"
+  | "alert"
+  | "critical"
+  | "error"
+  | "warning"
+  | "notice"
+  | "info"
+  | "debug"
+  | "unknown";
+
+export interface WafEvent {
+  id: number;
+  recorded_at: string;
+  client_ip: string;
+  rule_id: number;
+  severity: WafSeverity;
+  category: string | null;
+  message: string;
+  /** Null when attribution failed for this event. */
+  host: string | null;
+  application_id: string | null;
+  /** Shared by the rules one request tripped. */
+  tx_id: string | null;
+}
+
+export interface WafEventsPage {
+  events: WafEvent[];
+  /** Pass as `before` for the next page; null on the last. */
+  next_before: number | null;
+}
+
 export interface QueueDepth {
   queue: string;
   pending: number;

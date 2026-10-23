@@ -57,6 +57,15 @@ func validateSSLMode(mode string) string {
 	return ""
 }
 
+// coerceForceHTTPS stores the truth for a TLS-off domain: there is no HTTPS
+// listener to redirect to, so the flag is false. A coercion, not a rejection, so
+// no existing caller breaks. Caddy already ignores the flag for ssl_mode=off
+// (routes.go), which is why legacy rows holding true are inert, not wrong in
+// routing — only the stored value and what the UI said about it were.
+func coerceForceHTTPS(sslMode string, forceHTTPS bool) bool {
+	return forceHTTPS && sslMode != proxy.SSLModeOff
+}
+
 // validDomainHostname accepts an RFC 1123 hostname, or "*." followed by one. The
 // wildcard form is syntactically valid here and rejected by wildcardNeedsDNS
 // unless the domain uses the DNS challenge: Let's Encrypt issues wildcards over
@@ -479,6 +488,7 @@ func (h *Handler) AddDomain(w http.ResponseWriter, r *http.Request) {
 	if req.ForceHTTPS != nil {
 		forceHTTPS = *req.ForceHTTPS
 	}
+	forceHTTPS = coerceForceHTTPS(sslMode, forceHTTPS)
 
 	certUUID, err := parseCertificateID(sslMode, req.CertificateID)
 	if err != nil {
@@ -707,6 +717,7 @@ func (h *Handler) UpdateDomain(w http.ResponseWriter, r *http.Request) {
 	if req.ForceHTTPS != nil {
 		forceHTTPS = *req.ForceHTTPS
 	}
+	forceHTTPS = coerceForceHTTPS(sslMode, forceHTTPS)
 	sslProvider := oldDomain.SslProvider
 	if req.SSLProvider != "" {
 		sslProvider = pgtype.Text{String: req.SSLProvider, Valid: true}

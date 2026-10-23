@@ -1,3 +1,4 @@
+import { effectiveForceHTTPS } from "@/lib/domain-tls";
 import { useMemo } from "react";
 import { toast } from "sonner";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -239,8 +240,8 @@ function featureLabel(f: RouteFeature): string {
 // listener for the name at all. Calling an ssl_mode=off domain "Optional" would
 // promise HTTPS-if-you-want-it on a domain that cannot serve it, so that case
 // says plainly that HTTP is all there is.
-function ForceHTTPSCell({ domain }: { domain: DomainExpanded }) {
-  if (domain.force_https) {
+export function ForceHTTPSCell({ domain }: { domain: DomainExpanded }) {
+  if (effectiveForceHTTPS(domain.ssl_mode, domain.force_https)) {
     return <Badge variant="light">Forced</Badge>;
   }
   return (

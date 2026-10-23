@@ -41,6 +41,7 @@ import {
   useCertificates,
   useUsableCertificates,
 } from "@/lib/hooks/use-certificates";
+import { effectiveForceHTTPS } from "@/lib/domain-tls";
 import { useDNSProviders } from "@/lib/hooks/use-dns-providers";
 import { useAuthStore } from "@/lib/stores/auth";
 import type { DomainExpanded } from "@/lib/types";
@@ -176,7 +177,10 @@ function DomainForm({
               internal_path: internalPath,
               ssl_enabled: value.ssl_mode !== "off",
               ssl_mode: value.ssl_mode,
-              force_https: value.force_https,
+              force_https: effectiveForceHTTPS(
+                value.ssl_mode,
+                value.force_https,
+              ),
               // 0, not null, to clear the override. The server reads an absent
               // container_port as "keep what is stored" so that a PUT about
               // something else cannot wipe it, and JSON null is
@@ -196,7 +200,10 @@ function DomainForm({
               internal_path: internalPath,
               ssl_enabled: value.ssl_mode !== "off",
               ssl_mode: value.ssl_mode,
-              force_https: value.force_https,
+              force_https: effectiveForceHTTPS(
+                value.ssl_mode,
+                value.force_https,
+              ),
               container_port: portNum ?? undefined,
               certificate_id: value.certificate_id || undefined,
               dns_provider_id:

@@ -1,3 +1,4 @@
+import { domainScheme } from "@/lib/domain-tls";
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import {
   useApplication,
@@ -138,6 +139,9 @@ function ApplicationLayout() {
 
   const basePath = `/projects/${projectId}/applications/${applicationId}`;
   const primaryDomain = domains?.[0]?.hostname;
+  // The scheme the domain is actually served on: an ssl_mode=off domain has no
+  // HTTPS listener, so a hardcoded https:// link was dead for every one of them.
+  const primaryScheme = domainScheme(domains?.[0]?.ssl_mode ?? "automatic");
   const uptimeSeconds = projectMetrics?.[applicationId]?.uptime_seconds;
   const isDeploying = deployments?.some(
     (d) =>
@@ -214,7 +218,7 @@ function ApplicationLayout() {
                 nativeButton={false}
                 render={
                   <a
-                    href={`https://${primaryDomain}`}
+                    href={`${primaryScheme}://${primaryDomain}`}
                     target="_blank"
                     rel="noopener noreferrer"
                   />

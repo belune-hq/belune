@@ -60,6 +60,8 @@ type QueueInspector interface {
 type ReconcilerStatusProvider interface {
 	Status() proxy.ReconcilerStatus
 	ReconcileNow(ctx context.Context) error
+	// WAF is what the last pass did about the WAF route.
+	WAF() proxy.WAFState
 }
 
 type Handler struct {
@@ -88,6 +90,8 @@ type Handler struct {
 	proxyMetrics *caddymetrics.Observer
 	// accessLog reports the request-log tailer's health; nil until wired.
 	accessLog AccessLogStatusProvider
+	// waf reports the WAF recorder's counters; nil until wired.
+	waf WAFStatsProvider
 	// caddyInspector is built on first use and kept: it holds the version cache.
 	caddyInspector     *caddyinfo.Inspector
 	caddyInspectorOnce sync.Once

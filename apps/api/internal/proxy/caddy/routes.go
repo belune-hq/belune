@@ -583,6 +583,11 @@ func (c *Client) ListRoutes(ctx context.Context) (result []proxy.RouteConfig, er
 	}
 
 	for _, route := range routes {
+		// Not an application route: it matches every application host, and read as
+		// one the reconciler would see a route for its first host with no target.
+		if route.ID == wafRouteID {
+			continue
+		}
 		if len(route.Match) > 0 && len(route.Match[0].Host) > 0 {
 			cfg := proxy.RouteConfig{
 				Hostname: route.Match[0].Host[0],
@@ -643,7 +648,7 @@ func (c *Client) reorderRoutes(ctx context.Context) error {
 	}
 
 	var domainRoutes []json.RawMessage
-	var catchAll json.RawMessage
+	var catchAll, wafRoute json.RawMessage
 	for _, r := range rawRoutes {
 		var probe struct {
 			ID    string `json:"@id"`
@@ -654,6 +659,13 @@ func (c *Client) reorderRoutes(ctx context.Context) error {
 		_ = json.Unmarshal(r, &probe)
 		if probe.ID == catchAllRouteID {
 			catchAll = r
+			continue
+		}
+		// The WAF route matches the application hosts, so by its matcher it would
+		// sort in among them. It has to run before every one of them instead — it
+		// is set aside here and put back at the front.
+		if probe.ID == wafRouteID {
+			wafRoute = r
 			continue
 		}
 		// A route with no host matcher is the Caddyfile's default site, which
@@ -684,7 +696,12 @@ func (c *Client) reorderRoutes(ctx context.Context) error {
 			return fmt.Errorf("marshal catch-all: %w", err)
 		}
 	}
-	newRoutes := append(domainRoutes, catchAll)
+	newRoutes := make([]json.RawMessage, 0, len(domainRoutes)+2)
+	if len(wafRoute) > 0 {
+		newRoutes = append(newRoutes, wafRoute)
+	}
+	newRoutes = append(newRoutes, domainRoutes...)
+	newRoutes = append(newRoutes, catchAll)
 
 	return c.patchRoutes(ctx, newRoutes)
 }

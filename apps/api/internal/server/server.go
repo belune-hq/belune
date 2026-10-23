@@ -82,6 +82,12 @@ func (s *Server) SetAccessLog(p handler.AccessLogStatusProvider) {
 	s.handler.SetAccessLog(p)
 }
 
+// SetWAF wires the WAF recorder's counters into the handlers. Called once at
+// startup, before the server accepts requests.
+func (s *Server) SetWAF(p handler.WAFStatsProvider) {
+	s.handler.SetWAF(p)
+}
+
 // SetProxyAdmin wires the read-only Caddy admin reader into the handlers.
 func (s *Server) SetProxyAdmin(a handler.ProxyAdminReader) {
 	s.handler.SetProxyAdmin(a)

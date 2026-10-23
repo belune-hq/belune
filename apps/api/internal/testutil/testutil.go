@@ -104,7 +104,7 @@ func runMigrations(pool *pgxpool.Pool) {
 // two extra rows and failed only when run after its neighbours.
 func TruncateAll(ctx context.Context, pool *pgxpool.Pool) error {
 	_, err := pool.Exec(ctx, `
-		TRUNCATE users, projects, applications, deployments, databases, domains, env_vars, container_logs, request_logs, git_integrations, git_provider_configs, domain_route_features, audit_logs, refresh_tokens, login_attempts, password_reset_tokens, invitations, alert_preferences, quotas, quota_alert_state, backup_runs, dns_providers CASCADE
+		TRUNCATE users, projects, applications, deployments, databases, domains, env_vars, container_logs, request_logs, git_integrations, git_provider_configs, domain_route_features, audit_logs, refresh_tokens, login_attempts, password_reset_tokens, invitations, alert_preferences, quotas, quota_alert_state, backup_runs, dns_providers, waf_events CASCADE
 	`)
 	return err
 }

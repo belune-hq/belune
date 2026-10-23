@@ -5,6 +5,8 @@
 package generated
 
 import (
+	"net/netip"
+
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -623,4 +625,17 @@ type UserRecoveryCode struct {
 	CodeHash  []byte             `json:"code_hash"`
 	UsedAt    pgtype.Timestamptz `json:"used_at"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type WafEvent struct {
+	ID            int64              `json:"id"`
+	RecordedAt    pgtype.Timestamptz `json:"recorded_at"`
+	ClientIp      netip.Addr         `json:"client_ip"`
+	RuleID        int32              `json:"rule_id"`
+	Severity      string             `json:"severity"`
+	Category      pgtype.Text        `json:"category"`
+	Message       string             `json:"message"`
+	Host          pgtype.Text        `json:"host"`
+	ApplicationID pgtype.UUID        `json:"application_id"`
+	TxID          pgtype.Text        `json:"tx_id"`
 }

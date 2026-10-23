@@ -40,6 +40,7 @@ import (
 	"github.com/belune-hq/belune/internal/store/generated"
 	"github.com/belune-hq/belune/internal/terminal"
 	"github.com/belune-hq/belune/internal/tlsstatus"
+	"github.com/belune-hq/belune/internal/waf"
 	"github.com/belune-hq/belune/internal/worker"
 	"github.com/belune-hq/belune/internal/ws"
 )
@@ -65,6 +66,7 @@ type App struct {
 	reconciler     *proxy.Reconciler
 	logTailer      *logtailer.Tailer
 	logCollector   *logcollector.Collector
+	wafRecorder    *waf.Recorder
 	redisAdapter   *ws.RedisAdapter
 	eventWatcher   *eventwatcher.Watcher
 }
@@ -228,6 +230,8 @@ func New(cfg *config.Config) (*App, error) {
 	httpSrv.SetCapabilities(caddyCaps)
 	logTailer := logtailer.New(cfg.AccessLogPath, queries, rdb)
 	httpSrv.SetAccessLog(logTailer)
+	wafRecorder := waf.NewRecorder(queries)
+	httpSrv.SetWAF(wafRecorder)
 	httpSrv.SetProxyAdmin(caddyClient)
 
 	// Optional Prometheus-friendly bind. Serves /metrics without auth on the
@@ -272,6 +276,7 @@ func New(cfg *config.Config) (*App, error) {
 		reconciler:     reconciler,
 		logTailer:      logTailer,
 		logCollector:   logcollector.New(dockerClient, queries, rdb),
+		wafRecorder:    wafRecorder,
 		redisAdapter:   ws.NewRedisAdapter(rdb, hub),
 		eventWatcher:   eventwatcher.New(dockerClient, queries, broadcaster),
 	}
@@ -279,10 +284,17 @@ func New(cfg *config.Config) (*App, error) {
 	// Caddy's own logs carry the reason a certificate failed to issue. Hook the
 	// collector so those reasons land on the domain they belong to, instead of
 	// leaving the user with a "pending" badge and no explanation.
+	//
+	// SetLineHook takes ONE func, and the WAF's rule matches arrive on the same
+	// stream, so both consumers are composed here. Replacing the TLS recorder with
+	// the WAF's would silently stop every certificate error reaching its domain.
+	// The hook runs inline on the collector's read path, so each side must return
+	// at once: the WAF recorder queues and never touches the database.
 	tlsRecorder := tlsstatus.NewRecorder(queries)
 	app.logCollector.SetLineHook(func(hookCtx context.Context, srcType, name, message string) {
 		if name == logcollector.SystemCaddy {
 			tlsRecorder.HandleCaddyLine(hookCtx, message)
+			wafRecorder.HandleCaddyLine(hookCtx, message)
 		}
 	})
 	// A failed SetupTLS used to be a log line and nothing more. Give it the same
@@ -320,6 +332,7 @@ func (a *App) Run(ctx context.Context) error {
 	g.Go(func() error { a.reconciler.Run(gctx); return nil })
 	g.Go(func() error { a.logTailer.Run(gctx); return nil })
 	g.Go(func() error { a.logCollector.Run(gctx); return nil })
+	g.Go(func() error { a.wafRecorder.Run(gctx); return nil })
 	g.Go(func() error { a.hub.Run(gctx); return nil })
 	g.Go(func() error { a.redisAdapter.RunBuildLogAdapter(gctx); return nil })
 	g.Go(func() error { a.redisAdapter.RunHostMetricsAdapter(gctx); return nil })

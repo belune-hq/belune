@@ -672,6 +672,11 @@ func registerRoutes(r chi.Router, h *handler.Handler, auth *service.AuthService,
 					r.Post("/api/maintenance/proxy/reconcile", h.ReconcileProxy)
 					r.Get("/api/maintenance/proxy/metrics", h.GetProxyMetrics)
 					r.Get("/api/maintenance/proxy/config", h.GetProxyConfig)
+					// The WAF is a property of the proxy, so it lives beside it: the
+					// noun for status and the switch, a child for what it has seen.
+					r.With(withTimeout(handlerTimeout)).Get("/api/maintenance/proxy/waf", h.GetWAFStatus)
+					r.With(withTimeout(handlerTimeout)).Put("/api/maintenance/proxy/waf", h.UpdateWAF)
+					r.With(withTimeout(handlerTimeout)).Get("/api/maintenance/proxy/waf/events", h.ListWAFEvents)
 					r.Get("/api/maintenance/queue", h.GetQueueStatus)
 					r.Post("/api/maintenance/queue/clear", h.ClearQueue)
 					r.Post("/api/maintenance/queue/clear-pending", h.ClearPendingQueue)

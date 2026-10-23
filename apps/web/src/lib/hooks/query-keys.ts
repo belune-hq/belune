@@ -284,6 +284,13 @@ export const queryKeys = {
   proxyReconciler: ["proxy", "reconciler"] as const,
   proxyMetrics: ["proxy", "metrics"] as const,
   proxyConfig: ["proxy", "config"] as const,
+  waf: {
+    status: ["proxy", "waf", "status"] as const,
+    /** Under one prefix so a refresh of the page invalidates every filter at once. */
+    events: ["proxy", "waf", "events"] as const,
+    eventsFiltered: (clientIp: string, ruleId: number | null) =>
+      ["proxy", "waf", "events", clientIp, ruleId] as const,
+  },
   maintenanceQueue: ["maintenance", "queue"] as const,
   maintenancePlatformLogs: ["maintenance", "platform-logs"] as const,
   maintenanceServerIP: ["maintenance", "server-ip"] as const,

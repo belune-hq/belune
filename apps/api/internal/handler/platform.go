@@ -15,6 +15,7 @@ import (
 	"github.com/belune-hq/belune/internal/config"
 	"github.com/belune-hq/belune/internal/pkg/netutil"
 	"github.com/belune-hq/belune/internal/runtime"
+	"github.com/belune-hq/belune/internal/waf"
 )
 
 // platformServices is the allowlist of infrastructure containers whose logs the
@@ -80,7 +81,11 @@ func (h *Handler) GetPlatformLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, platformLogsResponse{Service: service, Content: buf.String()})
+	// Caddy's own log carries the WAF's rule matches, and each one includes the
+	// matched payload and the request URI — text the application's users typed.
+	// The recorder needs those lines in stderr, so they cannot be removed there;
+	// they are made safe here, where an admin would read them.
+	writeJSON(w, http.StatusOK, platformLogsResponse{Service: service, Content: waf.RedactLogs(buf.String())})
 }
 
 type serverIPResponse struct {

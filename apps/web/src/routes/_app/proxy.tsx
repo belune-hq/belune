@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { PageTabs, type PageTab } from "@/components/ui/page-tabs";
 import { CaddyTab } from "@/components/proxy/caddy-tab";
 import { ModuleTab } from "@/components/proxy/module-tab";
+import { WafTab } from "@/components/proxy/waf-tab";
 import { RouteError } from "@/lib/components/route-error";
 import { requireAdmin } from "@/lib/utils/auth-guard";
 
@@ -49,7 +50,13 @@ function ProxyPage() {
         onValueChange={setTab}
       />
 
-      {activeTab === "caddy" ? <CaddyTab /> : <ModuleTab name={activeTab} />}
+      {activeTab === "caddy" ? (
+        <CaddyTab />
+      ) : activeTab === "waf" ? (
+        <WafTab />
+      ) : (
+        <ModuleTab name={activeTab} />
+      )}
     </div>
   );
 }

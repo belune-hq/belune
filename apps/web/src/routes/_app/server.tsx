@@ -300,6 +300,12 @@ const RETENTION_FIELDS = [
     desc: "HTTP access logs per application",
     fallback: "3",
   },
+  {
+    key: "waf_events_retention_days",
+    label: "WAF detections",
+    desc: "attacks the WAF would have blocked (1–365)",
+    fallback: "7",
+  },
 ] as const;
 
 function ServerSettingsPage() {

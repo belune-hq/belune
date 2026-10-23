@@ -2987,6 +2987,180 @@
         ]
       }
     },
+    "/api/maintenance/proxy/waf": {
+      "get": {
+        "operationId": "GetWAFStatus",
+        "summary": "Get WAF Status",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "Maintenance (Admin)"
+        ],
+        "x-belune-order": 11,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/wafStatusResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "read": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "UpdateWAF",
+        "summary": "Update WAF",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "Maintenance (Admin)"
+        ],
+        "x-belune-order": 12,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/updateWAFRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/wafStatusResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "write": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/maintenance/proxy/waf/events": {
+      "get": {
+        "operationId": "ListWAFEvents",
+        "summary": "List WAF Events",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "Maintenance (Admin)"
+        ],
+        "x-belune-order": 13,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "parameters": [
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_ip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "rule_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/wafEventsResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "read": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/maintenance/queue": {
       "get": {
         "operationId": "GetQueueStatus",
@@ -16084,6 +16258,31 @@
         },
         "type": "object"
       },
+      "Stats": {
+        "properties": {
+          "dropped": {
+            "type": "integer"
+          },
+          "last_error": {
+            "type": "string"
+          },
+          "last_error_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "malformed": {
+            "type": "integer"
+          },
+          "recorded": {
+            "type": "integer"
+          },
+          "since": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "Status": {
         "properties": {
           "file": {
@@ -16257,6 +16456,23 @@
               "string",
               "null"
             ]
+          }
+        },
+        "type": "object"
+      },
+      "WAFState": {
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          },
+          "hosts": {
+            "type": "integer"
+          },
+          "reason": {
+            "type": "string"
           }
         },
         "type": "object"
@@ -20091,6 +20307,17 @@
         },
         "type": "object"
       },
+      "updateWAFRequest": {
+        "properties": {
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "updateWebhookRequest": {
         "properties": {
           "auto_deploy_branch": {
@@ -20342,6 +20569,161 @@
           },
           "status": {
             "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "wafEventResponse": {
+        "properties": {
+          "application_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "category": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "client_ip": {
+            "type": "string"
+          },
+          "host": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "integer"
+          },
+          "message": {
+            "type": "string"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "rule_id": {
+            "type": "integer"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "tx_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "wafEventsResponse": {
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/wafEventResponse"
+            },
+            "type": "array"
+          },
+          "next_before": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "wafStatusResponse": {
+        "properties": {
+          "capability": {
+            "$ref": "#/components/schemas/featureCapability"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "max_events": {
+            "type": "integer"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "recorder": {
+            "$ref": "#/components/schemas/Stats"
+          },
+          "retention_days": {
+            "type": "integer"
+          },
+          "state": {
+            "$ref": "#/components/schemas/WAFState"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/wafSummary"
+          }
+        },
+        "type": "object"
+      },
+      "wafSummary": {
+        "properties": {
+          "clients": {
+            "type": "integer"
+          },
+          "events": {
+            "type": "integer"
+          },
+          "requests": {
+            "type": "integer"
+          },
+          "top_clients": {
+            "items": {
+              "$ref": "#/components/schemas/wafTopClient"
+            },
+            "type": "array"
+          },
+          "top_rules": {
+            "items": {
+              "$ref": "#/components/schemas/wafTopRule"
+            },
+            "type": "array"
+          },
+          "window_hours": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "wafTopClient": {
+        "properties": {
+          "client_ip": {
+            "type": "string"
+          },
+          "events": {
+            "type": "integer"
+          },
+          "last_seen": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "wafTopRule": {
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "events": {
+            "type": "integer"
+          },
+          "message": {
+            "type": "string"
+          },
+          "rule_id": {
+            "type": "integer"
           }
         },
         "type": "object"

@@ -21,6 +21,7 @@ type fixedStatus struct{ st proxy.ReconcilerStatus }
 
 func (f fixedStatus) Status() proxy.ReconcilerStatus     { return f.st }
 func (f fixedStatus) ReconcileNow(context.Context) error { return nil }
+func (f fixedStatus) WAF() proxy.WAFState                { return proxy.WAFState{} }
 
 // The grace period must not collapse when IntervalSeconds is zero. Zero is what
 // an unconfigured or stubbed reconciler reports, and an unfloored

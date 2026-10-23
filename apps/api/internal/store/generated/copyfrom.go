@@ -55,3 +55,46 @@ func (r iteratorForBulkInsertContainerLogs) Err() error {
 func (q *Queries) BulkInsertContainerLogs(ctx context.Context, arg []BulkInsertContainerLogsParams) (int64, error) {
 	return q.db.CopyFrom(ctx, []string{"container_logs"}, []string{"source_type", "source_id", "level", "stream", "message", "recorded_at", "deployment_id", "container_id"}, &iteratorForBulkInsertContainerLogs{rows: arg})
 }
+
+// iteratorForBulkInsertWAFEvents implements pgx.CopyFromSource.
+type iteratorForBulkInsertWAFEvents struct {
+	rows                 []BulkInsertWAFEventsParams
+	skippedFirstNextCall bool
+}
+
+func (r *iteratorForBulkInsertWAFEvents) Next() bool {
+	if len(r.rows) == 0 {
+		return false
+	}
+	if !r.skippedFirstNextCall {
+		r.skippedFirstNextCall = true
+		return true
+	}
+	r.rows = r.rows[1:]
+	return len(r.rows) > 0
+}
+
+func (r iteratorForBulkInsertWAFEvents) Values() ([]interface{}, error) {
+	return []interface{}{
+		r.rows[0].RecordedAt,
+		r.rows[0].ClientIp,
+		r.rows[0].RuleID,
+		r.rows[0].Severity,
+		r.rows[0].Category,
+		r.rows[0].Message,
+		r.rows[0].Host,
+		r.rows[0].ApplicationID,
+		r.rows[0].TxID,
+	}, nil
+}
+
+func (r iteratorForBulkInsertWAFEvents) Err() error {
+	return nil
+}
+
+// Bulk path for the recorder, which flushes batches: under attack this table
+// takes writes at the rate requests arrive, so one round trip per row is the
+// wrong shape (see BulkInsertContainerLogs, which had the same problem).
+func (q *Queries) BulkInsertWAFEvents(ctx context.Context, arg []BulkInsertWAFEventsParams) (int64, error) {
+	return q.db.CopyFrom(ctx, []string{"waf_events"}, []string{"recorded_at", "client_ip", "rule_id", "severity", "category", "message", "host", "application_id", "tx_id"}, &iteratorForBulkInsertWAFEvents{rows: arg})
+}

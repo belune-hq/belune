@@ -12,6 +12,7 @@ import (
 
 	"github.com/belune-hq/belune/internal/config"
 	"github.com/belune-hq/belune/internal/pkg/netutil"
+	"github.com/belune-hq/belune/internal/proxy"
 )
 
 // DNS precheck.
@@ -31,19 +32,24 @@ const dnsCheckTimeout = 3 * time.Second
 // checkDNS reports a human-readable problem with hostname's DNS, and whether
 // that problem is fatal to certificate issuance.
 //
-// The distinction matters. A hostname that does not resolve at all can never be
-// issued a certificate, so that is fatal and may decide the domain's status. But
-// a hostname that resolves *somewhere else* is ambiguous: that is precisely what
-// a proxy in front of us looks like, and issuance through Cloudflare's orange
-// cloud demonstrably works — the challenge is forwarded to the origin. Treating
-// that as fatal marked every proxied domain Failed while it was still legitimately
-// issuing. It is reported, but it never decides the status; the real ACME error
-// does that.
+// The distinction matters. Over HTTP-01 a hostname that does not resolve at all
+// can never be issued a certificate, so that is fatal and may decide the domain's
+// status. But a hostname that resolves *somewhere else* is ambiguous: that is
+// precisely what a proxy in front of us looks like, and issuance through
+// Cloudflare's orange cloud demonstrably works — the challenge is forwarded to the
+// origin. Treating that as fatal marked every proxied domain Failed while it was
+// still legitimately issuing. It is reported, but it never decides the status; the
+// real ACME error does that.
+//
+// The mode changes what is true, so it is passed in. DNS-01 proves ownership with
+// a TXT record at _acme-challenge.<name> and the CA never connects to the host, so
+// no A record is needed to ISSUE — a name with none is the mode's flagship case.
+// See classifyDNS.
 //
 // Returns ("", false) when the DNS matches, cannot be determined, or the server's
 // own public IP is unknown. Deliberately conservative: a false "your DNS is wrong"
 // is worse than staying quiet.
-func (h *TaskHandler) checkDNS(ctx context.Context, hostname string) (msg string, fatal bool) {
+func (h *TaskHandler) checkDNS(ctx context.Context, hostname, sslMode string) (msg string, fatal bool) {
 	public := h.publicIP(ctx)
 	if public == "" {
 		return "", false // no baseline to compare against — skip the check
@@ -58,10 +64,27 @@ func (h *TaskHandler) checkDNS(ctx context.Context, hostname string) (msg string
 		// timeout or a broken resolver says nothing about the user's DNS.
 		var dnsErr *net.DNSError
 		if errors.As(err, &dnsErr) && dnsErr.IsNotFound {
-			return fmt.Sprintf("%s does not resolve — add a DNS A record pointing at %s, or a certificate can never be issued", hostname, public), true
+			return classifyDNS(sslMode, hostname, public, nil, true)
 		}
 		slog.Debug("tls dns check: lookup failed", "hostname", hostname, "error", err)
 		return "", false
+	}
+	return classifyDNS(sslMode, hostname, public, addrs, false)
+}
+
+// classifyDNS turns a lookup result into a message and a fatality. Pure, so the
+// mode-dependent wording is testable without a resolver.
+func classifyDNS(sslMode, hostname, public string, addrs []string, notFound bool) (msg string, fatal bool) {
+	dns01 := sslMode == proxy.SSLModeDNSChallenge
+
+	if notFound {
+		if dns01 {
+			// About SERVING, not issuance, and never fatal: the certificate may
+			// well issue (it did, in the live drill), but nothing will reach a
+			// name with no record.
+			return fmt.Sprintf("%s has no DNS A record, so it will not serve traffic even after its certificate issues. Point it at %s (or at your proxy) before cutover.", hostname, public), false
+		}
+		return fmt.Sprintf("%s does not resolve — add a DNS A record pointing at %s, or a certificate can never be issued", hostname, public), true
 	}
 
 	for _, a := range addrs {
@@ -69,7 +92,12 @@ func (h *TaskHandler) checkDNS(ctx context.Context, hostname string) (msg string
 			return "", false
 		}
 	}
-
+	if dns01 {
+		// "Resolves elsewhere, so issuance will fail" is false here and the usual
+		// reason for the mode (a proxy in front); where it points is the
+		// operator's business.
+		return "", false
+	}
 	return fmt.Sprintf(
 		"%s resolves to %s, not this server (%s). Unless a proxy sits in front, certificate issuance will fail.",
 		hostname, strings.Join(addrs, ", "), public,

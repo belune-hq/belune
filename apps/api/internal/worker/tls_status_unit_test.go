@@ -53,3 +53,39 @@ func TestPublicIPRejectsNonIPConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestClassifyDNS(t *testing.T) {
+	const host, public = "app.example.com", "203.0.113.7"
+
+	t.Run("http-01 NXDOMAIN stays fatal", func(t *testing.T) {
+		msg, fatal := classifyDNS("automatic", host, public, nil, true)
+		assert.True(t, fatal)
+		assert.Contains(t, msg, "can never be issued")
+	})
+
+	// The live drill: this was marked failed while the certificate was about to
+	// (and then did) issue.
+	t.Run("dns-01 NXDOMAIN is an advisory about serving, never fatal", func(t *testing.T) {
+		msg, fatal := classifyDNS("dns_challenge", host, public, nil, true)
+		assert.False(t, fatal, "must not decide the status")
+		assert.Contains(t, msg, "will not serve traffic")
+		assert.NotContains(t, msg, "can never be issued", "the issuance claim is false for DNS-01")
+	})
+
+	t.Run("resolving elsewhere is non-fatal everywhere, and silent under dns-01", func(t *testing.T) {
+		msg, fatal := classifyDNS("automatic", host, public, []string{"198.51.100.1"}, false)
+		assert.False(t, fatal)
+		assert.Contains(t, msg, "not this server")
+		msg, fatal = classifyDNS("dns_challenge", host, public, []string{"198.51.100.1"}, false)
+		assert.False(t, fatal)
+		assert.Empty(t, msg, "a proxy in front is why the mode is chosen; issuance does not depend on it")
+	})
+
+	t.Run("matching the server is quiet", func(t *testing.T) {
+		for _, mode := range []string{"automatic", "dns_challenge"} {
+			msg, fatal := classifyDNS(mode, host, public, []string{public}, false)
+			assert.Empty(t, msg)
+			assert.False(t, fatal)
+		}
+	})
+}

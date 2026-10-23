@@ -72,7 +72,7 @@ func (h *TaskHandler) probeDomain(ctx context.Context, d generated.ListDomainsFo
 	// A wildcard has no record of its own name to resolve; the apex and each
 	// subdomain are what DNS holds, and the probe below covers the certificate.
 	if d.SslMode != proxy.SSLModeOff && !strings.HasPrefix(d.Hostname, "*.") {
-		if msg, fatal := h.checkDNS(ctx, d.Hostname); msg != "" {
+		if msg, fatal := h.checkDNS(ctx, d.Hostname, d.SslMode); msg != "" {
 			if fatal {
 				recordedErr = msg
 			} else {

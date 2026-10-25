@@ -57,6 +57,25 @@ services:
       # reasons reach the TLS status badge instead of dying in stdout.
       - belune-system=caddy
 
+  crowdsec:
+    # The CrowdSec local API, as in docker-compose.prod.yml (see there for why the
+    # agent and the central API are off). Dev runs it so the CrowdSec page has a
+    # real API to talk to.
+    image: crowdsecurity/crowdsec:v1.8.1
+    environment:
+      DISABLE_AGENT: "true"
+      DISABLE_ONLINE_API: "true"
+    volumes:
+      - crowdsecdata:/var/lib/crowdsec/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    labels:
+      - belune-system=crowdsec
+
   buildkit:
     image: moby/buildkit:v0.31.1
     privileged: true
@@ -73,6 +92,7 @@ volumes:
   caddydata:
   caddyconfig:
   buildkitcache:
+  crowdsecdata:
 
 networks:
   default: {}

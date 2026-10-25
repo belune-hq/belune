@@ -209,6 +209,65 @@ services:
         max-size: "50m"
         max-file: "5"
 
+  # CrowdSec local API, and nothing else of CrowdSec: the ban list Caddy's bouncer
+  # reads. Belune puts bans in it (by hand, and from WAF detections when the
+  # operator opts in) and the bouncer in Caddy turns them into 403s.
+  #
+  # It runs always, and the dashboard's CrowdSec switch decides whether Caddy
+  # consults it. That is not a choice: the dashboard cannot start a compose service,
+  # so a service behind a `profiles` flag would make the switch a lie. It idles at
+  # ~70 MB and 256 MB is the ceiling.
+  #
+  # Two things are off on purpose, each a line in `environment` because every
+  # setting here is part of the definition this file ships with:
+  #   DISABLE_AGENT        no log parsing, no scenarios, no hub downloads. The agent
+  #                        is how CrowdSec decides to ban on its own from logs, and
+  #                        Belune only ever bans what an operator, or an operator's
+  #                        own opt-in policy, tells it to.
+  #   DISABLE_ONLINE_API   no registration with CrowdSec's central API, no
+  #                        community blocklist, and no signals sent out. Nothing
+  #                        leaves this host. A shared blocklist bans addresses
+  #                        behind shared NAT and CDNs, which would be the first
+  #                        support request.
+  # The bouncer is Caddy's (HTTP, per request), never the firewall bouncer: a bad
+  # ban must not be able to touch SSH, and with this one it cannot.
+  #
+  # Not published to the host: the local API is reachable only on this network,
+  # which is where the key Caddy's bouncer authenticates with is useful.
+  #
+  # The data volume is mandatory, not a nicety: the image's entrypoint prints a
+  # message and exits 0, starting nothing, when /var/lib/crowdsec/data is not a
+  # mount. Bans, the allowlist and the bouncer registration live there.
+  crowdsec:
+    image: crowdsecurity/crowdsec:v1.8.1
+    environment:
+      DISABLE_AGENT: "true"
+      DISABLE_ONLINE_API: "true"
+    volumes:
+      - crowdsecdata:/var/lib/crowdsec/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    labels:
+      # How Belune finds the container to run cscli in. By label and not by name:
+      # Compose derives names from the project directory, which is /opt/belune on a
+      # real install.
+      - belune-system=crowdsec
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "${CROWDSEC_CPU_LIMIT:-0.5}"
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
   # Bundled Docker registry — DEFINED here but INERT. This is the only service in
   # the file with `profiles`, and a service whose profile is not active is skipped
   # by every plain `docker compose up -d`: no container, no published port, no
@@ -255,4 +314,5 @@ volumes:
   caddylogs:
   belunedata:
   buildkitcache:
+  crowdsecdata:
   registrydata:

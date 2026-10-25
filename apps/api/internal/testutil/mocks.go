@@ -336,6 +336,8 @@ type MockProxyManager struct {
 	DNSPolicies []proxy.DNSPolicy
 	// WAFSyncs is every config SyncWAF received, in order.
 	WAFSyncs []proxy.WAFConfig
+	// CrowdSecSyncs is every config SyncCrowdSec received, in order.
+	CrowdSecSyncs []proxy.CrowdSecConfig
 }
 
 func (m *MockProxyManager) AddRoute(_ context.Context, cfg proxy.RouteConfig) error {
@@ -370,6 +372,13 @@ func (m *MockProxyManager) SyncWAF(_ context.Context, cfg proxy.WAFConfig) error
 	return nil
 }
 
+func (m *MockProxyManager) SyncCrowdSec(_ context.Context, cfg proxy.CrowdSecConfig) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.CrowdSecSyncs = append(m.CrowdSecSyncs, cfg)
+	return nil
+}
+
 func (m *MockProxyManager) SyncCertificates(_ context.Context, _ []proxy.HostCertificate) error {
 	return nil
 }
@@ -392,12 +401,19 @@ type MockReconciler struct {
 	Status_           proxy.ReconcilerStatus
 	ReconcileErr      error
 	WAF_              proxy.WAFState
+	CrowdSec_         proxy.CrowdSecState
 }
 
 func (m *MockReconciler) WAF() proxy.WAFState {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.WAF_
+}
+
+func (m *MockReconciler) CrowdSec() proxy.CrowdSecState {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.CrowdSec_
 }
 
 func (m *MockReconciler) Status() proxy.ReconcilerStatus {

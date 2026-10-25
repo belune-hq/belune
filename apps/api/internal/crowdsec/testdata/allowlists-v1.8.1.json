@@ -1,0 +1,22 @@
+[
+  {
+    "created_at": "2026-10-25T11:00:00.177Z",
+    "description": "Addresses Belune must never ban",
+    "items": [
+      {
+        "created_at": "2026-10-25T11:00:00.222Z",
+        "description": "login: admin@example.com",
+        "expiration": "2026-11-24T11:00:00.222Z",
+        "value": "192.0.2.10"
+      },
+      {
+        "created_at": "2026-10-25T11:00:00.268Z",
+        "description": "office",
+        "expiration": "2026-10-26T11:00:00.268Z",
+        "value": "192.0.2.0/28"
+      }
+    ],
+    "name": "belune-admins",
+    "updated_at": "2026-10-25T11:00:00.268Z"
+  }
+]

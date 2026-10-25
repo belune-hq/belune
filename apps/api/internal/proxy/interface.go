@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 )
 
 // Settings keys describing how the Belune dashboard itself is served. The
@@ -66,6 +67,46 @@ type WAFConfig struct {
 	// which a generic rule set reads as attacks, and an admin panel is not what the
 	// WAF is here to watch. No hosts means no route.
 	Hosts []string
+}
+
+// CrowdSecConfig is the desired state of the CrowdSec bouncer: a `crowdsec` app in
+// Caddy holding the connection to the local API, and one route in front of every
+// application route that asks it about each request's address.
+//
+// Like the WAF it is global and not a per-route feature, for the same reasons, and
+// it leaves the dashboard out for a reason of its own: a ban lifted from the
+// dashboard has to be reachable by the person it was placed on.
+type CrowdSecConfig struct {
+	// Enabled is the operator's switch AND the module being present AND the local
+	// API being usable; the caller has already decided all three. False removes the
+	// route and the app.
+	Enabled bool
+	// APIURL and APIKey are how the bouncer reaches and authenticates to the local
+	// API. The key is a credential and never leaves this struct in a log line.
+	APIURL string
+	APIKey string
+	// Hosts are the application hostnames the bouncer covers. None means no route.
+	Hosts []string
+	// Exempt are hostnames the route must never match: the dashboard's. Hosts can
+	// hold a wildcard ("*.example.com"), and a wildcard matches the dashboard when it
+	// is served on a name under it, which would put the dashboard behind the very
+	// bouncer whose bans it has to be able to lift.
+	Exempt []string
+}
+
+// String and LogValue keep the key out of any log line or error that formats the
+// struct whole.
+func (c CrowdSecConfig) String() string {
+	return "CrowdSecConfig{enabled=" + boolString(c.Enabled) + " api_url=" + c.APIURL + " api_key=[REDACTED]}"
+}
+
+func (c CrowdSecConfig) LogValue() slog.Value { return slog.StringValue(c.String()) }
+
+func boolString(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
 }
 
 // RouteFeature represents a middleware feature applied to a route.
@@ -171,6 +212,11 @@ type ProxyManager interface {
 	// already does. Like routes, it is lost when Caddy restarts, so the reconciler
 	// re-asserts it every pass.
 	SyncWAF(ctx context.Context, cfg WAFConfig) error
+
+	// SyncCrowdSec makes the proxy's CrowdSec app and route match cfg, and does
+	// nothing when they already do. Re-asserted every pass for the same reason as
+	// the WAF's route.
+	SyncCrowdSec(ctx context.Context, cfg CrowdSecConfig) error
 
 	// SyncCertificates makes the proxy's loaded certificates match the given set,
 	// keyed by hostname. Like routes, certificates pushed over the admin API are

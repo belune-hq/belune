@@ -17,6 +17,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/belune-hq/belune/internal/config"
+	"github.com/belune-hq/belune/internal/crowdsec"
 	"github.com/belune-hq/belune/internal/mcpserver"
 	"github.com/belune-hq/belune/internal/pkg/redact"
 	"github.com/belune-hq/belune/internal/proxy"
@@ -62,6 +63,8 @@ type ReconcilerStatusProvider interface {
 	ReconcileNow(ctx context.Context) error
 	// WAF is what the last pass did about the WAF route.
 	WAF() proxy.WAFState
+	// CrowdSec is what the last pass did about the bouncer.
+	CrowdSec() proxy.CrowdSecState
 }
 
 type Handler struct {
@@ -92,6 +95,8 @@ type Handler struct {
 	accessLog AccessLogStatusProvider
 	// waf reports the WAF recorder's counters; nil until wired.
 	waf WAFStatsProvider
+	// crowdsec drives the CrowdSec local API; nil until wired.
+	crowdsec *crowdsec.Service
 	// caddyInspector is built on first use and kept: it holds the version cache.
 	caddyInspector     *caddyinfo.Inspector
 	caddyInspectorOnce sync.Once

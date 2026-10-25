@@ -59,6 +59,9 @@ var targets = []target{
 	{"backup_destinations", "id", "credentials_encrypted"},
 	{"notification_channels", "id", "config_encrypted"},
 	{"dns_providers", "id", "credentials_encrypted"},
+	// The id is the text 'default' (a singleton), which rewrapTable scans as a
+	// string like any other key.
+	{"crowdsec_config", "id", "bouncer_key_encrypted"},
 	{"users", "id", "totp_secret_encrypted"},
 	// A tombstone holds the deleted database's credentials so a replacement
 	// restore can bring applications back without an env-var edit. Same secret,

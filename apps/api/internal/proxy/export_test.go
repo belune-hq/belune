@@ -51,3 +51,8 @@ func (r *Reconciler) SyncWAF(ctx context.Context, expected []RouteConfig, dashbo
 	r.wafSwitch = wanted
 	return r.syncWAF(ctx, expected, dashboardHost)
 }
+
+// SyncCrowdSec exposes the CrowdSec step of a pass.
+func (r *Reconciler) SyncCrowdSec(ctx context.Context, expected []RouteConfig, dashboardHost string) error {
+	return r.syncCrowdSec(ctx, expected, dashboardHost)
+}

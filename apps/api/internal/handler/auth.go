@@ -111,6 +111,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		uid := uuidToString(outcome.Session.User.ID)
 		h.auditSvc.Log(uid, "", clientIP, "login", "user", uid, nil)
 	}
+	h.noteAdminLogin(outcome.Session.User.Role, outcome.Session.User.Email, clientIP)
 
 	writeJSON(w, http.StatusOK, outcome.Session)
 }

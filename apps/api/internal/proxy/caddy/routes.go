@@ -60,6 +60,9 @@ type caddyMatch struct {
 	// at all, exactly as it did before paths existed, so upgrading does not make
 	// every existing route look drifted and rewrite it.
 	Path []string `json:"path,omitempty"`
+	// Not excludes what its matchers match, from a route that would otherwise
+	// match it. Used where a wildcard host has to leave one name out.
+	Not []caddyMatch `json:"not,omitempty"`
 }
 
 // caddyHandle is a flexible map-based handler to support all Caddy handler types
@@ -585,7 +588,7 @@ func (c *Client) ListRoutes(ctx context.Context) (result []proxy.RouteConfig, er
 	for _, route := range routes {
 		// Not an application route: it matches every application host, and read as
 		// one the reconciler would see a route for its first host with no target.
-		if route.ID == wafRouteID {
+		if route.ID == wafRouteID || route.ID == crowdsecRouteID {
 			continue
 		}
 		if len(route.Match) > 0 && len(route.Match[0].Host) > 0 {
@@ -648,7 +651,7 @@ func (c *Client) reorderRoutes(ctx context.Context) error {
 	}
 
 	var domainRoutes []json.RawMessage
-	var catchAll, wafRoute json.RawMessage
+	var catchAll, wafRoute, crowdsecRoute json.RawMessage
 	for _, r := range rawRoutes {
 		var probe struct {
 			ID    string `json:"@id"`
@@ -666,6 +669,11 @@ func (c *Client) reorderRoutes(ctx context.Context) error {
 		// is set aside here and put back at the front.
 		if probe.ID == wafRouteID {
 			wafRoute = r
+			continue
+		}
+		// Same for the bouncer's, and it goes in front of the WAF's.
+		if probe.ID == crowdsecRouteID {
+			crowdsecRoute = r
 			continue
 		}
 		// A route with no host matcher is the Caddyfile's default site, which
@@ -696,7 +704,10 @@ func (c *Client) reorderRoutes(ctx context.Context) error {
 			return fmt.Errorf("marshal catch-all: %w", err)
 		}
 	}
-	newRoutes := make([]json.RawMessage, 0, len(domainRoutes)+2)
+	newRoutes := make([]json.RawMessage, 0, len(domainRoutes)+3)
+	if len(crowdsecRoute) > 0 {
+		newRoutes = append(newRoutes, crowdsecRoute)
+	}
 	if len(wafRoute) > 0 {
 		newRoutes = append(newRoutes, wafRoute)
 	}

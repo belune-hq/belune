@@ -1,0 +1,113 @@
+[
+ {
+  "capacity": 0,
+  "created_at": "2026-10-25T11:00:00Z",
+  "decisions": [
+   {
+    "duration": "167h59m59s",
+    "id": 17,
+    "origin": "cscli",
+    "scenario": "added by hand with cscli",
+    "scope": "Ip",
+    "simulated": false,
+    "type": "ban",
+    "value": "2001:db8::1"
+   }
+  ],
+  "events": null,
+  "events_count": 1,
+  "id": 17,
+  "kind": "cscli",
+  "labels": null,
+  "leakspeed": "0",
+  "machine_id": "localhost",
+  "message": "added by hand with cscli",
+  "remediation": true,
+  "scenario": "added by hand with cscli",
+  "scenario_hash": "",
+  "scenario_version": "",
+  "simulated": false,
+  "source": {
+   "ip": "2001:db8::1",
+   "scope": "Ip",
+   "value": "2001:db8::1"
+  },
+  "start_at": "2026-10-25T10:59:59Z",
+  "stop_at": "2026-10-25T10:59:59Z",
+  "uuid": "5386a3f0-9e30-4d8b-9b32-8f227ab7dcc8"
+ },
+ {
+  "capacity": 0,
+  "created_at": "2026-10-25T10:59:59Z",
+  "decisions": [
+   {
+    "duration": "23h59m59s",
+    "id": 16,
+    "origin": "cscli",
+    "scenario": "belune-waf: attack-sqli, attack-xss: 14 requests in 10m",
+    "scope": "Range",
+    "simulated": false,
+    "type": "ban",
+    "value": "198.51.100.0/24"
+   }
+  ],
+  "events": null,
+  "events_count": 1,
+  "id": 16,
+  "kind": "cscli",
+  "labels": null,
+  "leakspeed": "0",
+  "machine_id": "localhost",
+  "message": "belune-waf: attack-sqli, attack-xss: 14 requests in 10m",
+  "remediation": true,
+  "scenario": "belune-waf: attack-sqli, attack-xss: 14 requests in 10m",
+  "scenario_hash": "",
+  "scenario_version": "",
+  "simulated": false,
+  "source": {
+   "ip": "198.51.100.0/24",
+   "scope": "Range",
+   "value": "198.51.100.0/24"
+  },
+  "start_at": "2026-10-25T10:59:59Z",
+  "stop_at": "2026-10-25T10:59:59Z",
+  "uuid": "4455df4a-53d2-42ee-9550-f10ba0903f12"
+ },
+ {
+  "capacity": 0,
+  "created_at": "2026-10-25T10:59:59Z",
+  "decisions": [
+   {
+    "duration": "1h29m59s",
+    "id": 15,
+    "origin": "cscli",
+    "scenario": "belune: scanner",
+    "scope": "Ip",
+    "simulated": false,
+    "type": "ban",
+    "value": "203.0.113.9"
+   }
+  ],
+  "events": null,
+  "events_count": 1,
+  "id": 15,
+  "kind": "cscli",
+  "labels": null,
+  "leakspeed": "0",
+  "machine_id": "localhost",
+  "message": "belune: scanner",
+  "remediation": true,
+  "scenario": "belune: scanner",
+  "scenario_hash": "",
+  "scenario_version": "",
+  "simulated": false,
+  "source": {
+   "ip": "203.0.113.9",
+   "scope": "Ip",
+   "value": "203.0.113.9"
+  },
+  "start_at": "2026-10-25T10:59:59Z",
+  "stop_at": "2026-10-25T10:59:59Z",
+  "uuid": "f2339e7b-870e-4dd9-9039-df121a415a07"
+ }
+]

@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/belune-hq/belune/internal/config"
+	"github.com/belune-hq/belune/internal/crowdsec"
 	"github.com/belune-hq/belune/internal/handler"
 	"github.com/belune-hq/belune/internal/pkg/metrics"
 	"github.com/belune-hq/belune/internal/proxy"
@@ -86,6 +87,12 @@ func (s *Server) SetAccessLog(p handler.AccessLogStatusProvider) {
 // startup, before the server accepts requests.
 func (s *Server) SetWAF(p handler.WAFStatsProvider) {
 	s.handler.SetWAF(p)
+}
+
+// SetCrowdSec wires the CrowdSec service into the handlers. Called once at startup,
+// before the server accepts requests.
+func (s *Server) SetCrowdSec(svc *crowdsec.Service) {
+	s.handler.SetCrowdSec(svc)
 }
 
 // SetProxyAdmin wires the read-only Caddy admin reader into the handlers.

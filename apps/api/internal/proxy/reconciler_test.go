@@ -21,6 +21,9 @@ type mockProxy struct {
 	dnsPush int                 // how many times it was pushed
 	waf     []proxy.WAFConfig   // every WAF config pushed, in order
 	wafErr  error               // returned by SyncWAF when set
+
+	crowdsec    []proxy.CrowdSecConfig // every CrowdSec config pushed, in order
+	crowdsecErr error                  // returned by SyncCrowdSec when set
 }
 
 func (m *mockProxy) AddRoute(_ context.Context, cfg proxy.RouteConfig) error {
@@ -67,6 +70,16 @@ func (m *mockProxy) SyncWAF(_ context.Context, cfg proxy.WAFConfig) error {
 		return m.wafErr
 	}
 	m.waf = append(m.waf, cfg)
+	return nil
+}
+
+func (m *mockProxy) SyncCrowdSec(_ context.Context, cfg proxy.CrowdSecConfig) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.crowdsecErr != nil {
+		return m.crowdsecErr
+	}
+	m.crowdsec = append(m.crowdsec, cfg)
 	return nil
 }
 

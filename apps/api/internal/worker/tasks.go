@@ -25,6 +25,7 @@ const (
 	TypeRestoreVolume       = "restore:volume"
 	TypeTLSStatusSweep      = "tls:status_sweep"
 	TypeWAFEventsSweep      = "waf:events_sweep"
+	TypeCrowdSecAutoban     = "crowdsec:autoban"
 	TypeTLSProbe            = "tls:probe"
 	TypeTemplateFinalize    = "template:finalize"
 	TypeNotifyDeliver       = "notify:deliver"

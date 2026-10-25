@@ -291,6 +291,11 @@ export const queryKeys = {
     eventsFiltered: (clientIp: string, ruleId: number | null) =>
       ["proxy", "waf", "events", clientIp, ruleId] as const,
   },
+  crowdsec: {
+    status: ["proxy", "crowdsec", "status"] as const,
+    decisions: ["proxy", "crowdsec", "decisions"] as const,
+    allowlist: ["proxy", "crowdsec", "allowlist"] as const,
+  },
   maintenanceQueue: ["maintenance", "queue"] as const,
   maintenancePlatformLogs: ["maintenance", "platform-logs"] as const,
   maintenanceServerIP: ["maintenance", "server-ip"] as const,

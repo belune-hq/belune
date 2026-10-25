@@ -177,7 +177,7 @@ export function describeModuleTab(
       return {
         tone: "ready",
         title: "Module available",
-        body: `This Caddy includes the ${label} module. Controls for it are not part of this release yet.`,
+        body: `This Caddy includes the ${label} module.`,
       };
   }
 }

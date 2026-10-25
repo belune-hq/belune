@@ -40,10 +40,16 @@ type crowdsecStatusResponse struct {
 	State proxy.CrowdSecState `json:"state"`
 	// LocalAPI is what the last look at the CrowdSec container found.
 	LocalAPI crowdsec.Health `json:"local_api"`
-	// YourIP is the address this request came from, as Caddy saw it. It is the
-	// address that was just allowlisted, and the one a ban can never name.
-	YourIP  string                  `json:"your_ip"`
-	Autoban crowdsecAutobanResponse `json:"autoban"`
+	// YourIP is the address this request came from, as Caddy saw it.
+	YourIP string `json:"your_ip"`
+	// YourIPProtection is how that address stands against being banned: private
+	// and loopback addresses can never be named by a ban, a public one is only
+	// as safe as its allowlist entry (which expires), and when the local API
+	// cannot be asked nothing is claimed. The page words what it says about the
+	// address from this, and not from the switch: the switch being on does not
+	// mean the address was allowlisted.
+	YourIPProtection crowdsec.Protection     `json:"your_ip_protection"`
+	Autoban          crowdsecAutobanResponse `json:"autoban"`
 }
 
 type crowdsecAutobanResponse struct {
@@ -430,6 +436,9 @@ func (h *Handler) crowdsecStatus(r *http.Request, fresh bool) (crowdsecStatusRes
 	} else {
 		resp.LocalAPI = h.crowdsec.Look(ctx)
 	}
+	// After the look above, which it reuses: a private address is answered without
+	// asking the local API at all.
+	resp.YourIPProtection = h.crowdsec.Protection(ctx, resp.YourIP)
 	return resp, nil
 }
 

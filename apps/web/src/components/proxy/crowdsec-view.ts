@@ -1,6 +1,7 @@
 import { describeModuleTab } from "@/components/proxy/proxy-traffic";
 import type {
   CrowdSecAutobanStatus,
+  CrowdSecProtection,
   CrowdSecLocalApi,
   CrowdSecPolicy,
   CrowdSecSource,
@@ -168,11 +169,57 @@ export function bouncerNotice(
   return null;
 }
 
+/**
+ * What the status card says about the admin's own address. It keys on how the
+ * address stands (`your_ip_protection`) and not on the switch: with the switch
+ * on, a private address was never added to the allowlist and a public one may not
+ * have been (the local API was down), and with it off an earlier run may have
+ * added it. The old wording claimed "cannot be banned" for every address when
+ * on, which is false of a public one: it is safe only while its entry stands.
+ */
+export function describeYourAddress(
+  ip: string,
+  protection: CrowdSecProtection,
+  enabled: boolean,
+): { tone: CrowdSecTone; text: string } {
+  const from = `You are connecting from ${ip}`;
+  switch (protection) {
+    case "unbannable":
+      return {
+        tone: "neutral",
+        text: `${from}, a private or loopback address. No ban can name it, so it needs no allowlist entry.`,
+      };
+    case "allowlisted":
+      return {
+        tone: "neutral",
+        text: `${from}. It is on the allowlist, renewed each time you log in, so it cannot be banned while that entry stands.`,
+      };
+    case "exposed":
+      return enabled
+        ? {
+            tone: "attention",
+            text: `${from}. It is not on the allowlist, so it can be banned. Log in again, or add it below.`,
+          }
+        : {
+            tone: "neutral",
+            text: `${from}. It is added to the allowlist when you turn this on.`,
+          };
+    default:
+      return { tone: "neutral", text: `${from}.` };
+  }
+}
+
 /** What turning it on means, said before it is turned on. */
-export function crowdSecEnablePoints(yourIp: string): string[] {
+export function crowdSecEnablePoints(
+  yourIp: string,
+  protection: CrowdSecProtection = "unknown",
+): string[] {
+  const ip = yourIp || "unknown";
   return [
     "Banned addresses get a 403 from your applications. This dashboard is never behind it, so a ban can always be lifted from here.",
-    `The address you are connected from (${yourIp || "unknown"}) is put on an allowlist now, and so is every address an admin logs in from. An allowlisted address cannot be banned, and logging in lifts a ban already on it.`,
+    protection === "unbannable"
+      ? `The address you are connected from (${ip}) is private or loopback, so no ban can name it and it needs no allowlist entry. A public address an admin logs in from is put on an allowlist, which cannot be banned while its entry stands, and logging in lifts a ban already on it.`
+      : `Belune puts the address you are connected from (${ip}) on an allowlist when you turn this on, and every address an admin logs in from afterwards. An allowlisted address cannot be banned while its entry stands (30 days from the last login), and adding one lifts a ban already on it.`,
     "Nothing is banned on its own. Automatic bans from WAF detections are a separate switch below, off until you turn it on.",
     "Nothing leaves your server: no community blocklist, no signals sent to CrowdSec.",
     "Behind a CDN or load balancer, Caddy sees that service's address and not your visitors'. Banning it would block everyone using it, so do not use this there.",

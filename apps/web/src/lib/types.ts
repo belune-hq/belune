@@ -1064,6 +1064,15 @@ export interface CrowdSecAutobanStatus {
   capped: boolean;
 }
 
+/** `unbannable`: private or loopback, no ban can name it. `allowlisted`: public,
+ *  covered by an unexpired allowlist entry. `exposed`: public, and nothing covers
+ *  it. `unknown`: the local API could not be asked. */
+export type CrowdSecProtection =
+  | "unbannable"
+  | "allowlisted"
+  | "exposed"
+  | "unknown";
+
 export interface CrowdSecStatus {
   capability: { module: string; state: FeatureAvailability };
   /** The operator's switch. */
@@ -1072,6 +1081,10 @@ export interface CrowdSecStatus {
   local_api: CrowdSecLocalApi;
   /** The address this request came from, as Caddy saw it. */
   your_ip: string;
+  /** How that address stands against being banned. Not the same as whether the
+   *  switch is on: a private address is never added to the allowlist, and a public
+   *  one is only as safe as its (expiring) entry. */
+  your_ip_protection: CrowdSecProtection;
   autoban: {
     policy: CrowdSecPolicy;
     status: CrowdSecAutobanStatus;

@@ -33,7 +33,7 @@ visitor ──▶ Caddy ── http.handlers.crowdsec ────────�
 
 | | Why |
 |---|---|
-| An admin's address after they log in (30 days, restarted by each login) | CrowdSec refuses to ban an allowlisted address or a range containing one, and adding an address to the allowlist deletes a ban already on it |
+| A public address an admin has logged in from, or turned CrowdSec on from, while its allowlist entry stands (30 days, restarted by each login) | CrowdSec refuses to ban an allowlisted address or a range containing one, and adding an address to the allowlist deletes a ban already on it |
 | The address of whoever is placing the ban | Refused by Belune before it reaches CrowdSec |
 | Private, loopback, link-local, multicast and reserved ranges | Behind Docker the address Caddy sees may be a gateway or proxy that every visitor shares |
 | Ranges wider than /16 (IPv4) or /48 (IPv6) | A typo should not ban a continent |

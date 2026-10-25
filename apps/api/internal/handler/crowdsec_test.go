@@ -267,6 +267,7 @@ func TestCrowdSecStatus_DefaultsAndWhatItReports(t *testing.T) {
 	require.Equal(t, http.StatusOK, code)
 	assert.Equal(t, false, st["enabled"], "off until an operator turns it on")
 	assert.Equal(t, "203.0.113.50", st["your_ip"])
+	assert.Equal(t, "exposed", st["your_ip_protection"], "public, and nothing has added it")
 	assert.Equal(t, true, st["state"].(map[string]any)["active"])
 	assert.EqualValues(t, 4, st["state"].(map[string]any)["hosts"])
 
@@ -280,6 +281,44 @@ func TestCrowdSecStatus_DefaultsAndWhatItReports(t *testing.T) {
 	cats := ab["categories"].([]any)
 	assert.NotContains(t, cats, "attack-protocol")
 	assert.Contains(t, cats, "attack-sqli")
+}
+
+// What the page says about the admin's own address must come from whether it can be
+// banned and whether it is on the allowlist, not from the switch: a private address
+// is never added whatever the switch says, and a public one is only as safe as its
+// entry.
+func TestCrowdSecStatus_SaysHowYourAddressStands(t *testing.T) {
+	f := crowdsecFixture(t)
+	protection := func(forwardedFor string) string {
+		t.Helper()
+		resp, b := f.do("GET", "/api/maintenance/proxy/crowdsec", nil, map[string]string{"X-Forwarded-For": forwardedFor})
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		var st map[string]any
+		require.NoError(t, json.Unmarshal(b, &st))
+		return fmt.Sprint(st["your_ip_protection"])
+	}
+	entry := `[{"name":"belune-admins","items":[{"value":"203.0.113.50","description":"login","created_at":"2026-10-25T10:00:00Z","expiration":"` +
+		time.Now().Add(48*time.Hour).UTC().Format(time.RFC3339) + `"}]}]`
+
+	// Public, switch ON, but never added (the local API was down when it should have
+	// been): exposed. The old wording called this "an address that cannot be banned".
+	f.enable()
+	assert.Equal(t, "exposed", protection("203.0.113.50"))
+
+	f.cli.reply("allowlists list", entry, nil)
+	assert.Equal(t, "allowlisted", protection("203.0.113.50"))
+
+	// Private and loopback addresses are never added, switch on or off.
+	for _, ip := range []string{"192.168.147.1", "10.0.0.5", "127.0.0.1", "::1"} {
+		assert.Equal(t, "unbannable", protection(ip), ip)
+	}
+	f.json("PUT", "/api/maintenance/proxy/crowdsec", map[string]any{"enabled": false})
+	assert.Equal(t, "unbannable", protection("192.168.147.1"), "off changes nothing about an address no ban can name")
+
+	// No claim when the local API cannot be asked.
+	f.cli.reply("bouncers list", "", crowdsec.ErrUnavailable)
+	f.svc.Refresh(context.Background())
+	assert.Equal(t, "unknown", protection("203.0.113.9"))
 }
 
 func TestCrowdSecStatus_ALocalAPIThatIsDownIsReportedNotFailed(t *testing.T) {

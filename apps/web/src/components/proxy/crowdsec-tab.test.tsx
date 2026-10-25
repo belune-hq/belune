@@ -74,6 +74,7 @@ const base = (over: Partial<CrowdSecStatus> = {}): CrowdSecStatus => ({
     last_pull: new Date().toISOString(),
   },
   your_ip: "203.0.113.50",
+  your_ip_protection: "allowlisted",
   autoban: {
     policy: {
       enabled: false,
@@ -164,6 +165,24 @@ describe("CrowdSecTab", () => {
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Turn on" }));
     await waitFor(() => expect(setEnabled).toHaveBeenCalledWith(true));
+  });
+
+  it("describes the address from how it stands, not from the switch", () => {
+    h.state.status = base({
+      enabled: true,
+      your_ip: "192.168.147.1",
+      your_ip_protection: "unbannable",
+    });
+    const { unmount } = render(<CrowdSecTab />);
+    expect(screen.getByText(/private or loopback address/)).toBeTruthy();
+    expect(screen.queryByText(/an address that cannot be banned/)).toBeNull();
+    unmount();
+
+    h.state.status = base({ enabled: true, your_ip_protection: "exposed" });
+    render(<CrowdSecTab />);
+    expect(
+      screen.getByText(/It is not on the allowlist, so it can be banned/),
+    ).toBeTruthy();
   });
 
   it("turning it off needs no confirmation", async () => {

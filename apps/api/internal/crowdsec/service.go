@@ -183,12 +183,8 @@ func (s *Service) SetEnabled(ctx context.Context, enabled bool, clientIP string)
 // allowAddress allowlists the address an admin is acting from, when it can be
 // banned at all. Failure is logged and swallowed: it is a safety net, never a gate.
 func (s *Service) allowAddress(ctx context.Context, clientIP, why string) {
-	ip, err := netip.ParseAddr(clientIP)
-	if err != nil {
-		return
-	}
-	target := netip.PrefixFrom(ip.Unmap(), ip.Unmap().BitLen())
-	if CheckBannable(target) != nil {
+	target, ok := bannableAddress(clientIP)
+	if !ok {
 		return
 	}
 	if err := s.ctl.Allow(ctx, target, CleanReason(why), AllowlistTTL); err != nil {
@@ -200,6 +196,75 @@ func (s *Service) allowAddress(ctx context.Context, clientIP, why string) {
 		}
 		slog.Warn("crowdsec: could not allowlist the acting admin", "error", redact.Error(err.Error()))
 	}
+}
+
+// Protection says how an address stands against being banned, for the page that
+// tells an admin about their own.
+type Protection string
+
+const (
+	// ProtectionUnbannable is a private, loopback or reserved address: no ban can
+	// name it, so it needs no allowlist entry and never gets one.
+	ProtectionUnbannable Protection = "unbannable"
+	// ProtectionAllowlisted is a public address that an unexpired allowlist entry
+	// covers. It is safe for as long as the entry stands, and no longer.
+	ProtectionAllowlisted Protection = "allowlisted"
+	// ProtectionExposed is a public address nothing covers: it can be banned. The
+	// allowlisting is a safety net that did not happen, or has expired.
+	ProtectionExposed Protection = "exposed"
+	// ProtectionUnknown is a public address whose standing could not be read,
+	// because the local API did not answer. No claim is made either way.
+	ProtectionUnknown Protection = "unknown"
+)
+
+// Protection reports whether clientIP can be banned, and if so whether it is
+// allowlisted right now. It reads the allowlist, not the switch: the switch being
+// on does not mean the address was added (the local API may have been down), and
+// it being off does not mean it was not (an earlier run may have added it).
+func (s *Service) Protection(ctx context.Context, clientIP string) Protection {
+	target, ok := bannableAddress(clientIP)
+	if !ok {
+		// Either it cannot be banned, or it is not an address at all; only the first
+		// is a claim that can be made.
+		if ip, err := netip.ParseAddr(clientIP); err == nil && CheckBannable(netip.PrefixFrom(ip.Unmap(), ip.Unmap().BitLen())) != nil {
+			return ProtectionUnbannable
+		}
+		return ProtectionUnknown
+	}
+	if !s.Look(ctx).Reachable {
+		return ProtectionUnknown
+	}
+	items, err := s.ctl.Allowlist(ctx)
+	if err != nil {
+		return ProtectionUnknown
+	}
+	now := s.now()
+	for _, it := range items {
+		covers, err := ParseTarget(it.Value)
+		if err != nil || !covers.Contains(target.Addr()) {
+			continue
+		}
+		if it.ExpiresAt.IsZero() || it.ExpiresAt.After(now) {
+			return ProtectionAllowlisted
+		}
+	}
+	return ProtectionExposed
+}
+
+// bannableAddress parses an address and says whether a ban could name it. The one
+// definition, shared by what allowlists an admin and what tells them about it, so
+// the two cannot come to disagree.
+func bannableAddress(clientIP string) (netip.Prefix, bool) {
+	ip, err := netip.ParseAddr(clientIP)
+	if err != nil {
+		return netip.Prefix{}, false
+	}
+	ip = ip.Unmap()
+	target := netip.PrefixFrom(ip, ip.BitLen())
+	if CheckBannable(target) != nil {
+		return netip.Prefix{}, false
+	}
+	return target, true
 }
 
 // NoteAdminLogin allowlists the address an admin has just logged in from. It

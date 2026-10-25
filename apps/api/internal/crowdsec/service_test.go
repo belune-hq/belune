@@ -479,3 +479,85 @@ func TestSetAutoban_ValidatesAndNormalises(t *testing.T) {
 	_, err = r.svc.SetAutoban(ctx, off)
 	assert.NoError(t, err)
 }
+
+func TestProtection(t *testing.T) {
+	ctx := context.Background()
+	future := r0().Add(48 * time.Hour).Format(time.RFC3339)
+	past := r0().Add(-time.Hour).Format(time.RFC3339)
+	list := func(items ...string) string {
+		out := `[{"name":"belune-admins","items":[`
+		for i, it := range items {
+			if i > 0 {
+				out += ","
+			}
+			out += it
+		}
+		return out + `]}]`
+	}
+	item := func(value, exp string) string {
+		return `{"value":"` + value + `","description":"x","created_at":"2026-10-25T10:00:00Z","expiration":"` + exp + `"}`
+	}
+
+	t.Run("a private or loopback address needs nothing, and nothing is asked", func(t *testing.T) {
+		for _, ip := range []string{"192.168.147.1", "10.0.0.5", "172.18.0.1", "127.0.0.1", "::1", "fd00::1"} {
+			r := newRig(t)
+			assert.Equal(t, ProtectionUnbannable, r.svc.Protection(ctx, ip), ip)
+			assert.Empty(t, r.run.calls, "no exec to answer for "+ip)
+		}
+	})
+
+	t.Run("a public address on the allowlist is allowlisted", func(t *testing.T) {
+		r := newRig(t)
+		r.run.on("allowlists list", list(item("203.0.113.50", future)), nil)
+		assert.Equal(t, ProtectionAllowlisted, r.svc.Protection(ctx, "203.0.113.50"))
+		// Mapped, as a dual-stack listener reports it.
+		assert.Equal(t, ProtectionAllowlisted, r.svc.Protection(ctx, "::ffff:203.0.113.50"))
+	})
+
+	t.Run("a range that covers it counts", func(t *testing.T) {
+		r := newRig(t)
+		r.run.on("allowlists list", list(item("203.0.113.0/24", future)), nil)
+		assert.Equal(t, ProtectionAllowlisted, r.svc.Protection(ctx, "203.0.113.50"))
+		assert.Equal(t, ProtectionExposed, r.svc.Protection(ctx, "203.0.114.50"))
+	})
+
+	t.Run("an entry that has expired protects nothing", func(t *testing.T) {
+		r := newRig(t)
+		r.run.on("allowlists list", list(item("203.0.113.50", past)), nil)
+		assert.Equal(t, ProtectionExposed, r.svc.Protection(ctx, "203.0.113.50"))
+	})
+
+	// This is the case the switch cannot tell from the good one: CrowdSec is on and
+	// the address was never added, because the local API was down when it was meant
+	// to be.
+	t.Run("a public address nobody added is exposed, whatever the switch says", func(t *testing.T) {
+		r := newRig(t)
+		r.enable(t)
+		assert.Equal(t, ProtectionExposed, r.svc.Protection(ctx, "203.0.113.50"))
+	})
+
+	t.Run("makes no claim when the local API cannot be asked", func(t *testing.T) {
+		r := newRig(t)
+		r.run.on("bouncers list", "", ErrUnavailable)
+		assert.Equal(t, ProtectionUnknown, r.svc.Protection(ctx, "203.0.113.50"))
+
+		r = newRig(t)
+		r.run.on("allowlists list", "", ErrUnavailable)
+		assert.Equal(t, ProtectionUnknown, r.svc.Protection(ctx, "203.0.113.50"))
+
+		assert.Equal(t, ProtectionUnknown, newRig(t).svc.Protection(ctx, "not-an-address"))
+	})
+
+	t.Run("agrees with what allowlists an admin", func(t *testing.T) {
+		// The two share one definition, so an address is never described as safe
+		// that would not have been added.
+		for _, ip := range []string{"203.0.113.50", "10.1.2.3", "::1", "2001:db8::1", "garbage"} {
+			_, bannable := bannableAddress(ip)
+			r := newRig(t)
+			r.svc.allowAddress(ctx, ip, "x")
+			assert.Equal(t, bannable, len(r.run.called("allowlists add")) == 1, ip)
+		}
+	})
+}
+
+func r0() time.Time { return time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC) }

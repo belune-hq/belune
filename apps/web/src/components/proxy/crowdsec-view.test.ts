@@ -12,6 +12,7 @@ import {
   crowdSecEnablePoints,
   describeAutoban,
   describeCrowdSec,
+  describeYourAddress,
   isBanTarget,
   reasonText,
   sourceLabel,
@@ -56,6 +57,7 @@ const status = (over: Partial<CrowdSecStatus> = {}): CrowdSecStatus => ({
   state: { active: false, hosts: 0 },
   local_api: api(),
   your_ip: "203.0.113.50",
+  your_ip_protection: "allowlisted",
   autoban: { policy: policy(), status: run(), categories: ["attack-sqli"] },
   ...over,
 });
@@ -206,11 +208,54 @@ describe("bouncerNotice", () => {
   });
 });
 
+// The copy keys on how the address stands, not on the switch. The old wording said
+// "an address that cannot be banned" whenever the switch was on, which is false of a
+// public address (it is safe only while its allowlist entry stands) and said an
+// address "is allowlisted when you turn this on" of a private one (never added).
+describe("describeYourAddress", () => {
+  it("says a private address needs no allowlist entry, on or off", () => {
+    for (const enabled of [true, false]) {
+      const d = describeYourAddress("192.168.147.1", "unbannable", enabled);
+      expect(d.text).toMatch(/private or loopback/);
+      expect(d.text).toMatch(/needs no allowlist entry/);
+      expect(d.text).not.toMatch(/when you turn this on/);
+      expect(d.text).not.toMatch(/cannot be banned/);
+    }
+  });
+
+  it("says a public allowlisted address is safe only while its entry stands", () => {
+    const d = describeYourAddress("203.0.113.50", "allowlisted", true);
+    expect(d.text).toMatch(/while that entry stands/);
+    expect(d.text).not.toMatch(/an address that cannot be banned/);
+  });
+
+  it("warns, rather than reassures, about a public address that is on but not allowlisted", () => {
+    const on = describeYourAddress("203.0.113.50", "exposed", true);
+    expect(on.tone).toBe("attention");
+    expect(on.text).toMatch(/can be banned/);
+    expect(on.text).not.toMatch(/cannot be banned/);
+
+    const off = describeYourAddress("203.0.113.50", "exposed", false);
+    expect(off.text).toMatch(/added to the allowlist when you turn this on/);
+  });
+
+  it("makes no claim when the local API could not be asked", () => {
+    const d = describeYourAddress("203.0.113.50", "unknown", true);
+    expect(d.text).toBe("You are connecting from 203.0.113.50.");
+  });
+});
+
 describe("enable confirmation", () => {
   const points = crowdSecEnablePoints("203.0.113.50");
 
   it("names the address that becomes unbannable", () => {
     expect(points.join(" ")).toContain("203.0.113.50");
+  });
+
+  it("does not promise a private address an allowlist entry", () => {
+    const own = crowdSecEnablePoints("192.168.147.1", "unbannable").join(" ");
+    expect(own).toMatch(/needs no allowlist entry/);
+    expect(own).not.toMatch(/put on an allowlist now/);
   });
 
   it("says the things a person should know before an action that blocks traffic", () => {

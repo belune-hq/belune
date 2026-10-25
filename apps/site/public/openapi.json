@@ -18252,6 +18252,9 @@
           },
           "your_ip": {
             "type": "string"
+          },
+          "your_ip_protection": {
+            "type": "string"
           }
         },
         "type": "object"

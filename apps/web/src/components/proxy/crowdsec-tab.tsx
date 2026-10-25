@@ -52,6 +52,7 @@ import {
   crowdSecEnablePoints,
   describeAutoban,
   describeCrowdSec,
+  describeYourAddress,
   isBanTarget,
   reasonText,
   sourceLabel,
@@ -134,6 +135,13 @@ function StatusCard({
   const d = status ? describeCrowdSec(status) : null;
   const Icon = status?.state.active ? ShieldCheckIcon : ShieldIcon;
   const stale = status ? bouncerNotice(status.local_api, new Date()) : null;
+  const yours = status
+    ? describeYourAddress(
+        status.your_ip,
+        status.your_ip_protection,
+        status.enabled,
+      )
+    : null;
 
   const apply = (enabled: boolean) =>
     toast.promise(setEnabled.mutateAsync(enabled), {
@@ -175,7 +183,7 @@ function StatusCard({
         )}
       </CardHeader>
       <CardContent className="space-y-3">
-        {loading || !status || !d ? (
+        {loading || !status || !d || !yours ? (
           <Skeleton className="h-10 w-2/3" />
         ) : (
           <>
@@ -202,12 +210,15 @@ function StatusCard({
                 Rotate the bouncer key
               </Button>
             )}
-            <p className="text-text-faint text-xs">
-              You are connecting from{" "}
-              <span className="font-mono">{status.your_ip}</span>
-              {status.enabled
-                ? ", an address that cannot be banned."
-                : ". It is allowlisted when you turn this on."}
+            <p
+              className={cn(
+                "text-xs",
+                yours.tone === "attention"
+                  ? TEXT_TONE.attention
+                  : "text-text-faint",
+              )}
+            >
+              {yours.text}
             </p>
           </>
         )}
@@ -222,7 +233,10 @@ function StatusCard({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <ul className="text-muted-foreground list-disc space-y-1.5 pl-5 text-sm">
-            {crowdSecEnablePoints(status?.your_ip ?? "").map((p) => (
+            {crowdSecEnablePoints(
+              status?.your_ip ?? "",
+              status?.your_ip_protection,
+            ).map((p) => (
               <li key={p}>{p}</li>
             ))}
           </ul>

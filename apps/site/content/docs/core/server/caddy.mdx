@@ -7,7 +7,7 @@ Belune puts every domain behind Caddy and configures it through Caddy's admin AP
 
 ## The Default Image
 
-Belune's stack runs `ghcr.io/belune-hq/belune-caddy:2`: upstream Caddy plus seven optional modules (rate limiting, the Cloudflare, Route 53 and DigitalOcean DNS providers, a WAF, CrowdSec, and layer 4 proxying). Today only rate limiting is something you can use from the dashboard; the rest ship ahead of their features so that turning them on later doesn't mean replacing the proxy again.
+Belune's stack runs `ghcr.io/belune-hq/belune-caddy:2`: upstream Caddy plus seven optional modules (rate limiting, the Cloudflare, Route 53 and DigitalOcean DNS providers, a WAF, CrowdSec, and layer 4 proxying). Rate limiting, the WAF and CrowdSec each have controls in the dashboard; a module without a feature yet ships ahead of it, so that turning it on later doesn't mean replacing the proxy again.
 
 You don't have to use it. Stock upstream `caddy:2-alpine` is a supported setup, not a degraded one: every core function (routing, automatic and custom TLS, basic auth, headers, IP allowlists, redirects, path routing) works the same. Set `BELUNE_CADDY_IMAGE` in `.env` to switch, and run `update.sh` (or `docker compose up -d`) to recreate the proxy. See the [configuration reference](https://github.com/belune-hq/belune/blob/main/docs/configuration.md) for the variable.
 
@@ -22,6 +22,8 @@ Belune asks the running Caddy which modules it has (`caddy list-modules`, run in
 | Feature | Module it needs |
 |---|---|
 | Rate Limit | `http.handlers.rate_limit` |
+| WAF | `http.handlers.waf` |
+| CrowdSec | `http.handlers.crowdsec` |
 
 When the module is missing the feature is **not configured**, never an error:
 
@@ -45,9 +47,11 @@ Belune treats its own routes as the source of truth and re-asserts them every 30
 
 Admins get a Proxy page in the sidebar, with a tab each for Caddy, CrowdSec and the WAF. The Caddy tab shows what Belune can tell about the proxy itself: which container it is and how that container was found, whether the admin API answers, the version and image, the loaded modules, whether the request log is being read, how much traffic Caddy is proxying to apps and how fast, and how the live routes compare with the database.
 
-Every line separates "could not be determined" from "not there". If Belune cannot list Caddy's modules because the proxy is restarting, the page says the modules are unknown rather than that they are missing. When Caddy runs outside Docker there is no container to inspect, and the page says so instead of reporting an error. The CrowdSec tab reports whether your Caddy includes the module; its controls are not part of this release. The WAF tab is described below.
+Every line separates "could not be determined" from "not there". If Belune cannot list Caddy's modules because the proxy is restarting, the page says the modules are unknown rather than that they are missing. When Caddy runs outside Docker there is no container to inspect, and the page says so instead of reporting an error. The CrowdSec and WAF tabs are described below.
 
 The traffic figures come from Caddy's own metrics, so they cover requests that reached an app and not redirects or the dashboard itself. They need `servers { metrics }` in the Caddyfile, which Belune's stack already sets. A Caddy you run yourself needs the same.
+
+The page is read-only. Belune owns the route table and rewrites anything it does not recognise within thirty seconds, so Caddy's configuration cannot be edited here. The running configuration can be viewed, with private keys and password hashes removed on the server. Reconcile Routes stays on the Server page, beside the other maintenance actions.
 
 ## The WAF
 
@@ -66,4 +70,65 @@ The three states of "does this Caddy have the module" stay separate here too. If
 
 The rule matches also appear in the proxy's log on the Server page. Because they carry the matched text, that view shows each one as a summary, the rule, the client and the host, with the payload and URL withheld. The unredacted lines stay in Docker's own log for the proxy container on the host.
 
-The page is read-only. Belune owns the route table and rewrites anything it does not recognise within thirty seconds, so Caddy's configuration cannot be edited here. The running configuration can be viewed, with private keys and password hashes removed on the server. Reconcile Routes stays on the Server page, beside the other maintenance actions.
+## CrowdSec
+
+The CrowdSec tab bans addresses from your applications. A ban is a decision held by a CrowdSec local API, and the `http.handlers.crowdsec` module in the Belune Caddy image asks it about every request's address and answers a banned one with a 403, on every application hostname, within about five seconds of the ban being placed or lifted. It is off until you turn it on, and the switch covers every application at once.
+
+### What Runs
+
+Belune's stack gains one service, `crowdsec`, running only CrowdSec's local API. Its log-parsing agent and its link to CrowdSec's central API are both switched off, so **nothing is banned that you or your own policy did not ban, and nothing leaves your server**: no community blocklist (which would ban addresses behind shared NAT and CDNs) and no signals sent out. It idles at about 70 MB with a 256 MB ceiling, and its image is about 170 MB to pull. It always runs, because a dashboard cannot start a compose service; the switch decides whether Caddy consults it.
+
+Belune drives it by running `cscli` inside that container, the same way it runs `caddy list-modules` in Caddy's. The only secret Belune holds is the bouncer's key, which can read the ban list and nothing else. CrowdSec generates it, Belune stores it encrypted and hands it to Caddy, and it never appears on a command line or in a response.
+
+A release that adds this service changes the compose file, so updating to it restarts the stack briefly, and a host that has not run the update shows the tab as **Local API down**.
+
+### What Is Never Banned
+
+The ban list is the one place in Belune where a mistake locks someone out, so the ways to get it wrong are closed off.
+
+- **The dashboard is not behind the bouncer.** It covers your application hostnames only, so a ban can always be lifted from the table on this page.
+- **Your own address cannot be banned.** Turning CrowdSec on puts the address you are connected from on an allowlist, and so does every admin login, for 30 days from the last one. CrowdSec refuses to ban an allowlisted address, or a range that contains one, and adding an address to the allowlist **lifts a ban already on it**, so logging in undoes a ban that caught you. Belune never overrides the allowlist.
+- **Private, loopback and reserved addresses are refused.** In a Docker deployment the address Caddy sees can be a gateway or proxy that every visitor shares, and banning it bans them all. A range must be no wider than /16 (IPv4) or /48 (IPv6).
+- **Every ban expires**, between one minute and 365 days. There is no permanent ban.
+- **Lifting a ban never needs the feature switched on**, and neither does leaving the allowlist.
+
+Every ban, lift and allowlist change is in the audit log with who made it.
+
+### Automatic Bans
+
+Off by default, and separate from the switch above. With it on, Belune bans an address that trips the [WAF](#the-waf)'s attack rules in enough separate requests within a window, by default 10 requests in 10 minutes, for one hour, with at most 25 automatic bans in force at once. It needs the WAF turned on, since the WAF is what produces the detections.
+
+What counts is chosen so that it cannot be set off by ordinary traffic:
+
+- **Distinct requests, not rule matches.** One request trips many rules, and a single crafted request must not be able to ban an address.
+- **Attack categories only**: SQL injection, cross-site scripting, remote code execution, file inclusion, PHP and Java injection, and optionally server-side request forgery and template injection. Protocol and request-format rules never lead to a ban. They share the critical severity of real attacks, and one of them fired on ordinary `text/plain` POSTs, so severity could not be the test.
+- **A lifted ban stays lifted.** An address you unban from this page is not banned again for the length of the window, however many detections it already has. A ban lifted with `cscli` on the host is not recorded, so allowlist the address as well (the commands are below).
+- **A cap, and it says so.** When the cap is reached further addresses are left alone and the tab reports it: something is tripping rules at a rate worth looking at.
+
+A visitor whose form contains SQL or script text can still trip attack rules, which is why this asks for confirmation the first time and why every ban expires.
+
+### When Something Is Wrong
+
+Caddy **fails open** by design: a bouncer that cannot do its job lets everyone through. That keeps a CrowdSec problem from taking your sites down, and it means a ban can stop being enforced without anything looking wrong, so the tab reports whether enforcement is live and not just configured.
+
+- **The local API is down.** Caddy keeps enforcing the bans it already holds and does not learn of new or lifted ones. If Caddy's configuration changes while the local API is down, which any deploy or domain change does, it starts again with an empty list and enforces nothing until the local API answers.
+- **The bouncer has stopped fetching the ban list**, most often because its entry was changed by hand in the local API. The tab shows **Not enforcing** and offers to rotate the key.
+- **Behind a CDN or load balancer** Caddy sees that service's address and not your visitors', so a ban would block everyone using it. Do not use CrowdSec there.
+- A Caddy that is known to lack the module is refused. If Belune cannot list Caddy's modules, the tab says it cannot tell yet and still saves the switch, as the WAF does.
+
+### If a Ban Locks You Out
+
+You should never need this, since the dashboard is outside the bouncer. If you cannot reach the dashboard at all, connect to the server over SSH. **The host shell in the dashboard will not help**: it sits behind the same login you cannot reach.
+
+```bash
+cd /opt/belune
+docker compose exec crowdsec cscli decisions delete --all
+```
+
+That lifts every ban, and Caddy picks it up within seconds. To lift one address, use `--ip 203.0.113.9`, or `--range 203.0.113.0/24` for a range. To switch CrowdSec off without the dashboard:
+
+```bash
+docker compose exec postgres psql -U belune -d belune -c "UPDATE crowdsec_config SET enabled = false"
+```
+
+Belune removes the bouncer from Caddy within 30 seconds.

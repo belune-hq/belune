@@ -2899,6 +2899,475 @@
         ]
       }
     },
+    "/api/maintenance/proxy/crowdsec": {
+      "get": {
+        "operationId": "GetCrowdSecStatus",
+        "summary": "Get CrowdSec Status",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "Maintenance (Admin)"
+        ],
+        "x-belune-order": 14,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/crowdsecStatusResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "read": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "UpdateCrowdSec",
+        "summary": "Update CrowdSec",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "Maintenance (Admin)"
+        ],
+        "x-belune-order": 15,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/updateCrowdSecRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/crowdsecStatusResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "write": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/maintenance/proxy/crowdsec/allowlist": {
+      "delete": {
+        "operationId": "DeleteCrowdSecAllow",
+        "summary": "Remove from the Allowlist",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "Maintenance (Admin)"
+        ],
+        "x-belune-order": 21,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "parameters": [
+          {
+            "name": "target",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Not resolved by static extraction — see the handler for the exact response."
+          }
+        },
+        "security": [
+          {
+            "write": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "ListCrowdSecAllowlist",
+        "summary": "List CrowdSec Allowlist",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "Maintenance (Admin)"
+        ],
+        "x-belune-order": 19,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/crowdsecAllowlistResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "read": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "CreateCrowdSecAllow",
+        "summary": "Allowlist an Address",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "Maintenance (Admin)"
+        ],
+        "x-belune-order": 20,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/allowRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Not resolved by static extraction — see the handler for the exact response."
+          }
+        },
+        "security": [
+          {
+            "write": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/maintenance/proxy/crowdsec/autoban": {
+      "put": {
+        "operationId": "UpdateCrowdSecAutoban",
+        "summary": "Update Automatic Bans",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "Maintenance (Admin)"
+        ],
+        "x-belune-order": 22,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Policy"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/crowdsecStatusResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "write": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/maintenance/proxy/crowdsec/decisions": {
+      "delete": {
+        "operationId": "DeleteCrowdSecBan",
+        "summary": "Lift a Ban",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "Maintenance (Admin)"
+        ],
+        "x-belune-order": 18,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "parameters": [
+          {
+            "name": "target",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Not resolved by static extraction — see the handler for the exact response."
+          }
+        },
+        "security": [
+          {
+            "write": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "ListCrowdSecDecisions",
+        "summary": "List CrowdSec Bans",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "Maintenance (Admin)"
+        ],
+        "x-belune-order": 16,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/crowdsecDecisionsResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "read": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "CreateCrowdSecBan",
+        "summary": "Ban an Address",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "Maintenance (Admin)"
+        ],
+        "x-belune-order": 17,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/banRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/crowdsecDecisionResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "write": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/maintenance/proxy/crowdsec/rotate-key": {
+      "post": {
+        "operationId": "RotateCrowdSecKey",
+        "summary": "Rotate the CrowdSec Bouncer Key",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "Maintenance (Admin)"
+        ],
+        "x-belune-order": 23,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/crowdsecStatusResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "write": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/maintenance/proxy/metrics": {
       "get": {
         "operationId": "GetProxyMetrics",
@@ -14491,6 +14960,30 @@
         },
         "type": "object"
       },
+      "AutobanStatus": {
+        "properties": {
+          "active": {
+            "type": "integer"
+          },
+          "banned": {
+            "type": "integer"
+          },
+          "capped": {
+            "type": "boolean"
+          },
+          "last_error": {
+            "type": "string"
+          },
+          "last_run": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "skipped": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
       "Branch": {
         "properties": {
           "name": {
@@ -14597,6 +15090,23 @@
             "type": "string"
           },
           "stream": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "CrowdSecState": {
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          },
+          "hosts": {
+            "type": "integer"
+          },
+          "reason": {
             "type": "string"
           }
         },
@@ -15312,6 +15822,28 @@
         },
         "type": "object"
       },
+      "Health": {
+        "properties": {
+          "bouncer_registered": {
+            "type": "boolean"
+          },
+          "checked_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "last_pull": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "reachable": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
       "HostMetricPoint": {
         "properties": {
           "cpu_percent": {
@@ -15968,6 +16500,32 @@
         },
         "type": "object"
       },
+      "Policy": {
+        "properties": {
+          "categories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "duration_minutes": {
+            "type": "integer"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "max_active": {
+            "type": "integer"
+          },
+          "threshold": {
+            "type": "integer"
+          },
+          "window_minutes": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
       "Project": {
         "properties": {
           "created_at": {
@@ -16591,6 +17149,20 @@
           },
           "quota_threshold_percent": {
             "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "allowRequest": {
+        "properties": {
+          "duration": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
           }
         },
         "type": "object"
@@ -17232,6 +17804,20 @@
         },
         "type": "object"
       },
+      "banRequest": {
+        "properties": {
+          "duration": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "caddyPanel": {
         "properties": {
           "access_log": {
@@ -17556,6 +18142,115 @@
             "type": "string"
           },
           "name": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "crowdsecAllowItemResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "crowdsecAllowlistResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/crowdsecAllowItemResponse"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "crowdsecAutobanResponse": {
+        "properties": {
+          "categories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/Policy"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AutobanStatus"
+          }
+        },
+        "type": "object"
+      },
+      "crowdsecDecisionResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "crowdsecDecisionsResponse": {
+        "properties": {
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/crowdsecDecisionResponse"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "crowdsecStatusResponse": {
+        "properties": {
+          "autoban": {
+            "$ref": "#/components/schemas/crowdsecAutobanResponse"
+          },
+          "capability": {
+            "$ref": "#/components/schemas/featureCapability"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "local_api": {
+            "$ref": "#/components/schemas/Health"
+          },
+          "state": {
+            "$ref": "#/components/schemas/CrowdSecState"
+          },
+          "your_ip": {
             "type": "string"
           }
         },
@@ -20149,6 +20844,17 @@
             "type": "string"
           },
           "use_ssl": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "updateCrowdSecRequest": {
+        "properties": {
+          "enabled": {
             "type": [
               "boolean",
               "null"

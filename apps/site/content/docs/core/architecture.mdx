@@ -31,12 +31,13 @@ Belune runs as a small Docker Compose stack on a single host. One Go binary — 
 
 ## The Stack
 
-Five services make up a Belune host, all defined in one `docker-compose.yml`:
+Six services make up a Belune host, all defined in one `docker-compose.yml`:
 
 - **belune** — a single Go binary serving the HTTP API (Chi router), the background worker (Asynq), and the embedded React dashboard, all in one process bound to `127.0.0.1:8080`. Reached only through Caddy.
 - **Postgres** — the source of truth for all platform state (projects, applications, deployments, users, audit log — accessed via sqlc-generated queries). Named volume `pgdata`.
 - **Redis** — backs the Asynq job queue (deploys, backups, template instantiation) and the pub/sub channels that push live status/log updates to the dashboard over WebSocket. Named volume `redisdata`.
 - **BuildKit** (`moby/buildkit:v0.31.1`, privileged) — the daemon Railpack, Cloud Native Buildpacks, and Dockerfile builds all build images against, reached by the API over `BUILDKIT_HOST=tcp://buildkit:1234`. Not exposed to the host; only `belune` talks to it. Named volume `buildkitcache` holds layer cache across builds.
+- **CrowdSec** (`crowdsecurity/crowdsec`) — the local API only, holding the bans that Caddy's bouncer enforces. Its log-parsing agent and its link to CrowdSec's central API are off, so nothing leaves the host. Not exposed to the host; `belune` runs `cscli` inside it. Named volume `crowdsecdata`. See [CrowdSec](/docs/core/server/caddy#crowdsec).
 - **Caddy** — reverse proxy and automatic HTTPS for every domain on the host, including the dashboard's own. Its admin API on `127.0.0.1:2019` is how Belune programs routes and reads certificate status live — see [Certificates](/docs/core/server/certificates).
 
 <Callout type="info" title="About the Dashboard">
@@ -100,5 +101,6 @@ Named Docker volumes hold everything that needs to survive a container restart o
 | `caddydata` / `caddyconfig` | Caddy's certificates, ACME account, and live config                                         |
 | `caddylogs`                 | Caddy's access log, tailed by `belune` for [request logs](/docs/core/application/logs-metrics)               |
 | `buildkitcache`             | BuildKit's layer cache, so rebuilds don't start cold                                        |
+| `crowdsecdata`              | CrowdSec's bans, allowlist and the bouncer's registration                                   |
 
 Application volume and file mounts get their own named volumes and host-side files respectively, outside this fixed set — see [Mounts](/docs/core/application/mounts).

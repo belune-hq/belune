@@ -3,6 +3,7 @@ import type { WafStatus } from "@/lib/types";
 import {
   ANOMALY_SUMMARY_RULE,
   categoryLabel,
+  describeCategory,
   describeEventVerdict,
   describeRecorder,
   describeClientList,
@@ -474,5 +475,42 @@ describe("detectionHeaders", () => {
   // as a sentence rather than as a header section that looks broken.
   it("has nothing to show for a detection whose request is gone", () => {
     expect(detectionHeaders(null)).toEqual([]);
+  });
+});
+
+describe("describeCategory", () => {
+  it("shows the tag as the rule set names it", () => {
+    expect(
+      describeCategory({ rule_id: 941100, category: "attack-xss" }),
+    ).toEqual({
+      label: "xss",
+      title: "The rule set's own classification: attack-xss.",
+    });
+  });
+
+  // The one class whose name misleads: it is about the shape of a request, not
+  // its contents, and 920420 reports `critical` exactly like a SQLi match does.
+  it("says what the protocol class actually means", () => {
+    const c = describeCategory({
+      rule_id: 920420,
+      category: "attack-protocol",
+    });
+    expect(c.label).toBe("protocol");
+    expect(c.title).toContain("not an attack payload");
+    expect(c.title).toContain("920420");
+  });
+
+  // A dash in a column reads as missing data in a way an absent inline badge
+  // never did, so the empty cell carries the reason.
+  it("names the anomaly summary as the reason its cell is empty", () => {
+    const c = describeCategory({ rule_id: 949110, category: null });
+    expect(c.label).toBeNull();
+    expect(c.title).toContain("verdict on the whole request");
+  });
+
+  it("falls back to a plain reason for any other uncategorised rule", () => {
+    const c = describeCategory({ rule_id: 913100, category: null });
+    expect(c.label).toBeNull();
+    expect(c.title).toBe("This rule declares no attack class.");
   });
 });

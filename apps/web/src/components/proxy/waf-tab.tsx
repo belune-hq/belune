@@ -51,8 +51,9 @@ import { StatCard } from "@/lib/components/stats/stat-card";
 import { WafDetectionSheet } from "@/components/proxy/waf-detection-sheet";
 import {
   BADGE_VARIANT,
-  categoryLabel,
+  CATEGORY_COLUMN_HELP,
   CLIENT_WOULD_BLOCK,
+  describeCategory,
   describeClientList,
   describeDetectionUrl,
   describeEventVerdict,
@@ -619,6 +620,9 @@ function ClientDetections({
         <TableHeader>
           <TableRow>
             <TableHead>Date</TableHead>
+            {/* Left of the rule because it is the rule's class and the two read
+                as one fact: what kind, then which one. */}
+            <TableHead title={CATEGORY_COLUMN_HELP}>Category</TableHead>
             <TableHead>Rule</TableHead>
             <TableHead>Severity</TableHead>
             <TableHead>URL</TableHead>
@@ -668,7 +672,7 @@ function DetectionRow({
   onRule: (ruleId: number) => void;
   onView: () => void;
 }) {
-  const category = categoryLabel(e.category);
+  const category = describeCategory(e);
   const verdict = describeEventVerdict(e);
   const url = describeDetectionUrl(e);
   return (
@@ -679,7 +683,25 @@ function DetectionRow({
       <TableCell className="text-muted-foreground font-mono text-xs whitespace-nowrap tabular-nums">
         {formatDateTime(e.recorded_at)}
       </TableCell>
-      <TableCell className="max-w-xs">
+      <TableCell title={category.title}>
+        {/* Monospace lowercase, like the autoban policy's own checkboxes: these
+            are tag names, not prose. Not a button — the rule id filters, and a
+            category filter does not exist on the events endpoint, so making
+            this look like the clickable one would promise what it cannot do. */}
+        {category.label ? (
+          <Badge variant="outline" className="font-mono text-xs">
+            {category.label}
+          </Badge>
+        ) : (
+          <span className="text-muted-foreground cursor-help">—</span>
+        )}
+      </TableCell>
+      {/* These two maxima are what set the nested table's natural width, and the
+          nested table is what makes the OUTER client table scroll sideways when
+          it does not fit — scrolling the client address out of view, which is
+          the row you just expanded. Together with the other columns they come
+          to ~905px, so the panel fits a 1280-wide window. */}
+      <TableCell className="max-w-[17rem]">
         <div className="flex items-baseline gap-2">
           <button
             type="button"
@@ -690,7 +712,6 @@ function DetectionRow({
             {e.rule_id}
           </button>
           <span className="truncate">{e.message}</span>
-          {category && <Badge variant="outline">{category}</Badge>}
         </div>
       </TableCell>
       <TableCell>
@@ -703,7 +724,9 @@ function DetectionRow({
           {verdict.label}
         </Badge>
       </TableCell>
-      <TableCell className="max-w-md">
+      {/* Narrower than it was: the eye now carries the whole URL, so the column
+          only has to be wide enough to recognise one, not to read it. */}
+      <TableCell className="max-w-[15rem]">
         <div className="flex items-baseline gap-2" title={url.title}>
           <span className="truncate font-mono text-xs">
             <span className="text-muted-foreground">{url.prefix}</span>

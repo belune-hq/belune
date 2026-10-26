@@ -268,7 +268,13 @@ export function eventHost(e: Pick<WafEvent, "host">): string {
   return e.host ?? "unknown host";
 }
 
-/** "attack-xss" → "XSS"-style label; anything else is shown as it is. */
+/**
+ * "attack-xss" → "xss". Lowercase and verbatim on purpose: these are the rule
+ * set's own tag names, they are what the autoban policy's checkboxes are
+ * labelled with (crowdsec-tab), and what a ban reason records in the audit log
+ * ("belune-waf: attack-sqli: 14 requests in 10m"). Prettifying them here would
+ * make the WAF tab name the same thing differently from the tab that acts on it.
+ */
 export function categoryLabel(category: string | null): string | null {
   if (!category) return null;
   return category.replace(/^attack-/, "");
@@ -468,3 +474,50 @@ export const DETECTION_HEADERS_ALLOWLIST =
 /** What this panel deliberately cannot show, so its absence is not read as a gap. */
 export const DETECTION_PAYLOAD_ABSENT =
   "The text that matched the rule is not stored, and neither is the request body. Invite and deploy-hook tokens are redacted out of the URL before it is written.";
+
+export interface DetectionCategory {
+  /** Badge text. Null when the rule declares no class at all, shown as a dash. */
+  label: string | null;
+  /** Hover, always present: an empty cell needs its reason more than a full one. */
+  title: string;
+}
+
+/**
+ * Said once on the column header rather than on all nineteen rows.
+ *
+ * The distinction is the whole value of the column: severity cannot carry it,
+ * because 920420 reports `critical` exactly like a SQLi match does.
+ */
+export const CATEGORY_COLUMN_HELP =
+  "The rule set's own classification of the rule, not Belune's. An injection or file-inclusion class means a payload matched an attack signature; the protocol class only means the request was not formed the way policy expects. CrowdSec's autoban acts on the injection classes alone.";
+
+// Only where the class means something other than what its name suggests. A
+// cell-level note for every category would be the column header repeated
+// nineteen times, and a claim about which classes ban would be a copy of
+// crowdsec.BanCategories that goes quietly stale when that list changes.
+const CATEGORY_NOTES: Record<string, string> = {
+  protocol:
+    "Request-format policy, not an attack payload: the 920-series checks how a request is formed. 920420 fires on an ordinary text/plain POST, which is why a wall of these is usually one application, not an attacker.",
+};
+
+/** The Category cell: the rule's class, or why there is not one. */
+export function describeCategory(
+  e: Pick<WafEvent, "rule_id" | "category">,
+): DetectionCategory {
+  const label = categoryLabel(e.category);
+  if (!label) {
+    return {
+      label: null,
+      title:
+        e.rule_id === ANOMALY_SUMMARY_RULE
+          ? "The anomaly-score summary declares no attack class of its own. It is a verdict on the whole request rather than one signature, which is what the severity column says for it."
+          : "This rule declares no attack class.",
+    };
+  }
+  return {
+    label,
+    title:
+      CATEGORY_NOTES[label] ??
+      `The rule set's own classification: ${e.category}.`,
+  };
+}

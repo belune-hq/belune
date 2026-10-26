@@ -273,6 +273,56 @@ describe("WafTab", () => {
     ).toBeTruthy();
   });
 
+  it("gives the rule's class its own column, left of the rule", async () => {
+    clients = [group()];
+    events = [
+      event({ id: 1, category: "attack-xss" }),
+      event({ id: 2, rule_id: 920420, category: "attack-protocol" }),
+      // The anomaly summary declares no class, and an empty cell in a column
+      // reads as missing data in a way an absent inline badge never did.
+      event({ id: 3, rule_id: 949110, category: null, severity: "unknown" }),
+    ];
+    render(<WafTab />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show detections from 203.0.113.9" }),
+    );
+
+    await waitFor(() => expect(screen.getByText("Category")).toBeTruthy());
+    const panel = screen.getAllByRole("table")[1];
+    const headers = within(panel)
+      .getAllByRole("columnheader")
+      .map((h) => h.textContent);
+    expect(headers.slice(0, 4)).toEqual([
+      "Date",
+      "Category",
+      "Rule",
+      "Severity",
+    ]);
+
+    expect(within(panel).getByText("xss")).toBeTruthy();
+    expect(within(panel).getByText("protocol")).toBeTruthy();
+    expect(within(panel).getByText("—")).toBeTruthy();
+  });
+
+  // Severity cannot carry this: 920420 reports `critical` exactly like a SQLi
+  // match does, which is what the column exists to separate.
+  it("explains the classification on the column, not on every row", async () => {
+    clients = [group()];
+    events = [event({ rule_id: 920420, category: "attack-protocol" })];
+    render(<WafTab />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show detections from 203.0.113.9" }),
+    );
+
+    await waitFor(() => expect(screen.getByText("Category")).toBeTruthy());
+    expect(screen.getByText("Category").getAttribute("title")).toContain(
+      "autoban acts on the injection classes alone",
+    );
+    expect(
+      screen.getByText("protocol").closest("td")!.getAttribute("title"),
+    ).toContain("not an attack payload");
+  });
+
   // "3d" is the right answer in the client row above, which says when that
   // client was last here. A rule match is evidence for one request and gets read
   // against a log somewhere else, so it is dated to the second.

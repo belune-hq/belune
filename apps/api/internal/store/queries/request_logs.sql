@@ -1,6 +1,26 @@
 -- name: InsertRequestLog :exec
-INSERT INTO request_logs (application_id, method, path, status_code, latency_ms, hostname, request_size, response_size, client_ip, user_agent)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
+-- request_uuid is set only for requests the WAF inspected (Caddy mints the uuid
+-- when the WAF route interpolates it), and is what a detection joins on.
+INSERT INTO request_logs (application_id, method, path, status_code, latency_ms, hostname, request_size, response_size, client_ip, user_agent, request_uuid, content_type)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);
+
+-- name: ListRequestDetailsByUUID :many
+-- The request detail behind a page of WAF detections, looked up by the uuid Caddy
+-- writes into both the access log and the transaction id Coraza reports (000073).
+--
+-- Deliberately a second query rather than a LEFT JOIN on ListWAFEvents: sqlc
+-- infers nullability from the source column, so every outer-joined column of this
+-- NOT NULL table generated as a non-nullable Go string, and the first unmatched
+-- detection would have failed to scan at runtime with no test to catch it. Their
+-- own non-outer select keeps the generated types honest, for one extra round trip
+-- per page.
+--
+-- DISTINCT ON because nothing enforces one row per uuid; the newest wins.
+SELECT DISTINCT ON (request_uuid)
+       request_uuid, method, path, status_code, content_type, user_agent
+FROM request_logs
+WHERE request_uuid = ANY(sqlc.arg('uuids')::text[])
+ORDER BY request_uuid, recorded_at DESC;
 
 -- name: ListRequestLogsByApplication :many
 SELECT * FROM request_logs

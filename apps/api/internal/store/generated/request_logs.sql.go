@@ -161,8 +161,8 @@ func (q *Queries) GetRequestSummary(ctx context.Context, arg GetRequestSummaryPa
 }
 
 const insertRequestLog = `-- name: InsertRequestLog :exec
-INSERT INTO request_logs (application_id, method, path, status_code, latency_ms, hostname, request_size, response_size, client_ip, user_agent)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+INSERT INTO request_logs (application_id, method, path, status_code, latency_ms, hostname, request_size, response_size, client_ip, user_agent, request_uuid, content_type)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 `
 
 type InsertRequestLogParams struct {
@@ -176,8 +176,12 @@ type InsertRequestLogParams struct {
 	ResponseSize  pgtype.Int4 `json:"response_size"`
 	ClientIp      pgtype.Text `json:"client_ip"`
 	UserAgent     pgtype.Text `json:"user_agent"`
+	RequestUuid   pgtype.Text `json:"request_uuid"`
+	ContentType   pgtype.Text `json:"content_type"`
 }
 
+// request_uuid is set only for requests the WAF inspected (Caddy mints the uuid
+// when the WAF route interpolates it), and is what a detection joins on.
 func (q *Queries) InsertRequestLog(ctx context.Context, arg InsertRequestLogParams) error {
 	_, err := q.db.Exec(ctx, insertRequestLog,
 		arg.ApplicationID,
@@ -190,12 +194,69 @@ func (q *Queries) InsertRequestLog(ctx context.Context, arg InsertRequestLogPara
 		arg.ResponseSize,
 		arg.ClientIp,
 		arg.UserAgent,
+		arg.RequestUuid,
+		arg.ContentType,
 	)
 	return err
 }
 
+const listRequestDetailsByUUID = `-- name: ListRequestDetailsByUUID :many
+SELECT DISTINCT ON (request_uuid)
+       request_uuid, method, path, status_code, content_type, user_agent
+FROM request_logs
+WHERE request_uuid = ANY($1::text[])
+ORDER BY request_uuid, recorded_at DESC
+`
+
+type ListRequestDetailsByUUIDRow struct {
+	RequestUuid pgtype.Text `json:"request_uuid"`
+	Method      string      `json:"method"`
+	Path        string      `json:"path"`
+	StatusCode  int16       `json:"status_code"`
+	ContentType pgtype.Text `json:"content_type"`
+	UserAgent   pgtype.Text `json:"user_agent"`
+}
+
+// The request detail behind a page of WAF detections, looked up by the uuid Caddy
+// writes into both the access log and the transaction id Coraza reports (000073).
+//
+// Deliberately a second query rather than a LEFT JOIN on ListWAFEvents: sqlc
+// infers nullability from the source column, so every outer-joined column of this
+// NOT NULL table generated as a non-nullable Go string, and the first unmatched
+// detection would have failed to scan at runtime with no test to catch it. Their
+// own non-outer select keeps the generated types honest, for one extra round trip
+// per page.
+//
+// DISTINCT ON because nothing enforces one row per uuid; the newest wins.
+func (q *Queries) ListRequestDetailsByUUID(ctx context.Context, uuids []string) ([]ListRequestDetailsByUUIDRow, error) {
+	rows, err := q.db.Query(ctx, listRequestDetailsByUUID, uuids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRequestDetailsByUUIDRow{}
+	for rows.Next() {
+		var i ListRequestDetailsByUUIDRow
+		if err := rows.Scan(
+			&i.RequestUuid,
+			&i.Method,
+			&i.Path,
+			&i.StatusCode,
+			&i.ContentType,
+			&i.UserAgent,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRequestLogs = `-- name: ListRequestLogs :many
-SELECT id, application_id, method, path, status_code, latency_ms, hostname, request_size, response_size, client_ip, user_agent, recorded_at FROM request_logs
+SELECT id, application_id, method, path, status_code, latency_ms, hostname, request_size, response_size, client_ip, user_agent, recorded_at, request_uuid, content_type FROM request_logs
 ORDER BY recorded_at DESC
 LIMIT $1 OFFSET $2
 `
@@ -227,6 +288,8 @@ func (q *Queries) ListRequestLogs(ctx context.Context, arg ListRequestLogsParams
 			&i.ClientIp,
 			&i.UserAgent,
 			&i.RecordedAt,
+			&i.RequestUuid,
+			&i.ContentType,
 		); err != nil {
 			return nil, err
 		}
@@ -239,7 +302,7 @@ func (q *Queries) ListRequestLogs(ctx context.Context, arg ListRequestLogsParams
 }
 
 const listRequestLogsByApplication = `-- name: ListRequestLogsByApplication :many
-SELECT id, application_id, method, path, status_code, latency_ms, hostname, request_size, response_size, client_ip, user_agent, recorded_at FROM request_logs
+SELECT id, application_id, method, path, status_code, latency_ms, hostname, request_size, response_size, client_ip, user_agent, recorded_at, request_uuid, content_type FROM request_logs
 WHERE application_id = $1
 ORDER BY recorded_at DESC
 LIMIT $2 OFFSET $3
@@ -273,6 +336,8 @@ func (q *Queries) ListRequestLogsByApplication(ctx context.Context, arg ListRequ
 			&i.ClientIp,
 			&i.UserAgent,
 			&i.RecordedAt,
+			&i.RequestUuid,
+			&i.ContentType,
 		); err != nil {
 			return nil, err
 		}
@@ -285,7 +350,7 @@ func (q *Queries) ListRequestLogsByApplication(ctx context.Context, arg ListRequ
 }
 
 const listRequestLogsFiltered = `-- name: ListRequestLogsFiltered :many
-SELECT id, application_id, method, path, status_code, latency_ms, hostname, request_size, response_size, client_ip, user_agent, recorded_at FROM request_logs
+SELECT id, application_id, method, path, status_code, latency_ms, hostname, request_size, response_size, client_ip, user_agent, recorded_at, request_uuid, content_type FROM request_logs
 WHERE ($3::uuid IS NULL OR application_id = $3)
   AND ($4::smallint IS NULL OR status_code >= $4)
   AND ($5::smallint IS NULL OR status_code < $5)
@@ -357,6 +422,8 @@ func (q *Queries) ListRequestLogsFiltered(ctx context.Context, arg ListRequestLo
 			&i.ClientIp,
 			&i.UserAgent,
 			&i.RecordedAt,
+			&i.RequestUuid,
+			&i.ContentType,
 		); err != nil {
 			return nil, err
 		}

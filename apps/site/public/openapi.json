@@ -16750,6 +16750,12 @@
               "null"
             ]
           },
+          "content_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "hostname": {
             "type": "string"
           },
@@ -16779,6 +16785,12 @@
           "request_size": {
             "type": [
               "integer",
+              "null"
+            ]
+          },
+          "request_uuid": {
+            "type": [
+              "string",
               "null"
             ]
           },
@@ -21325,6 +21337,16 @@
             "format": "date-time",
             "type": "string"
           },
+          "request": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/wafRequestDetail"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "rule_id": {
             "type": "integer"
           },
@@ -21351,6 +21373,32 @@
           "next_before": {
             "type": [
               "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "wafRequestDetail": {
+        "properties": {
+          "content_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "method": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "user_agent": {
+            "type": [
+              "string",
               "null"
             ]
           }

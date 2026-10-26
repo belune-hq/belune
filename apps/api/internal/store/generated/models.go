@@ -589,6 +589,8 @@ type RequestLog struct {
 	ClientIp      pgtype.Text        `json:"client_ip"`
 	UserAgent     pgtype.Text        `json:"user_agent"`
 	RecordedAt    pgtype.Timestamptz `json:"recorded_at"`
+	RequestUuid   pgtype.Text        `json:"request_uuid"`
+	ContentType   pgtype.Text        `json:"content_type"`
 }
 
 type Server struct {

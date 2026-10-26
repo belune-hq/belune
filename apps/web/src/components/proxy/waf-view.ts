@@ -2,6 +2,7 @@ import { describeModuleTab } from "@/components/proxy/proxy-traffic";
 import type {
   WafEvent,
   WafRecorderStats,
+  WafRequestDetail,
   WafSeverity,
   WafStatus,
   WafWindow,
@@ -136,7 +137,8 @@ export const WAF_ENABLE_POINTS = [
   "Nothing is blocked. The rules only record what they would have blocked.",
   "It inspects requests to your applications, not to this dashboard.",
   "Request bodies over 128 KiB, or of unknown length, are not inspected, so uploads are never touched. A payload inside one goes unseen.",
-  "Only the rule, severity, client address and host are stored. The request itself, its URL and the matched text are not.",
+  "The rule, severity, client address and host are stored. The URL, method and content type are shown from the request log beside them, for as long as that keeps them.",
+  "The matched text is never stored, and neither are the request body or headers beyond its content type.",
   "One application's false positives share this log with every other application's.",
 ] as const;
 
@@ -267,4 +269,48 @@ export function isIpAddress(v: string): boolean {
   const v4 = s.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
   if (v4) return v4.slice(1).every((o) => Number(o) <= 255);
   return /^[0-9a-fA-F:.]+$/.test(s) && (s.match(/:/g)?.length ?? 0) >= 2;
+}
+
+/**
+ * Why a detection can have no request on record. Worth saying rather than
+ * leaving a blank cell: the detection is not broken and nothing failed, the
+ * evidence simply has its own retention.
+ */
+export const REQUEST_DETAIL_ABSENT =
+  "No request on record. Request logs have their own retention, so a detection outlives its request once that window is shorter — and a detection recorded before Belune kept request detail never had one.";
+
+export interface RequestSummary {
+  /** The request as one line: "POST /checkout?step=2". */
+  line: string;
+  /** The rest of what is kept, for the hover. */
+  title: string;
+  /** Null when the access entry carried a status outside 100-599. */
+  status: number | null;
+}
+
+/**
+ * The request behind a detection, as one readable line.
+ *
+ * Content-Type leads the hover because it is what makes the common false
+ * positive legible: rule 920420 ("Request content type is not allowed by
+ * policy") fires on a benign text/plain POST, and the content type is the whole
+ * of the difference between that and an attack.
+ */
+export function describeRequestDetail(r: WafRequestDetail): RequestSummary {
+  const parts: string[] = [];
+  if (r.content_type) parts.push(`Content-Type: ${r.content_type}`);
+  if (r.user_agent) parts.push(`User agent: ${r.user_agent}`);
+  parts.push("The matched payload is not stored.");
+  return {
+    line: `${r.method} ${r.path}`,
+    title: parts.join("\n"),
+    status: r.status >= 100 && r.status <= 599 ? r.status : null,
+  };
+}
+
+/** Status tone, so a 500 does not read as calmly as a 200. */
+export function statusTone(status: number): WafTone {
+  if (status >= 500) return "error";
+  if (status >= 400) return "attention";
+  return "neutral";
 }

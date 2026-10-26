@@ -24,6 +24,10 @@ import {
 } from "@/components/ui/card";
 import { Field, FieldError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  SegmentedControl,
+  SegmentedControlItem,
+} from "@/components/ui/segmented-control";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill } from "@/components/ui/status-pill";
 import { Switch } from "@/components/ui/switch";
@@ -38,12 +42,14 @@ import {
 import { StatCard } from "@/lib/components/stats/stat-card";
 import {
   categoryLabel,
+  describeEventVerdict,
   describeRecorder,
   describeWaf,
   eventHost,
   isIpAddress,
-  severityTone,
   WAF_ENABLE_POINTS,
+  WAF_WINDOWS,
+  windowPhrase,
   type WafTone,
 } from "@/components/proxy/waf-view";
 import {
@@ -54,7 +60,7 @@ import {
 import { cn } from "@/lib/utils";
 import { fieldError } from "@/lib/utils/field-error";
 import { formatRelativeTime } from "@/lib/utils/format";
-import type { WafEvent, WafStatus } from "@/lib/types";
+import type { WafEvent, WafStatus, WafWindow } from "@/lib/types";
 
 const PILL_TONE = {
   neutral: "neutral",
@@ -83,14 +89,19 @@ const BADGE_VARIANT = {
  * page says so rather than leaving it to be inferred.
  */
 export function WafTab() {
-  const { data: status, isLoading } = useWafStatus();
+  const [windowKey, setWindowKey] = useState<WafWindow>("24h");
+  const { data: status, isLoading } = useWafStatus(windowKey);
 
   return (
     <div className="space-y-6">
       <WafCard status={status} loading={isLoading} />
       {status && (
         <>
-          <Summary status={status} />
+          <Summary
+            status={status}
+            windowKey={windowKey}
+            onWindow={setWindowKey}
+          />
           <EventsCard status={status} />
         </>
       )}
@@ -199,82 +210,136 @@ function WafCard({
   );
 }
 
-function Summary({ status }: { status: WafStatus }) {
+/**
+ * The summary over a chosen period.
+ *
+ * It used to render nothing whenever the period was empty, over a hardcoded 24
+ * hours — so a day after an attack the whole dashboard vanished and left a bare
+ * table. An empty period now says so, and says how much is kept, which is the
+ * difference between "nothing happened" and "nothing happened lately".
+ */
+function Summary({
+  status,
+  windowKey,
+  onWindow,
+}: {
+  status: WafStatus;
+  windowKey: WafWindow;
+  onWindow: (w: WafWindow) => void;
+}) {
   const s = status.summary;
-  const window = `last ${s.window_hours} hours`;
-  if (s.events === 0) return null;
+  const period = windowPhrase(windowKey);
+  // Nothing has ever been recorded: the Detections card below already says that,
+  // and three zeroes above an empty table only say it twice.
+  if (s.total === 0) return null;
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-3">
-        <StatCard
-          label="Detections"
-          value={s.events.toLocaleString()}
-          hint={window}
-        />
-        <StatCard
-          label="Requests"
-          value={s.requests.toLocaleString()}
-          hint="that tripped a rule"
-        />
-        <StatCard
-          label="Clients"
-          value={s.clients.toLocaleString()}
-          hint={window}
-        />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-medium">Detected in {period}</h2>
+        <SegmentedControl
+          size="sm"
+          value={windowKey}
+          onValueChange={(v) => onWindow(v as WafWindow)}
+          aria-label="Summary period"
+        >
+          {WAF_WINDOWS.map((w) => (
+            <SegmentedControlItem key={w.value} value={w.value}>
+              {w.label}
+            </SegmentedControlItem>
+          ))}
+        </SegmentedControl>
       </div>
-      <div className="grid gap-4 lg:grid-cols-2">
+
+      {s.events === 0 ? (
         <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Top rules</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-2 text-sm">
-              {s.top_rules.map((r) => (
-                <li key={r.rule_id} className="flex items-baseline gap-2">
-                  <span className="text-muted-foreground font-mono text-xs">
-                    {r.rule_id}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate">{r.message}</span>
-                  <span className="tabular-nums">
-                    {r.events.toLocaleString()}
-                  </span>
-                </li>
-              ))}
-            </ul>
+          <CardContent className="text-muted-foreground py-6 text-sm">
+            No detections in {period}. {s.total.toLocaleString()} kept in total
+            — widen the period to see them.
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Top clients</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-2 text-sm">
-              {s.top_clients.map((c) => (
-                <li key={c.client_ip} className="flex items-baseline gap-2">
-                  <span className="min-w-0 flex-1 truncate font-mono">
-                    {c.client_ip}
-                  </span>
-                  <span className="text-text-faint text-xs">
-                    {formatRelativeTime(c.last_seen)}
-                  </span>
-                  <span className="tabular-nums">
-                    {c.events.toLocaleString()}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      </div>
+      ) : (
+        <>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <StatCard
+              label="Detections"
+              value={s.events.toLocaleString()}
+              hint={period}
+            />
+            <StatCard
+              label="Requests"
+              value={s.requests.toLocaleString()}
+              hint="that tripped a rule"
+            />
+            <StatCard
+              label="Clients"
+              value={s.clients.toLocaleString()}
+              hint={period}
+            />
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Top rules</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2 text-sm">
+                  {s.top_rules.map((r) => (
+                    <li key={r.rule_id} className="flex items-baseline gap-2">
+                      <span className="text-muted-foreground font-mono text-xs">
+                        {r.rule_id}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate">
+                        {r.message}
+                      </span>
+                      <span className="tabular-nums">
+                        {r.events.toLocaleString()}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Top clients</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2 text-sm">
+                  {s.top_clients.map((c) => (
+                    <li key={c.client_ip} className="flex items-baseline gap-2">
+                      <span className="min-w-0 flex-1 truncate font-mono">
+                        {c.client_ip}
+                      </span>
+                      <span className="text-text-faint text-xs">
+                        {formatRelativeTime(c.last_seen)}
+                      </span>
+                      <span className="tabular-nums">
+                        {c.events.toLocaleString()}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
 function EventsCard({ status }: { status: WafStatus }) {
   const [clientIp, setClientIp] = useState("");
-  const events = useWafEvents({ clientIp: clientIp || undefined });
+  // The events endpoint has always taken rule_id; nothing in the page set it, so
+  // one noisy rule could not be isolated or excluded from view.
+  const [ruleId, setRuleId] = useState<number | null>(null);
+  const events = useWafEvents({
+    clientIp: clientIp || undefined,
+    ruleId: ruleId ?? undefined,
+  });
   const rows = events.data?.pages.flatMap((p) => p.events) ?? [];
+  const filtered = clientIp !== "" || ruleId !== null;
 
   const form = useForm({
     defaultValues: { ip: "" },
@@ -287,6 +352,7 @@ function EventsCard({ status }: { status: WafStatus }) {
   const clear = () => {
     form.reset();
     setClientIp("");
+    setRuleId(null);
   };
 
   return (
@@ -333,7 +399,7 @@ function EventsCard({ status }: { status: WafStatus }) {
             <Button type="submit" variant="outline">
               Filter
             </Button>
-            {clientIp && (
+            {filtered && (
               <Button type="button" variant="ghost" onClick={clear}>
                 <XIcon aria-hidden="true" className="size-4" />
                 Clear
@@ -343,12 +409,17 @@ function EventsCard({ status }: { status: WafStatus }) {
         </CardAction>
       </CardHeader>
       <CardContent>
+        {ruleId !== null && (
+          <p className="text-muted-foreground mb-3 text-sm">
+            Showing rule <span className="font-mono">{ruleId}</span> only.
+          </p>
+        )}
         {events.isLoading ? (
           <Skeleton className="h-24 w-full" />
         ) : rows.length === 0 ? (
           <p className="text-muted-foreground text-sm">
-            {clientIp
-              ? `No detections from ${clientIp}.`
+            {filtered
+              ? "No detections match that filter."
               : status.enabled
                 ? "No detections yet."
                 : "The WAF is off. Detections recorded while it was on appear here."}
@@ -367,7 +438,12 @@ function EventsCard({ status }: { status: WafStatus }) {
               </TableHeader>
               <TableBody>
                 {rows.map((e) => (
-                  <EventRow key={e.id} event={e} onClient={filterBy} />
+                  <EventRow
+                    key={e.id}
+                    event={e}
+                    onClient={filterBy}
+                    onRule={setRuleId}
+                  />
                 ))}
               </TableBody>
             </Table>
@@ -392,11 +468,14 @@ function EventsCard({ status }: { status: WafStatus }) {
 function EventRow({
   event: e,
   onClient,
+  onRule,
 }: {
   event: WafEvent;
   onClient: (ip: string) => void;
+  onRule: (ruleId: number) => void;
 }) {
   const category = categoryLabel(e.category);
+  const verdict = describeEventVerdict(e);
   return (
     <TableRow>
       <TableCell
@@ -417,16 +496,26 @@ function EventRow({
       </TableCell>
       <TableCell className="max-w-xs">
         <div className="flex items-baseline gap-2">
-          <span className="text-muted-foreground font-mono text-xs">
+          <button
+            type="button"
+            className="text-brand-text font-mono text-xs hover:underline"
+            onClick={() => onRule(e.rule_id)}
+            title="Show only this rule"
+          >
             {e.rule_id}
-          </span>
+          </button>
           <span className="truncate">{e.message}</span>
           {category && <Badge variant="outline">{category}</Badge>}
         </div>
       </TableCell>
       <TableCell>
-        <Badge variant={BADGE_VARIANT[severityTone(e.severity)]}>
-          {e.severity}
+        <Badge
+          variant={
+            verdict.strong ? "destructive-solid" : BADGE_VARIANT[verdict.tone]
+          }
+          title={verdict.title ?? undefined}
+        >
+          {verdict.label}
         </Badge>
       </TableCell>
       <TableCell className={cn(!e.host && "text-muted-foreground italic")}>

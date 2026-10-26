@@ -33,13 +33,39 @@ const (
 	// wafModeDetectionOnly is the only mode there is: nothing is blocked.
 	wafModeDetectionOnly = "detection_only"
 
-	// wafSummaryWindow is the period the totals and the top lists cover.
-	wafSummaryWindow = 24 * time.Hour
+	// wafDefaultWindow is the period the totals and the top lists cover when the
+	// caller does not ask for another. It is also what a PUT reports back, and it
+	// is what every client got before the window was selectable, so it must stay
+	// 24h: widening the default would silently change an existing caller's numbers.
+	wafDefaultWindow = "24h"
 	wafTopN          = 5
 
 	wafEventsDefaultLimit = 50
 	wafEventsMaxLimit     = 200
 )
+
+// wafWindows are the periods the summary can cover, in the order the dashboard
+// offers them. A zero duration means every retained event rather than a period.
+//
+// "all" is not unbounded in practice: the sweep drops events past the retention
+// and trims the table to MaxEvents, so it means "everything still kept", which is
+// what the dashboard says.
+var wafWindows = map[string]time.Duration{
+	"1h":  time.Hour,
+	"24h": 24 * time.Hour,
+	"7d":  7 * 24 * time.Hour,
+	"all": 0,
+}
+
+// wafSummarySince is the timestamp the aggregates filter on. For "all" it is a
+// floor no event can predate rather than a NULL, because the queries take `since`
+// as a plain argument.
+func wafSummarySince(window string, now time.Time) time.Time {
+	if d := wafWindows[window]; d > 0 {
+		return now.Add(-d)
+	}
+	return time.Unix(0, 0).UTC()
+}
 
 type wafStatusResponse struct {
 	// Capability is whether Caddy has the module: available, unavailable, or
@@ -62,12 +88,20 @@ type wafStatusResponse struct {
 }
 
 type wafSummary struct {
-	WindowHours int            `json:"window_hours"`
-	Events      int64          `json:"events"`
-	Requests    int64          `json:"requests"`
-	Clients     int64          `json:"clients"`
-	TopRules    []wafTopRule   `json:"top_rules"`
-	TopClients  []wafTopClient `json:"top_clients"`
+	// Window is the period these numbers cover: 1h, 24h, 7d or all.
+	Window string `json:"window"`
+	// WindowHours is the same period in hours, 0 for "all". Kept because it shipped
+	// in v0.2.4, before the window could be chosen.
+	WindowHours int   `json:"window_hours"`
+	Events      int64 `json:"events"`
+	Requests    int64 `json:"requests"`
+	Clients     int64 `json:"clients"`
+	// Total is every event still kept, whatever the window. Without it a dashboard
+	// showing an empty window cannot tell "nothing has ever been detected" from
+	// "nothing in the last day", and the second looks like the first.
+	Total      int64          `json:"total"`
+	TopRules   []wafTopRule   `json:"top_rules"`
+	TopClients []wafTopClient `json:"top_clients"`
 }
 
 type wafTopRule struct {
@@ -116,7 +150,16 @@ type updateWAFRequest struct {
 //apidoc:title Get WAF Status
 //apidoc:order 11
 func (h *Handler) GetWAFStatus(w http.ResponseWriter, r *http.Request) {
-	st, err := h.wafStatus(r)
+	window := wafDefaultWindow
+	if v := r.URL.Query().Get("window"); v != "" {
+		if _, ok := wafWindows[v]; !ok {
+			writeError(w, http.StatusBadRequest, "window must be one of 1h, 24h, 7d, all")
+			return
+		}
+		window = v
+	}
+
+	st, err := h.wafStatus(r, window)
 	if err != nil {
 		writeServerError(w, r, "failed to read the WAF status", err)
 		return
@@ -175,7 +218,7 @@ func (h *Handler) UpdateWAF(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	st, err := h.wafStatus(r)
+	st, err := h.wafStatus(r, wafDefaultWindow)
 	if err != nil {
 		writeServerError(w, r, "failed to read the WAF status", err)
 		return
@@ -279,8 +322,9 @@ func uuidPtr(u pgtype.UUID) *string {
 	return &s
 }
 
-// wafStatus gathers the status response.
-func (h *Handler) wafStatus(r *http.Request) (wafStatusResponse, error) {
+// wafStatus gathers the status response. The window selects the period the
+// summary covers; the rest of the response does not depend on it.
+func (h *Handler) wafStatus(r *http.Request, window string) (wafStatusResponse, error) {
 	ctx := r.Context()
 	resp := wafStatusResponse{
 		Capability: featureCapability{
@@ -308,8 +352,12 @@ func (h *Handler) wafStatus(r *http.Request) (wafStatusResponse, error) {
 		resp.Recorder = h.waf.Stats()
 	}
 
-	since := pgtype.Timestamptz{Time: time.Now().Add(-wafSummaryWindow), Valid: true}
+	since := pgtype.Timestamptz{Time: wafSummarySince(window, time.Now()), Valid: true}
 	totals, err := h.queries.WAFEventTotals(ctx, since)
+	if err != nil {
+		return resp, err
+	}
+	total, err := h.queries.CountWAFEvents(ctx)
 	if err != nil {
 		return resp, err
 	}
@@ -323,10 +371,12 @@ func (h *Handler) wafStatus(r *http.Request) (wafStatusResponse, error) {
 	}
 
 	resp.Summary = wafSummary{
-		WindowHours: int(wafSummaryWindow / time.Hour),
+		Window:      window,
+		WindowHours: int(wafWindows[window] / time.Hour),
 		Events:      totals.Events,
 		Requests:    totals.Requests,
 		Clients:     totals.Clients,
+		Total:       total,
 		TopRules:    make([]wafTopRule, 0, len(rules)),
 		TopClients:  make([]wafTopClient, 0, len(clients)),
 	}

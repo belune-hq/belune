@@ -958,11 +958,21 @@ export interface WafTopClient {
   last_seen: string;
 }
 
+/** The periods the WAF summary can cover. Deliberately not the dashboard-wide
+ *  `TimeRange`: events are swept at `retention_days` (7 by default), so a 30d
+ *  option would promise a month of history that is never there. */
+export type WafWindow = "1h" | "24h" | "7d" | "all";
+
 export interface WafSummary {
+  window: WafWindow;
+  /** The same period in hours, 0 for "all". */
   window_hours: number;
   events: number;
   requests: number;
   clients: number;
+  /** Every event still kept, whatever the window — so an empty window can say
+   *  "nothing lately" instead of looking like "nothing ever". */
+  total: number;
   top_rules: WafTopRule[];
   top_clients: WafTopClient[];
 }

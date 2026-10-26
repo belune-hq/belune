@@ -1,4 +1,4 @@
-import type { WafEventsPage, WafStatus } from "@/lib/types";
+import type { WafEventsPage, WafStatus, WafWindow } from "@/lib/types";
 import { api } from "./client";
 
 export interface WafEventFilters {
@@ -6,8 +6,9 @@ export interface WafEventFilters {
   ruleId?: number;
 }
 
-export function getWafStatus() {
-  return api.get<WafStatus>("/maintenance/proxy/waf");
+export function getWafStatus(window?: WafWindow) {
+  const q = window ? `?window=${window}` : "";
+  return api.get<WafStatus>(`/maintenance/proxy/waf${q}`);
 }
 
 /** Returns the status the proxy is in once the switch has been applied. */

@@ -298,7 +298,9 @@ const RETENTION_FIELDS = [
     key: "request_log_retention_days",
     label: "Request logs",
     desc: "HTTP access logs per application",
-    fallback: "3",
+    // Matches the WAF detection window: a detection's request detail is joined
+    // from this table, so a shorter window here blanks the evidence first.
+    fallback: "7",
   },
   {
     key: "waf_events_retention_days",

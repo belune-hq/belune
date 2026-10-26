@@ -15,7 +15,6 @@ import {
   eventHost,
   isIpAddress,
   severityTone,
-  statusTextClass,
   statusTone,
   WAF_ENABLE_POINTS,
   windowPhrase,
@@ -433,16 +432,6 @@ describe("describeDetectionRequest", () => {
     expect(describeDetectionRequest({ host: null, request: null }).host).toBe(
       "unknown host",
     );
-  });
-});
-
-describe("statusTextClass", () => {
-  // The Requests page's own classes, so a 500 does not read one way there and
-  // another way here.
-  it("separates a server error from a refusal from the rest", () => {
-    expect(statusTextClass(500)).toBe("text-status-error");
-    expect(statusTextClass(403)).toBe("text-status-building");
-    expect(statusTextClass(200)).toBe("text-muted-foreground");
   });
 });
 

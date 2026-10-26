@@ -267,7 +267,7 @@ describe("WafTab", () => {
     // The method and status come from the request log, the host from the
     // detection, and they read as one line.
     expect(within(panel).getByText("POST")).toBeTruthy();
-    expect(within(panel).getByText("(500)")).toBeTruthy();
+    expect(within(panel).getByText("500")).toBeTruthy();
     expect(within(panel).getByText("shop.example.com")).toBeTruthy();
     // The path is deliberately not here: it is the field that runs past any
     // column width, so the detail panel owns it.

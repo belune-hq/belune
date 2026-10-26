@@ -437,17 +437,6 @@ export function describeDetectionRequest(
   };
 }
 
-/**
- * Status as text rather than a pill, since it sits inside one monospace line.
- * The classes are the Requests page's own, so a 500 does not read one way there
- * and another way here.
- */
-export function statusTextClass(status: number): string {
-  if (status >= 500) return "text-status-error";
-  if (status >= 400) return "text-status-building";
-  return "text-muted-foreground";
-}
-
 /** Status tone, so a 500 does not read as calmly as a 200. */
 export function statusTone(status: number): WafTone {
   if (status >= 500) return "error";

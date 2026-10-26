@@ -61,7 +61,7 @@ import {
   describeUrlCount,
   describeWaf,
   isIpAddress,
-  statusTextClass,
+  statusTone,
   WAF_ENABLE_POINTS,
   WAF_WINDOWS,
   windowPhrase,
@@ -741,9 +741,9 @@ function DetectionRow({
             <>
               <span className="text-muted-foreground">{req.method}</span>
               {req.status !== null && (
-                <span className={statusTextClass(req.status)}>
-                  ({req.status})
-                </span>
+                <Badge variant={BADGE_VARIANT[statusTone(req.status)]}>
+                  {req.status}
+                </Badge>
               )}
             </>
           ) : (

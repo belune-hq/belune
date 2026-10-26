@@ -141,7 +141,9 @@ func (s *MetricsService) RetentionCleanup(ctx context.Context) {
 		slog.Info("container log retention cleanup completed", "retention_days", appLogRetentionDays)
 	}
 
-	// Request log retention (same period as app logs)
+	// Request log retention (same period as app logs, and as WAF detections: a
+	// detection carries no request detail of its own and joins this table for the
+	// URL, method and status, so a shorter window here expires the evidence first).
 	reqLogRetentionDays := 7
 	reqSetting, err := s.queries.GetSetting(ctx, "request_log_retention_days")
 	if err == nil {

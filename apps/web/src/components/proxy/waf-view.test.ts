@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { WafStatus } from "@/lib/types";
 import {
+  ANOMALY_SUMMARY_RULE,
   categoryLabel,
+  describeEventVerdict,
   describeRecorder,
   describeWaf,
   eventHost,
   isIpAddress,
   severityTone,
   WAF_ENABLE_POINTS,
+  windowPhrase,
 } from "./waf-view";
 
 const status = (over: Partial<WafStatus> = {}): WafStatus => ({
@@ -24,10 +27,12 @@ const status = (over: Partial<WafStatus> = {}): WafStatus => ({
   retention_days: 7,
   max_events: 200000,
   summary: {
+    window: "24h",
     window_hours: 24,
     events: 0,
     requests: 0,
     clients: 0,
+    total: 0,
     top_rules: [],
     top_clients: [],
   },
@@ -212,5 +217,82 @@ describe("isIpAddress", () => {
     ]) {
       expect(isIpAddress(bad), bad).toBe(false);
     }
+  });
+});
+
+describe("describeEventVerdict", () => {
+  // The whole point. Coraza reports no severity for the anomaly-score rule, so
+  // showing severity verbatim put the one row that states a verdict in the
+  // faintest badge on the page, under the word "unknown", while a benign
+  // content-type match beside it shouted "critical" in red.
+  it("names the anomaly-score rule as the verdict it is", () => {
+    const v = describeEventVerdict({
+      rule_id: ANOMALY_SUMMARY_RULE,
+      severity: "unknown",
+    });
+    expect(v.label).toBe("Would block");
+    expect(v.tone).toBe("error");
+    expect(v.title).toMatch(/Nothing was blocked/);
+    // The error tone alone is not enough: "critical" carries it too, so the
+    // verdict would render identically to the noise it is a verdict about.
+    expect(v.strong).toBe(true);
+    expect(
+      describeEventVerdict({ rule_id: 920420, severity: "critical" }).tone,
+    ).toBe(v.tone);
+  });
+
+  it("says nothing was blocked, because nothing was", () => {
+    const v = describeEventVerdict({
+      rule_id: ANOMALY_SUMMARY_RULE,
+      severity: "unknown",
+    });
+    expect(v.title).not.toMatch(/blocked it|was refused/);
+  });
+
+  it("passes every other rule's severity through untouched", () => {
+    for (const severity of ["critical", "warning", "notice"] as const) {
+      const v = describeEventVerdict({ rule_id: 920420, severity });
+      expect(v.label).toBe(severity);
+      expect(v.tone).toBe(severityTone(severity));
+      expect(v.title).toBeNull();
+      expect(v.strong).toBe(false);
+    }
+  });
+});
+
+describe("windowPhrase", () => {
+  it("reads as part of a sentence for every window", () => {
+    expect(`Detected in ${windowPhrase("1h")}`).toBe(
+      "Detected in the last hour",
+    );
+    expect(`No detections in ${windowPhrase("24h")}`).toBe(
+      "No detections in the last 24 hours",
+    );
+    expect(windowPhrase("7d")).toBe("the last 7 days");
+    expect(windowPhrase("all")).toBe("everything still kept");
+  });
+});
+
+describe("the no-applications state", () => {
+  const waiting = (total: number) =>
+    describeWaf(
+      status({
+        enabled: true,
+        state: { active: false, hosts: 0, reason: "no_applications" },
+        summary: { ...status().summary, total },
+      }),
+    );
+
+  // This copy sat above a table of real detections once the drill application
+  // was removed: "It starts as soon as an application has a domain to inspect"
+  // reads as though nothing had ever been inspected.
+  it("does not claim it has never run when it has recorded something", () => {
+    const d = waiting(19);
+    expect(d.body).not.toMatch(/It starts as soon as/);
+    expect(d.body).toMatch(/recorded earlier is still listed below/);
+  });
+
+  it("keeps the original wording when nothing has ever been recorded", () => {
+    expect(waiting(0).body).toMatch(/It starts as soon as/);
   });
 });

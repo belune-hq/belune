@@ -3468,6 +3468,16 @@
         "x-belune-roles": [
           "admin"
         ],
+        "parameters": [
+          {
+            "name": "window",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -21398,6 +21408,12 @@
               "$ref": "#/components/schemas/wafTopRule"
             },
             "type": "array"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "window": {
+            "type": "string"
           },
           "window_hours": {
             "type": "integer"

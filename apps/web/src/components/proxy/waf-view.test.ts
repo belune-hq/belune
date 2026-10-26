@@ -9,6 +9,7 @@ import {
   describeDetectionUrl,
   describeRequestDetail,
   describeUrlCount,
+  detectionHeaders,
   describeWaf,
   eventHost,
   isIpAddress,
@@ -438,5 +439,40 @@ describe("describeClientList", () => {
     expect(text).toContain("the last 24 hours");
     expect(text).toContain("More matched");
     expect(text).toContain("narrow the period");
+  });
+});
+
+describe("detectionHeaders", () => {
+  const detail = {
+    method: "POST",
+    path: "/checkout?step=2",
+    status: 500,
+    content_type: "text/plain",
+    user_agent: "curl/8.7.1",
+  };
+
+  // Content-Type first: it is what tells a benign text/plain POST from an
+  // attack when 920420 fires, so it should not be read second.
+  it("leads with the header that decides a 920420 row", () => {
+    expect(detectionHeaders(detail).map((h) => h.name)).toEqual([
+      "Content-Type",
+      "User-Agent",
+    ]);
+    expect(detectionHeaders(detail)[0].value).toBe("text/plain");
+  });
+
+  it("omits a header that was not sent rather than listing it empty", () => {
+    expect(
+      detectionHeaders({ ...detail, content_type: null }).map((h) => h.name),
+    ).toEqual(["User-Agent"]);
+    expect(
+      detectionHeaders({ ...detail, content_type: null, user_agent: null }),
+    ).toEqual([]);
+  });
+
+  // A detection outlives its request log, and the panel renders the empty list
+  // as a sentence rather than as a header section that looks broken.
+  it("has nothing to show for a detection whose request is gone", () => {
+    expect(detectionHeaders(null)).toEqual([]);
   });
 });

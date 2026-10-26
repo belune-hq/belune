@@ -3,6 +3,7 @@ import { useForm } from "@tanstack/react-form";
 import {
   ChevronDownIcon,
   ChevronRightIcon,
+  EyeIcon,
   ShieldCheckIcon,
   ShieldIcon,
   XIcon,
@@ -29,6 +30,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Field, FieldError } from "@/components/ui/field";
+import { IconAction } from "@/components/ui/icon-action";
 import { Input } from "@/components/ui/input";
 import {
   SegmentedControl,
@@ -46,7 +48,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { StatCard } from "@/lib/components/stats/stat-card";
+import { WafDetectionSheet } from "@/components/proxy/waf-detection-sheet";
 import {
+  BADGE_VARIANT,
   categoryLabel,
   CLIENT_WOULD_BLOCK,
   describeClientList,
@@ -70,7 +74,7 @@ import {
 } from "@/lib/hooks/use-waf";
 import { cn } from "@/lib/utils";
 import { fieldError } from "@/lib/utils/field-error";
-import { formatRelativeTime } from "@/lib/utils/format";
+import { formatDateTime, formatRelativeTime } from "@/lib/utils/format";
 import type { WafEventFilters } from "@/lib/api/waf";
 import type {
   WafClientGroup,
@@ -92,13 +96,6 @@ const TEXT_TONE: Record<WafTone, string> = {
   ready: "text-status-ready",
   error: "text-status-error",
 };
-
-const BADGE_VARIANT = {
-  error: "destructive",
-  attention: "secondary",
-  neutral: "outline",
-  ready: "light",
-} as const;
 
 /**
  * The WAF: detection only, so what it offers is a switch, the state it is in
@@ -598,6 +595,13 @@ function ClientDetections({
 }) {
   const events = useWafEvents(filters);
   const rows = events.data?.pages.flatMap((p) => p.events) ?? [];
+  const [viewId, setViewId] = useState<number | null>(null);
+
+  // Looked up from the live rows rather than held as state: retention sweeps
+  // this table while the panel is open, and a detection that is gone should
+  // close its own panel instead of freezing a copy of a row that no longer is.
+  const viewed =
+    viewId !== null ? rows.find((e) => e.id === viewId) : undefined;
 
   if (events.isLoading) {
     return <Skeleton className="m-3 h-16 w-[calc(100%-1.5rem)]" />;
@@ -618,11 +622,17 @@ function ClientDetections({
             <TableHead>Rule</TableHead>
             <TableHead>Severity</TableHead>
             <TableHead>URL</TableHead>
+            <TableHead className="w-0" />
           </TableRow>
         </TableHeader>
         <TableBody>
           {rows.map((e) => (
-            <DetectionRow key={e.id} event={e} onRule={onRule} />
+            <DetectionRow
+              key={e.id}
+              event={e}
+              onRule={onRule}
+              onView={() => setViewId(e.id)}
+            />
           ))}
         </TableBody>
       </Table>
@@ -638,6 +648,13 @@ function ClientDetections({
           </Button>
         </div>
       )}
+      {viewed && (
+        <WafDetectionSheet
+          event={viewed}
+          open
+          onOpenChange={(open) => !open && setViewId(null)}
+        />
+      )}
     </div>
   );
 }
@@ -645,20 +662,22 @@ function ClientDetections({
 function DetectionRow({
   event: e,
   onRule,
+  onView,
 }: {
   event: WafEvent;
   onRule: (ruleId: number) => void;
+  onView: () => void;
 }) {
   const category = categoryLabel(e.category);
   const verdict = describeEventVerdict(e);
   const url = describeDetectionUrl(e);
   return (
     <TableRow>
-      <TableCell
-        className="text-muted-foreground whitespace-nowrap"
-        title={new Date(e.recorded_at).toLocaleString()}
-      >
-        {formatRelativeTime(e.recorded_at)}
+      {/* Absolute, not relative: the outer row answers "when was this client
+          last here", which reads better as "3d", while these rows are the
+          evidence for one request and are read against a log somewhere else. */}
+      <TableCell className="text-muted-foreground font-mono text-xs whitespace-nowrap tabular-nums">
+        {formatDateTime(e.recorded_at)}
       </TableCell>
       <TableCell className="max-w-xs">
         <div className="flex items-baseline gap-2">
@@ -702,6 +721,11 @@ function DetectionRow({
             </span>
           )}
         </div>
+      </TableCell>
+      <TableCell className="text-right">
+        <IconAction label="Detection details" onClick={onView} size="icon-sm">
+          <EyeIcon aria-hidden="true" className="size-4" />
+        </IconAction>
       </TableCell>
     </TableRow>
   );

@@ -8,6 +8,17 @@ import type {
   WafWindow,
 } from "@/lib/types";
 
+/**
+ * Tone to badge variant. Lives here rather than in a component so the table and
+ * the detection panel cannot drift into showing the same severity two ways.
+ */
+export const BADGE_VARIANT = {
+  error: "destructive",
+  attention: "secondary",
+  neutral: "outline",
+  ready: "light",
+} as const;
+
 export type WafTone = "neutral" | "attention" | "ready" | "error";
 
 export interface WafDescription {
@@ -420,3 +431,40 @@ export function statusTone(status: number): WafTone {
   if (status >= 400) return "attention";
   return "neutral";
 }
+
+export interface DetectionHeader {
+  name: string;
+  value: string;
+}
+
+/**
+ * The request headers kept for a detection, Content-Type first because it is
+ * what makes the common false positive legible.
+ *
+ * Two, and that is the whole of it: headers are an ALLOWLIST (000073), so these
+ * are stored by being named and nothing else is — not a custom X-Api-Token an
+ * application invents, which a denylist would have carried into a table the
+ * operator reads. An empty list is normal, not a failure: a GET carries no
+ * content type, and a detection older than its request log has no detail at all.
+ */
+export function detectionHeaders(
+  r: WafRequestDetail | null,
+): DetectionHeader[] {
+  if (!r) return [];
+  const out: DetectionHeader[] = [];
+  if (r.content_type) out.push({ name: "Content-Type", value: r.content_type });
+  if (r.user_agent) out.push({ name: "User-Agent", value: r.user_agent });
+  return out;
+}
+
+/**
+ * Why the header list is two lines long. Said on the panel rather than left to
+ * be inferred: an operator who reads "Headers" and sees two assumes the request
+ * carried two, and then trusts the absence of a header as evidence.
+ */
+export const DETECTION_HEADERS_ALLOWLIST =
+  "Belune stores two request headers by name. Keeping every header would mean keeping whatever an application invents, including its own credentials.";
+
+/** What this panel deliberately cannot show, so its absence is not read as a gap. */
+export const DETECTION_PAYLOAD_ABSENT =
+  "The text that matched the rule is not stored, and neither is the request body. Invite and deploy-hook tokens are redacted out of the URL before it is written.";

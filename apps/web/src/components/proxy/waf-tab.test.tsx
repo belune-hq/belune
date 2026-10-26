@@ -273,6 +273,119 @@ describe("WafTab", () => {
     ).toBeTruthy();
   });
 
+  // "3d" is the right answer in the client row above, which says when that
+  // client was last here. A rule match is evidence for one request and gets read
+  // against a log somewhere else, so it is dated to the second.
+  it("dates a detection to the second", async () => {
+    clients = [group()];
+    events = [event({ recorded_at: "2026-10-23T14:32:11Z" })];
+    render(<WafTab />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show detections from 203.0.113.9" }),
+    );
+
+    await waitFor(() => expect(screen.getByText("Severity")).toBeTruthy());
+    // The second table on the page: the first is the client list.
+    const panel = screen.getAllByRole("table")[1];
+    expect(
+      within(panel).getByText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/),
+    ).toBeTruthy();
+  });
+
+  it("opens one detection's whole record from its row", async () => {
+    clients = [group()];
+    events = [
+      event({
+        rule_id: 920420,
+        message: "Request content type is not allowed by policy",
+        severity: "warning",
+        category: null,
+        request: {
+          method: "POST",
+          // Long enough that the table has to cut it, which is why the panel
+          // exists: the query string is the part that decides the detection.
+          path: "/search?q=%27%20OR%201%3D1%20--%20&page=2&sort=relevance",
+          status: 500,
+          content_type: "text/plain",
+          user_agent: "curl/8.7.1",
+        },
+      }),
+    ];
+    render(<WafTab />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show detections from 203.0.113.9" }),
+    );
+    await waitFor(() => expect(screen.getByText("Severity")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Detection details" }));
+
+    const sheet = await waitFor(() => screen.getByRole("dialog"));
+    expect(
+      within(sheet).getByText("Request content type is not allowed by policy"),
+    ).toBeTruthy();
+    expect(within(sheet).getByText("Rule 920420")).toBeTruthy();
+    expect(within(sheet).getByText("warning")).toBeTruthy();
+    // Whole and uncut, including the query.
+    expect(
+      within(sheet).getByText(
+        "/search?q=%27%20OR%201%3D1%20--%20&page=2&sort=relevance",
+      ),
+    ).toBeTruthy();
+    expect(within(sheet).getByText("shop.example.com")).toBeTruthy();
+    expect(within(sheet).getByText("text/plain")).toBeTruthy();
+    expect(within(sheet).getByText("curl/8.7.1")).toBeTruthy();
+  });
+
+  // An operator who reads "Headers" and sees two assumes the request carried
+  // two, and then reads a header's absence as evidence about the request.
+  it("says the headers are an allowlist, not everything that was sent", async () => {
+    clients = [group()];
+    events = [
+      event({
+        request: {
+          method: "GET",
+          path: "/",
+          status: 200,
+          content_type: null,
+          user_agent: null,
+        },
+      }),
+    ];
+    render(<WafTab />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show detections from 203.0.113.9" }),
+    );
+    await waitFor(() => expect(screen.getByText("Severity")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Detection details" }));
+
+    const sheet = await waitFor(() => screen.getByRole("dialog"));
+    expect(within(sheet).getByText(/two request headers by name/)).toBeTruthy();
+    expect(
+      within(sheet).getByText("Neither header was present on this request."),
+    ).toBeTruthy();
+    expect(
+      within(sheet).getByText(/matched the rule is not stored/),
+    ).toBeTruthy();
+  });
+
+  it("the detail panel of a swept detection says so instead of showing a blank URL", async () => {
+    clients = [group()];
+    events = [event({ request: null })];
+    render(<WafTab />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show detections from 203.0.113.9" }),
+    );
+    await waitFor(() => expect(screen.getByText("Severity")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Detection details" }));
+
+    const sheet = await waitFor(() => screen.getByRole("dialog"));
+    expect(within(sheet).getByText(/No request on record/)).toBeTruthy();
+    // And says it once: the URL row above has already said it.
+    expect(within(sheet).getAllByText(/No request on record/)).toHaveLength(1);
+    expect(
+      within(sheet).getByText("They went with the request log."),
+    ).toBeTruthy();
+  });
+
   // The host survives a sweep the path does not, so the cell still names the
   // application that was targeted instead of going blank.
   it("keeps the host when the URL behind a detection is gone", async () => {

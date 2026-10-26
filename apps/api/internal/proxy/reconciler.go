@@ -55,6 +55,11 @@ type Reconciler struct {
 	waf WAFState
 	// wafSwitch replaces the database read of the operator's switch. Tests only.
 	wafSwitch func(ctx context.Context) (bool, error)
+
+	// crowdsecSrc supplies CrowdSec's wishes each pass; nil means the feature is
+	// not wired and the step does nothing. crowdsec is what the last pass did.
+	crowdsecSrc CrowdSecSource
+	crowdsec    CrowdSecState
 }
 
 // caddyProbeInterval is how often Run checks whether Caddy still holds our
@@ -531,6 +536,13 @@ func (r *Reconciler) reconcile(ctx context.Context) {
 	// routes above now have.
 	if err := r.syncWAF(ctx, expected, dashboardHost); err != nil {
 		slog.Warn("proxy reconciler: failed to sync the WAF route", "error", err)
+		recordErr(err)
+	}
+	// After the WAF, so a pass that creates both writes this one second and it
+	// ends up in front: a banned address should be turned away before the WAF has
+	// spent anything looking at it.
+	if err := r.syncCrowdSec(ctx, expected, dashboardHost); err != nil {
+		slog.Warn("proxy reconciler: failed to sync the CrowdSec route", "error", err)
 		recordErr(err)
 	}
 

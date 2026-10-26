@@ -343,6 +343,7 @@ func (h *Handler) VerifyLogin(w http.ResponseWriter, r *http.Request) {
 		uid := uuidToString(result.User.ID)
 		h.auditSvc.Log(uid, "", clientIP, "login", "user", uid, map[string]any{"method": method})
 	}
+	h.noteAdminLogin(result.User.Role, result.User.Email, clientIP)
 
 	writeJSON(w, http.StatusOK, result)
 }

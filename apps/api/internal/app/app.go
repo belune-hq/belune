@@ -21,6 +21,7 @@ import (
 	"github.com/belune-hq/belune/internal/build/image"
 	"github.com/belune-hq/belune/internal/build/railpack"
 	"github.com/belune-hq/belune/internal/config"
+	"github.com/belune-hq/belune/internal/crowdsec"
 	"github.com/belune-hq/belune/internal/eventwatcher"
 	"github.com/belune-hq/belune/internal/logcollector"
 	"github.com/belune-hq/belune/internal/logtailer"
@@ -172,6 +173,9 @@ func New(cfg *config.Config) (*App, error) {
 	backupSvc := backup.New(cfg)
 	notifyRegistry := service.NewNotifyRegistry(emailSvc)
 	notifyChannelSvc := service.NewNotificationChannelService(queries, cfg.Keyring, notifyRegistry, cfg.PublicBaseURL)
+	// CrowdSec runs cscli inside the crowdsec container, so it needs the same Docker
+	// client the capability prober uses to exec into Caddy's.
+	crowdsecSvc := crowdsec.NewService(queries, crowdsec.NewController(crowdsec.NewContainerRunner(dockerClient)), cfg.Keyring, auditSvc)
 	taskHandler := &worker.TaskHandler{
 		Runtimes:              runtimes,
 		Proxy:                 caddyClient,
@@ -192,6 +196,7 @@ func New(cfg *config.Config) (*App, error) {
 		AuditLog:              auditSvc,
 		Notifier:              notifySvc,
 		Enqueuer:              asynqClient,
+		CrowdSec:              crowdsecSvc,
 	}
 
 	w := worker.New(redisOpt, taskHandler)
@@ -214,7 +219,8 @@ func New(cfg *config.Config) (*App, error) {
 	caddyCaps := capability.NewProber(dockerClient, cfg.CaddyContainerName)
 	reconciler := proxy.NewReconciler(queries, caddyClient, cfg.Keyring, 30*time.Second).
 		WithNetworkAttacher(dockerClient, cfg.CaddyContainerName).
-		WithCapabilities(caddyCaps)
+		WithCapabilities(caddyCaps).
+		WithCrowdSec(crowdsecSvc)
 
 	// One-time move of plaintext webhook secrets into the keyring-encrypted
 	// column (migration 000051). Safe to run on every boot: it only touches
@@ -232,6 +238,7 @@ func New(cfg *config.Config) (*App, error) {
 	httpSrv.SetAccessLog(logTailer)
 	wafRecorder := waf.NewRecorder(queries)
 	httpSrv.SetWAF(wafRecorder)
+	httpSrv.SetCrowdSec(crowdsecSvc)
 	httpSrv.SetProxyAdmin(caddyClient)
 
 	// Optional Prometheus-friendly bind. Serves /metrics without auth on the

@@ -64,6 +64,9 @@ type TaskHandler struct {
 	AuditLog              auditLogger
 	Notifier              notifier
 	Enqueuer              TaskEnqueuer
+	// CrowdSec bans addresses whose WAF detections cross the operator's line. Nil
+	// when CrowdSec is not wired, in which case the task does nothing.
+	CrowdSec AutobanEvaluator
 	// UpdateManifestURL overrides defaultUpdateManifestURL. Empty means the
 	// real belune.dev manifest; tests point it at an httptest.Server so the
 	// daily check never makes a real outbound request.
@@ -162,6 +165,10 @@ func (w *Worker) Start() error {
 		w.handler.HandleWAFEventsSweep(ctx)
 		return nil
 	})
+	mux.HandleFunc(TypeCrowdSecAutoban, func(ctx context.Context, t *asynq.Task) error {
+		w.handler.HandleCrowdSecAutoban(ctx)
+		return nil
+	})
 	mux.HandleFunc(TypeTemplateFinalize, w.handler.HandleTemplateFinalizeTask)
 	mux.HandleFunc(TypeNotifyDeliver, w.handler.HandleNotifyDeliverTask)
 	mux.HandleFunc(TypeTLSProbe, func(ctx context.Context, t *asynq.Task) error {
@@ -247,6 +254,15 @@ func (w *Worker) StartScheduler() (*asynq.Scheduler, error) {
 	// because the row cap is there for the moment an attack starts writing.
 	wafSweepTask := asynq.NewTask(TypeWAFEventsSweep, nil)
 	if _, err := scheduler.Register("@every 10m", wafSweepTask, asynq.Queue("low")); err != nil {
+		return nil, err
+	}
+
+	// Automatic bans from WAF detections. Every minute: a ban that lands ten
+	// minutes after the scan that earned it has done little. Unique for just under
+	// the interval so a slow pass is not overlapped by the next — two passes
+	// could each add the same ban.
+	autobanTask := asynq.NewTask(TypeCrowdSecAutoban, nil)
+	if _, err := scheduler.Register("@every 1m", autobanTask, asynq.Queue("low"), asynq.Unique(55*time.Second)); err != nil {
 		return nil, err
 	}
 

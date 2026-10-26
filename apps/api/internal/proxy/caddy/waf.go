@@ -144,8 +144,16 @@ func (c *Client) SyncWAF(ctx context.Context, cfg proxy.WAFConfig) (err error) {
 	}
 
 	// Index 0: it has to run before any application route, because routes are
-	// first-match-wins and the application's reverse_proxy ends the chain.
-	if err := c.sendJSON(ctx, http.MethodPut, "/config/apps/http/servers/srv0/routes/0", desired); err != nil {
+	// first-match-wins and the application's reverse_proxy ends the chain. Index 1
+	// when the CrowdSec route holds the front: a banned address should be turned
+	// away before the WAF spends anything looking at it.
+	at := 0
+	if _, behindCrowdSec, err := c.fetchRouteByID(ctx, crowdsecRouteID); err != nil {
+		return err
+	} else if behindCrowdSec {
+		at = 1
+	}
+	if err := c.sendJSON(ctx, http.MethodPut, fmt.Sprintf("/config/apps/http/servers/srv0/routes/%d", at), desired); err != nil {
 		return fmt.Errorf("add WAF route: %w", err)
 	}
 	slog.Info("caddy: WAF route added", "hosts", len(hosts))

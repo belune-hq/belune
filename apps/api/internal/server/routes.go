@@ -677,6 +677,21 @@ func registerRoutes(r chi.Router, h *handler.Handler, auth *service.AuthService,
 					r.With(withTimeout(handlerTimeout)).Get("/api/maintenance/proxy/waf", h.GetWAFStatus)
 					r.With(withTimeout(handlerTimeout)).Put("/api/maintenance/proxy/waf", h.UpdateWAF)
 					r.With(withTimeout(handlerTimeout)).Get("/api/maintenance/proxy/waf/events", h.ListWAFEvents)
+					// CrowdSec is a property of the proxy too. The noun for status and
+					// the switch; children for the bans, the allowlist and the policy
+					// that turns WAF detections into bans. Every reversal (lifting a
+					// ban, leaving the allowlist) is here and is never gated on the
+					// feature being on.
+					r.With(withTimeout(handlerTimeout)).Get("/api/maintenance/proxy/crowdsec", h.GetCrowdSecStatus)
+					r.With(withTimeout(handlerTimeout)).Put("/api/maintenance/proxy/crowdsec", h.UpdateCrowdSec)
+					r.With(withTimeout(handlerTimeout)).Get("/api/maintenance/proxy/crowdsec/decisions", h.ListCrowdSecDecisions)
+					r.With(withTimeout(handlerTimeout)).Post("/api/maintenance/proxy/crowdsec/decisions", h.CreateCrowdSecBan)
+					r.With(withTimeout(handlerTimeout)).Delete("/api/maintenance/proxy/crowdsec/decisions", h.DeleteCrowdSecBan)
+					r.With(withTimeout(handlerTimeout)).Get("/api/maintenance/proxy/crowdsec/allowlist", h.ListCrowdSecAllowlist)
+					r.With(withTimeout(handlerTimeout)).Post("/api/maintenance/proxy/crowdsec/allowlist", h.CreateCrowdSecAllow)
+					r.With(withTimeout(handlerTimeout)).Delete("/api/maintenance/proxy/crowdsec/allowlist", h.DeleteCrowdSecAllow)
+					r.With(withTimeout(handlerTimeout)).Put("/api/maintenance/proxy/crowdsec/autoban", h.UpdateCrowdSecAutoban)
+					r.With(withTimeout(handlerTimeout)).Post("/api/maintenance/proxy/crowdsec/rotate-key", h.RotateCrowdSecKey)
 					r.Get("/api/maintenance/queue", h.GetQueueStatus)
 					r.Post("/api/maintenance/queue/clear", h.ClearQueue)
 					r.Post("/api/maintenance/queue/clear-pending", h.ClearPendingQueue)

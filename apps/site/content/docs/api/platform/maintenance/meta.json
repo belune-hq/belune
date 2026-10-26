@@ -15,6 +15,16 @@
     "clear-queue",
     "get-waf-status",
     "update-waf",
-    "list-waf-events"
+    "list-waf-events",
+    "get-crowd-sec-status",
+    "update-crowd-sec",
+    "list-crowd-sec-decisions",
+    "create-crowd-sec-ban",
+    "delete-crowd-sec-ban",
+    "list-crowd-sec-allowlist",
+    "create-crowd-sec-allow",
+    "delete-crowd-sec-allow",
+    "update-crowd-sec-autoban",
+    "rotate-crowd-sec-key"
   ]
 }

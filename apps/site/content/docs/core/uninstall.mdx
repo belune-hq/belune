@@ -36,7 +36,7 @@ docker compose down       # stops and removes containers; volumes are kept
 If you want to destroy the Postgres & Redis, Caddy, and build cache volumes, add `-v` at the end:
 
 ```bash
-docker compose down -v    # irreversible: destroys belunedata, pgdata, redisdata, caddyconfig, caddydata, caddylogs, buildkitcache
+docker compose down -v    # irreversible: destroys belunedata, pgdata, redisdata, caddyconfig, caddydata, caddylogs, buildkitcache, crowdsecdata
 ```
 
 `down -v` removes only the platform volumes listed above. **Application and database data volumes are created by Belune outside the compose stack, so they survive `down -v`.** To also delete them — this destroys all app and database data — remove them by label:
@@ -67,7 +67,7 @@ This removes `docker-compose.yml`, the Caddy/BuildKit config, the `scripts/` hel
 
 ## What's Left Behind
 
-- **Pulled Docker images** — `ghcr.io/weiliang79/belune`, `postgres:16-alpine`, `redis:7-alpine`, `moby/buildkit`, `ghcr.io/belune-hq/belune-caddy` (or `caddy:2-alpine` if you set `BELUNE_CADDY_IMAGE` to it), and any image your apps used. Reclaim the space with `docker image prune -a`.
+- **Pulled Docker images** — `ghcr.io/weiliang79/belune`, `postgres:16-alpine`, `redis:7-alpine`, `moby/buildkit`, `crowdsecurity/crowdsec`, `ghcr.io/belune-hq/belune-caddy` (or `caddy:2-alpine` if you set `BELUNE_CADDY_IMAGE` to it), and any image your apps used. Reclaim the space with `docker image prune -a`.
 - **The `docker` group membership** the installer may have granted — harmless to leave, or remove with `sudo gpasswd -d <user> docker` if you're decommissioning the host entirely.
 - **Anything deployed outside the compose stack** — Belune doesn't touch containers, volumes, or networks it didn't create, so unrelated Docker workloads on the same host are untouched by any of the steps above.
 - **DNS records** pointing at this host — Belune doesn't manage DNS, so any `A` records you created during [install](/docs/core/install) will keep resolving here until you remove them yourself.

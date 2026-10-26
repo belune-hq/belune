@@ -253,6 +253,19 @@ type ContainerLog struct {
 	ContainerID  pgtype.Text        `json:"container_id"`
 }
 
+type CrowdsecConfig struct {
+	ID                     string             `json:"id"`
+	Enabled                bool               `json:"enabled"`
+	BouncerKeyEncrypted    []byte             `json:"bouncer_key_encrypted"`
+	AutobanEnabled         bool               `json:"autoban_enabled"`
+	AutobanThreshold       int32              `json:"autoban_threshold"`
+	AutobanWindowMinutes   int32              `json:"autoban_window_minutes"`
+	AutobanDurationMinutes int32              `json:"autoban_duration_minutes"`
+	AutobanMaxActive       int32              `json:"autoban_max_active"`
+	AutobanCategories      []string           `json:"autoban_categories"`
+	UpdatedAt              pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Database struct {
 	ID                   pgtype.UUID        `json:"id"`
 	ProjectID            pgtype.UUID        `json:"project_id"`

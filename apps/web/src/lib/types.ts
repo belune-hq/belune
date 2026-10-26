@@ -1013,6 +1013,115 @@ export interface WafEventsPage {
   next_before: number | null;
 }
 
+/** Why CrowdSec is switched on but not active. `lapi_unavailable` means the
+ *  CrowdSec container is not answering; the first two are the Caddy probe's two
+ *  different answers and must not be collapsed. */
+export type CrowdSecReason =
+  | "module_absent"
+  | "modules_unknown"
+  | "no_applications"
+  | "lapi_unavailable";
+
+export interface CrowdSecState {
+  /** The bouncer route is in Caddy now. */
+  active: boolean;
+  /** Application hostnames it covers. */
+  hosts: number;
+  reason?: CrowdSecReason;
+  /** The last refusal, when Caddy would not take the config. */
+  error?: string;
+}
+
+/** What the last look at the CrowdSec container found. */
+export interface CrowdSecLocalApi {
+  checked_at: string;
+  reachable: boolean;
+  bouncer_registered: boolean;
+  /** When the bouncer last fetched the ban list. Absent if it never has. */
+  last_pull?: string;
+  error?: string;
+}
+
+export interface CrowdSecPolicy {
+  enabled: boolean;
+  threshold: number;
+  window_minutes: number;
+  duration_minutes: number;
+  max_active: number;
+  categories: string[];
+}
+
+export interface CrowdSecAutobanStatus {
+  last_run?: string;
+  last_error?: string;
+  /** Automatic bans in force now. */
+  active: number;
+  /** Bans issued since Belune started. */
+  banned: number;
+  /** Addresses over the threshold the last run left alone. */
+  skipped: number;
+  /** The last run stopped at the active-ban cap. */
+  capped: boolean;
+}
+
+/** `unbannable`: private or loopback, no ban can name it. `allowlisted`: public,
+ *  covered by an unexpired allowlist entry. `exposed`: public, and nothing covers
+ *  it. `unknown`: the local API could not be asked. */
+export type CrowdSecProtection =
+  | "unbannable"
+  | "allowlisted"
+  | "exposed"
+  | "unknown";
+
+export interface CrowdSecStatus {
+  capability: { module: string; state: FeatureAvailability };
+  /** The operator's switch. */
+  enabled: boolean;
+  state: CrowdSecState;
+  local_api: CrowdSecLocalApi;
+  /** The address this request came from, as Caddy saw it. */
+  your_ip: string;
+  /** How that address stands against being banned. Not the same as whether the
+   *  switch is on: a private address is never added to the allowlist, and a public
+   *  one is only as safe as its (expiring) entry. */
+  your_ip_protection: CrowdSecProtection;
+  autoban: {
+    policy: CrowdSecPolicy;
+    status: CrowdSecAutobanStatus;
+    /** The WAF rule categories a policy may choose from. */
+    categories: string[];
+  };
+}
+
+/** What created a ban. */
+export type CrowdSecSource = "dashboard" | "waf" | "cli" | "crowdsec";
+
+export interface CrowdSecDecision {
+  id: number;
+  value: string;
+  scope: "ip" | "range";
+  source: CrowdSecSource;
+  reason: string;
+  created_at: string;
+  expires_at: string;
+}
+
+export interface CrowdSecDecisions {
+  decisions: CrowdSecDecision[];
+}
+
+export interface CrowdSecAllowItem {
+  value: string;
+  description: string;
+  created_at: string;
+  /** Absent for an entry that never expires. */
+  expires_at?: string;
+}
+
+export interface CrowdSecAllowlist {
+  items: CrowdSecAllowItem[];
+}
+
 export interface QueueDepth {
   queue: string;
   pending: number;

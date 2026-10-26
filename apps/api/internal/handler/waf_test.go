@@ -334,3 +334,114 @@ func TestWAFStatus_RejectsAWindowItDoesNotOffer(t *testing.T) {
 		_ = resp.Body.Close()
 	}
 }
+
+// A detection carries no request data of its own by design (000070), so the URL,
+// method, status and content type are joined from the request log by the uuid
+// Caddy writes into both the access entry and Coraza's transaction id (000073).
+//
+// The three cases that matter are all here: a detection whose request is still on
+// record, one whose request log has been swept (detections outlive request logs,
+// so this is the COMMON case, not an error), and one that never carried a
+// transaction id at all.
+func TestWAFEvents_JoinTheRequestBehindEachDetection(t *testing.T) {
+	token := wafFixture(t)
+	project := env.CreateProject(t, token, "Shop", "shop")
+	app := env.CreateApplication(t, token, extractID(project["id"]), map[string]any{
+		"name":        "Shop",
+		"type":        "git",
+		"build_type":  "dockerfile",
+		"source_repo": "https://github.com/test/shop",
+	})
+
+	// The request the WAF inspected: Caddy minted this uuid, the tailer stored it.
+	require.NoError(t, env.Queries.InsertRequestLog(context.Background(), generated.InsertRequestLogParams{
+		ApplicationID: mustUUID(t, extractID(app["id"])),
+		Method:        "POST",
+		Path:          "/checkout?step=2",
+		StatusCode:    500,
+		LatencyMs:     12,
+		Hostname:      "shop.example.com",
+		ClientIp:      pgtype.Text{String: "203.0.113.9", Valid: true},
+		UserAgent:     pgtype.Text{String: "curl/8.7.1", Valid: true},
+		ContentType:   pgtype.Text{String: "text/plain", Valid: true},
+		RequestUuid:   pgtype.Text{String: "uuid-on-record", Valid: true},
+	}))
+
+	// Two rules of ONE request, so the detail is shared and asked for once.
+	onRecord := evt("203.0.113.9", 920420, "shop.example.com")
+	onRecord.TxID = pgtype.Text{String: "uuid-on-record", Valid: true}
+	swept := evt("198.51.100.7", 941100, "shop.example.com")
+	swept.TxID = pgtype.Text{String: "uuid-swept-away", Valid: true}
+	noTx := evt("198.51.100.8", 941100, "shop.example.com")
+	noTx.TxID = pgtype.Text{}
+	seedWAFEvents(t, onRecord, onRecord, swept, noTx)
+
+	resp := env.DoRequest(t, "GET", "/api/maintenance/proxy/waf/events", nil, testutil.AuthHeader(token))
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	body := testutil.ReadJSON(t, resp)
+
+	byIP := map[string][]map[string]any{}
+	for _, e := range body["events"].([]any) {
+		ev := e.(map[string]any)
+		ip := ev["client_ip"].(string)
+		byIP[ip] = append(byIP[ip], ev)
+	}
+
+	// On record: both rules of the one request carry the same detail.
+	require.Len(t, byIP["203.0.113.9"], 2)
+	for _, ev := range byIP["203.0.113.9"] {
+		req, ok := ev["request"].(map[string]any)
+		require.True(t, ok, "the request behind this detection should be joined")
+		assert.Equal(t, "POST", req["method"])
+		assert.Equal(t, "/checkout?step=2", req["path"])
+		assert.Equal(t, float64(500), req["status"])
+		// The field that makes rule 920420 judgeable instead of a shrug.
+		assert.Equal(t, "text/plain", req["content_type"])
+		assert.Equal(t, "curl/8.7.1", req["user_agent"])
+	}
+
+	// Swept, and never-had-a-tx: the detection still renders, with no detail and
+	// no error. This is what most of a detection's life looks like.
+	require.Len(t, byIP["198.51.100.7"], 1)
+	assert.Nil(t, byIP["198.51.100.7"][0]["request"], "a swept request log is absent detail, not a failure")
+	require.Len(t, byIP["198.51.100.8"], 1)
+	assert.Nil(t, byIP["198.51.100.8"][0]["request"], "an event with no tx_id has nothing to join")
+
+	// The detail must not leak across transaction ids.
+	assert.Equal(t, 920420, int(byIP["203.0.113.9"][0]["rule_id"].(float64)))
+}
+
+// A request log belonging to a DIFFERENT request must never be attached, however
+// close it sits: the uuid is the only thing that may match them up.
+func TestWAFEvents_TheJoinIsTheUUIDAndNothingElse(t *testing.T) {
+	token := wafFixture(t)
+	project := env.CreateProject(t, token, "Shop", "shop")
+	app := env.CreateApplication(t, token, extractID(project["id"]), map[string]any{
+		"name":        "Shop",
+		"type":        "git",
+		"build_type":  "dockerfile",
+		"source_repo": "https://github.com/test/shop",
+	})
+
+	// Same client, same host, same moment — and a different request.
+	require.NoError(t, env.Queries.InsertRequestLog(context.Background(), generated.InsertRequestLogParams{
+		ApplicationID: mustUUID(t, extractID(app["id"])),
+		Method:        "GET",
+		Path:          "/someone-elses-request",
+		StatusCode:    200,
+		Hostname:      "shop.example.com",
+		ClientIp:      pgtype.Text{String: "203.0.113.9", Valid: true},
+		RequestUuid:   pgtype.Text{String: "a-different-uuid", Valid: true},
+	}))
+
+	e := evt("203.0.113.9", 920420, "shop.example.com")
+	e.TxID = pgtype.Text{String: "the-detections-uuid", Valid: true}
+	seedWAFEvents(t, e)
+
+	resp := env.DoRequest(t, "GET", "/api/maintenance/proxy/waf/events", nil, testutil.AuthHeader(token))
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	events := testutil.ReadJSON(t, resp)["events"].([]any)
+	require.Len(t, events, 1)
+	assert.Nil(t, events[0].(map[string]any)["request"],
+		"a request log that shares the client, host and moment but not the uuid is a different request")
+}

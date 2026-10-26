@@ -28,6 +28,11 @@ type caddyLogEntry struct {
 	TS      float64         `json:"ts"`
 	Request caddyLogRequest `json:"request"`
 	Status  int             `json:"status"`
+	// UUID is Caddy's own request id. It is present only once something has
+	// referenced {http.request.uuid}, which the WAF route does when it builds
+	// Coraza's transaction id — so it arrives exactly for the requests a WAF
+	// detection can be joined to, and is empty for every other request.
+	UUID string `json:"uuid"`
 	// duration is in seconds (float)
 	Duration float64 `json:"duration"`
 	// size is response bytes
@@ -241,6 +246,21 @@ func (t *Tailer) parseLine(ctx context.Context, line string) (generated.InsertRe
 		userAgent = pgtype.Text{String: uas[0], Valid: true}
 	}
 
+	// Request headers are an ALLOWLIST, never a denylist. Caddy redacts Cookie and
+	// Authorization before they reach the log, but not a custom X-Api-Token an
+	// application invents, so a header is stored only by being named here.
+	// Content-Type earns its place: it is what tells a benign text/plain POST from
+	// an attack when rule 920420 fires on it.
+	var contentType pgtype.Text
+	if cts := entry.Request.Headers["Content-Type"]; len(cts) > 0 {
+		contentType = pgtype.Text{String: cts[0], Valid: true}
+	}
+
+	var requestUUID pgtype.Text
+	if entry.UUID != "" {
+		requestUUID = pgtype.Text{String: entry.UUID, Valid: true}
+	}
+
 	// Clamp status code to int16 range
 	statusCode := int16(entry.Status)
 	if entry.Status < 100 || entry.Status > 599 {
@@ -258,6 +278,8 @@ func (t *Tailer) parseLine(ctx context.Context, line string) (generated.InsertRe
 		ResponseSize:  responseSize,
 		ClientIp:      clientIP,
 		UserAgent:     userAgent,
+		RequestUuid:   requestUUID,
+		ContentType:   contentType,
 	}, true
 }
 

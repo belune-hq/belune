@@ -71,6 +71,9 @@ const event = (over: Partial<WafEvent> = {}): WafEvent => ({
   host: "shop.example.com",
   application_id: null,
   tx_id: "tx",
+  // Absent by default: that is what most detections look like, since a request
+  // log is swept on its own retention while the detection stays.
+  request: null,
   ...over,
 });
 
@@ -253,5 +256,32 @@ describe("WafTab", () => {
     );
     expect(screen.getByText(/Showing rule/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Clear" })).toBeTruthy();
+  });
+
+  it("shows the request behind a detection when it is still on record", () => {
+    events = [
+      event({
+        rule_id: 920420,
+        request: {
+          method: "POST",
+          path: "/checkout?step=2",
+          status: 500,
+          content_type: "text/plain",
+          user_agent: "curl/8.7.1",
+        },
+      }),
+    ];
+    render(<WafTab />);
+    expect(screen.getByText("POST /checkout?step=2")).toBeTruthy();
+    expect(screen.getByText("500")).toBeTruthy();
+  });
+
+  it("says a missing request is not kept, rather than leaving it blank", () => {
+    events = [event({ request: null })];
+    render(<WafTab />);
+    const cell = screen.getByText("not kept");
+    expect(cell).toBeTruthy();
+    // The reason has to be reachable: an empty cell reads as a bug in the page.
+    expect(cell.getAttribute("title")).toContain("retention");
   });
 });

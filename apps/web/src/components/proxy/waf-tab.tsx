@@ -44,9 +44,12 @@ import {
   categoryLabel,
   describeEventVerdict,
   describeRecorder,
+  describeRequestDetail,
   describeWaf,
   eventHost,
   isIpAddress,
+  REQUEST_DETAIL_ABSENT,
+  statusTone,
   WAF_ENABLE_POINTS,
   WAF_WINDOWS,
   windowPhrase,
@@ -361,7 +364,7 @@ function EventsCard({ status }: { status: WafStatus }) {
         <CardTitle>Detections</CardTitle>
         <CardDescription>
           Each row is one rule matching one request; a request can match
-          several. The request itself is not stored.
+          several. The matched payload is never stored.
         </CardDescription>
         <CardAction>
           <form
@@ -434,6 +437,7 @@ function EventsCard({ status }: { status: WafStatus }) {
                   <TableHead>Rule</TableHead>
                   <TableHead>Severity</TableHead>
                   <TableHead>Host</TableHead>
+                  <TableHead>Request</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -521,6 +525,40 @@ function EventRow({
       <TableCell className={cn(!e.host && "text-muted-foreground italic")}>
         {eventHost(e)}
       </TableCell>
+      <RequestCell request={e.request} />
     </TableRow>
+  );
+}
+
+/**
+ * The request behind a detection. A detection stores no request data of its own,
+ * so this is joined from the request log and is often absent — which is said in
+ * words rather than left as an empty cell.
+ */
+function RequestCell({ request }: { request: WafEvent["request"] }) {
+  if (!request) {
+    return (
+      <TableCell className="text-muted-foreground max-w-xs">
+        <span
+          className="cursor-help text-xs italic"
+          title={REQUEST_DETAIL_ABSENT}
+        >
+          not kept
+        </span>
+      </TableCell>
+    );
+  }
+  const d = describeRequestDetail(request);
+  return (
+    <TableCell className="max-w-xs">
+      <div className="flex items-baseline gap-2" title={d.title}>
+        <span className="truncate font-mono text-xs">{d.line}</span>
+        {d.status !== null && (
+          <Badge variant={BADGE_VARIANT[statusTone(d.status)]}>
+            {d.status}
+          </Badge>
+        )}
+      </div>
+    </TableCell>
   );
 }

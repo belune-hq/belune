@@ -130,6 +130,23 @@ type wafEventResponse struct {
 	ApplicationID *string `json:"application_id"`
 	// TxID is shared by the rules one request tripped.
 	TxID *string `json:"tx_id"`
+	// Request is what the request looked like, joined from the request log by
+	// TxID. Null is the normal case for an older detection: detections outlive
+	// request logs, and an event that never carried a tx_id has nothing to join.
+	Request *wafRequestDetail `json:"request"`
+}
+
+// wafRequestDetail is the request behind a detection, as far as Belune keeps it.
+// Not the matched payload and not the headers at large — the URI is already
+// redacted at Caddy's encoder and Content-Type is an allowlisted header, which is
+// the whole of what is stored (000073).
+type wafRequestDetail struct {
+	Method string `json:"method"`
+	Path   string `json:"path"`
+	// Status is 0 when the access entry carried one outside 100-599.
+	Status      int     `json:"status"`
+	ContentType *string `json:"content_type"`
+	UserAgent   *string `json:"user_agent"`
 }
 
 type wafEventsResponse struct {
@@ -286,10 +303,66 @@ func (h *Handler) ListWAFEvents(w http.ResponseWriter, r *http.Request) {
 		next := rows[len(rows)-1].ID
 		resp.NextBefore = &next
 	}
+
+	details := h.wafRequestDetails(r, rows)
 	for _, e := range rows {
-		resp.Events = append(resp.Events, wafEventDTO(e))
+		dto := wafEventDTO(e)
+		if e.TxID.Valid {
+			if d, ok := details[e.TxID.String]; ok {
+				dto.Request = d
+			}
+		}
+		resp.Events = append(resp.Events, dto)
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// wafRequestDetails fetches the request behind each detection on this page, keyed
+// by transaction id.
+//
+// Missing detail is not an error: it is what a detection older than the request
+// log looks like, and the operator is better served by the detection without its
+// request than by a 500. So a failed lookup is logged and returns nothing, and
+// every event on the page renders with request: null.
+func (h *Handler) wafRequestDetails(r *http.Request, rows []generated.WafEvent) map[string]*wafRequestDetail {
+	ids := make([]string, 0, len(rows))
+	seen := make(map[string]struct{}, len(rows))
+	for _, e := range rows {
+		// The rules of one request share a tx_id, so a page of 50 events can be far
+		// fewer requests — ask for each one once.
+		if !e.TxID.Valid {
+			continue
+		}
+		if _, dup := seen[e.TxID.String]; dup {
+			continue
+		}
+		seen[e.TxID.String] = struct{}{}
+		ids = append(ids, e.TxID.String)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+
+	details, err := h.queries.ListRequestDetailsByUUID(r.Context(), ids)
+	if err != nil {
+		slog.WarnContext(r.Context(), "could not load request detail for WAF events", "error", err)
+		return nil
+	}
+
+	out := make(map[string]*wafRequestDetail, len(details))
+	for _, d := range details {
+		if !d.RequestUuid.Valid {
+			continue
+		}
+		out[d.RequestUuid.String] = &wafRequestDetail{
+			Method:      d.Method,
+			Path:        d.Path,
+			Status:      int(d.StatusCode),
+			ContentType: textPtr(d.ContentType),
+			UserAgent:   textPtr(d.UserAgent),
+		}
+	}
+	return out
 }
 
 func wafEventDTO(e generated.WafEvent) wafEventResponse {

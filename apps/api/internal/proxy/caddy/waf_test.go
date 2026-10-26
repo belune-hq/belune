@@ -268,3 +268,39 @@ func TestWAFRoute_StaysFirstAndIsNotAnApplicationRoute(t *testing.T) {
 	assert.Equal(t, []string{"0.dash.example.com", "a.example.com", "b.example.com"}, hosts,
 		"the reconciler must not see the WAF route as an application route")
 }
+
+// The join between a detection and the request behind it rests on one thing: the
+// WAF route interpolating {http.request.uuid}. Referencing that placeholder is
+// what makes Caddy mint a request id AND write it as the top-level `uuid` of the
+// access entry, which the log tailer stores as request_logs.request_uuid and
+// migration 000073 joins waf_events.tx_id to.
+//
+// Nothing fails loudly if this stops: Coraza falls back to a random transaction id
+// of its own, the access log simply omits `uuid`, and every detection renders with
+// no request detail and no error anywhere. So the placeholder is asserted here
+// rather than left to be noticed.
+func TestWAFRoute_CarriesTheRequestUUIDTheRequestLogJoinsOn(t *testing.T) {
+	b, err := json.Marshal(buildWAFRoute([]string{"a.example.com"}))
+	require.NoError(t, err)
+
+	var got struct {
+		Handle []struct {
+			Handler string `json:"handler"`
+			Request struct {
+				Set map[string][]string `json:"set"`
+			} `json:"request"`
+		} `json:"handle"`
+	}
+	require.NoError(t, json.Unmarshal(b, &got))
+	require.NotEmpty(t, got.Handle)
+
+	values := got.Handle[0].Request.Set[waf.TxHeader]
+	require.Len(t, values, 1, "the transaction id header must be set exactly once")
+	assert.Contains(t, values[0], "{http.request.uuid}",
+		"the tx id must interpolate {http.request.uuid}: that is what makes Caddy log `uuid` on the access entry, which is the only key joining a detection to its request")
+
+	// The uuid must be the tail, because splitTxID reads it back as the part after
+	// the last underscore and request_logs stores Caddy's bare uuid.
+	assert.True(t, strings.HasSuffix(values[0], "_{http.request.uuid}"),
+		"splitTxID takes the uuid as the segment after the last underscore, so it must end the value; got %q", values[0])
+}

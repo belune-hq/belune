@@ -1015,6 +1015,27 @@ export interface WafEvent {
   application_id: string | null;
   /** Shared by the rules one request tripped. */
   tx_id: string | null;
+  /**
+   * The request behind this detection, joined from the request log by `tx_id`.
+   * Null is normal, not an error: a detection outlives the request log once
+   * either retention is lowered, and one that never carried a `tx_id` has
+   * nothing to join.
+   */
+  request: WafRequestDetail | null;
+}
+
+/**
+ * What Belune keeps of the request behind a detection. Deliberately not the
+ * matched payload and not the headers at large — the URI arrives already
+ * redacted from Caddy's encoder, and Content-Type is the one allowlisted header.
+ */
+export interface WafRequestDetail {
+  method: string;
+  path: string;
+  /** 0 when the access entry carried a status outside 100-599. */
+  status: number;
+  content_type: string | null;
+  user_agent: string | null;
 }
 
 export interface WafEventsPage {

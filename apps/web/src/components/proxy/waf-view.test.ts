@@ -5,10 +5,12 @@ import {
   categoryLabel,
   describeEventVerdict,
   describeRecorder,
+  describeRequestDetail,
   describeWaf,
   eventHost,
   isIpAddress,
   severityTone,
+  statusTone,
   WAF_ENABLE_POINTS,
   windowPhrase,
 } from "./waf-view";
@@ -197,7 +199,11 @@ describe("the points shown before it is turned on", () => {
     expect(text).toMatch(/Nothing is blocked/);
     expect(text).toMatch(/not to this dashboard/);
     expect(text).toMatch(/128 KiB/);
-    expect(text).toMatch(/not stored|are not\./);
+    // The payload promise is the load-bearing one: the URL and content type ARE
+    // now shown, joined from the request log, so this must not be loosened into
+    // a claim that nothing about the request is kept.
+    expect(text).toMatch(/matched text is never stored/);
+    expect(text).toMatch(/request log/);
     expect(text).toMatch(/false positives share/);
   });
 });
@@ -294,5 +300,53 @@ describe("the no-applications state", () => {
 
   it("keeps the original wording when nothing has ever been recorded", () => {
     expect(waiting(0).body).toMatch(/It starts as soon as/);
+  });
+});
+
+describe("describeRequestDetail", () => {
+  const detail = {
+    method: "POST",
+    path: "/checkout?step=2",
+    status: 500,
+    content_type: "text/plain",
+    user_agent: "curl/8.7.1",
+  };
+
+  it("reads as one request line", () => {
+    expect(describeRequestDetail(detail).line).toBe("POST /checkout?step=2");
+  });
+
+  // The whole point of keeping a header: 920420 fires on a benign text/plain
+  // POST, and the content type is the entire difference between that and an
+  // attack. If it is not in front of the operator, the row is still a shrug.
+  it("puts the content type where a 920420 row can be judged by it", () => {
+    expect(describeRequestDetail(detail).title).toContain(
+      "Content-Type: text/plain",
+    );
+  });
+
+  it("says the payload is not stored, so its absence is not read as a gap", () => {
+    expect(describeRequestDetail(detail).title).toContain("not stored");
+  });
+
+  it("drops a status the access entry could not have meant", () => {
+    expect(describeRequestDetail({ ...detail, status: 0 }).status).toBeNull();
+    expect(describeRequestDetail({ ...detail, status: 200 }).status).toBe(200);
+  });
+
+  it("omits a header that was not sent rather than printing null", () => {
+    const bare = describeRequestDetail({
+      ...detail,
+      content_type: null,
+      user_agent: null,
+    });
+    expect(bare.title).not.toContain("null");
+    expect(bare.title).not.toContain("Content-Type");
+  });
+
+  it("tones a server error apart from a success", () => {
+    expect(statusTone(500)).toBe("error");
+    expect(statusTone(403)).toBe("attention");
+    expect(statusTone(200)).toBe("neutral");
   });
 });

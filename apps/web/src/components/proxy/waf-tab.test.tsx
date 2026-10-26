@@ -6,12 +6,15 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import type { WafEvent, WafStatus } from "@/lib/types";
+import type { WafClientGroup, WafEvent, WafStatus } from "@/lib/types";
 
 const setEnabled = vi.fn();
 let status: WafStatus | undefined;
 let events: WafEvent[] = [];
+let clients: WafClientGroup[] = [];
+let hasMore = false;
 const eventFilters: unknown[] = [];
+const clientFilters: unknown[] = [];
 const windows: string[] = [];
 
 vi.mock("@/lib/hooks/use-waf", () => ({
@@ -20,6 +23,13 @@ vi.mock("@/lib/hooks/use-waf", () => ({
     return { data: status, isLoading: status === undefined };
   },
   useSetWafEnabled: () => ({ mutateAsync: setEnabled, isPending: false }),
+  useWafClients: (window: string, filters: unknown) => {
+    clientFilters.push({ window, ...(filters as object) });
+    return {
+      data: { window, clients, has_more: hasMore },
+      isLoading: false,
+    };
+  },
   useWafEvents: (filters: unknown) => {
     eventFilters.push(filters);
     return {
@@ -77,13 +87,27 @@ const event = (over: Partial<WafEvent> = {}): WafEvent => ({
   ...over,
 });
 
+const group = (over: Partial<WafClientGroup> = {}): WafClientGroup => ({
+  client_ip: "203.0.113.9",
+  events: 12,
+  requests: 3,
+  rules: 4,
+  urls: 2,
+  last_seen: new Date().toISOString(),
+  would_block: false,
+  ...over,
+});
+
 /** Rendered text and values only — layout is the browser drill's job. */
 describe("WafTab", () => {
   beforeEach(() => {
     setEnabled.mockReset().mockResolvedValue(base());
     status = base();
     events = [];
+    clients = [];
+    hasMore = false;
     eventFilters.length = 0;
+    clientFilters.length = 0;
     windows.length = 0;
   });
 
@@ -156,26 +180,187 @@ describe("WafTab", () => {
     expect(screen.getByText(/2 log lines/)).toBeTruthy();
   });
 
-  it("lists detections, and an event with no host is not blank", () => {
-    events = [
-      event({ id: 2, host: null }),
-      event({ id: 1, client_ip: "198.51.100.7" }),
-    ];
+  it("collapses a client's detections into one row of counts", () => {
+    clients = [group({ events: 12, requests: 3, urls: 2, rules: 4 })];
     render(<WafTab />);
-    expect(screen.getByText("unknown host")).toBeTruthy();
-    expect(screen.getByText("shop.example.com")).toBeTruthy();
-    expect(
-      screen.getAllByText("XSS Attack Detected via libinjection"),
-    ).toHaveLength(2);
-    expect(screen.getAllByText("xss")).toHaveLength(2);
+    const row = screen.getByText("203.0.113.9").closest("tr")!;
+    const cells = within(row).getAllByRole("cell");
+    // Expander, client, hits, requests, URLs, rules, last seen.
+    expect(cells).toHaveLength(7);
+    expect(cells[2].textContent).toBe("12");
+    expect(cells[3].textContent).toBe("3");
+    expect(cells[4].textContent).toBe("2");
+    expect(cells[5].textContent).toBe("4");
   });
 
-  it("filters to one client from a row", async () => {
+  // Hits alone read as twelve attacks; beside Requests they read as one request
+  // the rules had twelve opinions about. Both columns are the point.
+  it("keeps hits and requests as separate columns", () => {
+    clients = [group({ events: 12, requests: 1 })];
+    render(<WafTab />);
+    expect(screen.getByText(/hits outnumber requests/)).toBeTruthy();
+  });
+
+  // The one column that separates an attack from rule noise.
+  it("flags a client whose request would have been blocked", () => {
+    clients = [
+      group({ would_block: true }),
+      group({ client_ip: "198.51.100.7" }),
+    ];
+    render(<WafTab />);
+    const flagged = screen.getByText("203.0.113.9").closest("tr")!;
+    expect(within(flagged).getByText("Would block")).toBeTruthy();
+    const quiet = screen.getByText("198.51.100.7").closest("tr")!;
+    expect(within(quiet).queryByText("Would block")).toBeNull();
+  });
+
+  // A bare "0" beside three requests reads as a bug in the page. The URL is read
+  // from the request log, which has its own retention, so the gap is named.
+  it("says why a client has no URLs rather than showing a zero", () => {
+    clients = [group({ urls: 0, requests: 3 })];
+    render(<WafTab />);
+    const cell = screen.getByText("—");
+    expect(cell.getAttribute("title")).toContain("No URL on record");
+    expect(cell.getAttribute("title")).toContain("retention");
+  });
+
+  it("asks nothing for a client's detections until the row is expanded", async () => {
+    clients = [group()];
     events = [event()];
     render(<WafTab />);
-    fireEvent.click(screen.getByRole("button", { name: "203.0.113.9" }));
+    expect(eventFilters).toHaveLength(0);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show detections from 203.0.113.9" }),
+    );
+    await waitFor(() => expect(eventFilters).toHaveLength(1));
+    expect(eventFilters.at(-1)).toMatchObject({
+      clientIp: "203.0.113.9",
+      window: "24h",
+    });
+    expect(
+      screen.getByRole("button", { name: "Hide detections from 203.0.113.9" }),
+    ).toBeTruthy();
+  });
+
+  it("lists the rules behind an expanded client, with the URL each matched", async () => {
+    clients = [group()];
+    events = [
+      event({
+        rule_id: 920420,
+        request: {
+          method: "POST",
+          path: "/checkout?step=2",
+          status: 500,
+          content_type: "text/plain",
+          user_agent: "curl/8.7.1",
+        },
+      }),
+    ];
+    render(<WafTab />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show detections from 203.0.113.9" }),
+    );
+
+    await waitFor(() => expect(screen.getByText("Severity")).toBeTruthy());
+    // The host comes from the detection, the path from the request log, and the
+    // URL is only complete with both.
+    expect(screen.getByText("POST shop.example.com")).toBeTruthy();
+    expect(screen.getByText("/checkout?step=2")).toBeTruthy();
+    expect(screen.getByText("500")).toBeTruthy();
+    expect(
+      screen.getByText("XSS Attack Detected via libinjection"),
+    ).toBeTruthy();
+  });
+
+  // The host survives a sweep the path does not, so the cell still names the
+  // application that was targeted instead of going blank.
+  it("keeps the host when the URL behind a detection is gone", async () => {
+    clients = [group()];
+    events = [event({ request: null })];
+    render(<WafTab />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show detections from 203.0.113.9" }),
+    );
+
+    await waitFor(() => expect(screen.getByText("URL not kept")).toBeTruthy());
+    expect(screen.getByText("shop.example.com")).toBeTruthy();
+    expect(
+      screen
+        .getByText("shop.example.com")
+        .closest("div")!
+        .getAttribute("title"),
+    ).toContain("retention");
+  });
+
+  it("an event with no host is not blank in the panel", async () => {
+    clients = [group()];
+    events = [event({ host: null })];
+    render(<WafTab />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show detections from 203.0.113.9" }),
+    );
+    await waitFor(() => expect(screen.getByText("unknown host")).toBeTruthy());
+  });
+
+  // Coraza reports no severity for the anomaly-score rule, so the row that says
+  // the request would have been blocked used to render as "unknown".
+  it("names the anomaly-score row as the verdict, not unknown", async () => {
+    clients = [group()];
+    events = [
+      event({ id: 9, rule_id: 949110, severity: "unknown", category: null }),
+    ];
+    render(<WafTab />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show detections from 203.0.113.9" }),
+    );
+    await waitFor(() => expect(screen.getByText("Would block")).toBeTruthy());
+    expect(screen.queryByText("unknown")).toBeNull();
+  });
+
+  it("filters to one rule from inside a panel", async () => {
+    clients = [group()];
+    events = [event()];
+    render(<WafTab />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show detections from 203.0.113.9" }),
+    );
+    await waitFor(() => expect(screen.getByText("Severity")).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "941100" }));
     await waitFor(() =>
-      expect(eventFilters.at(-1)).toEqual({ clientIp: "203.0.113.9" }),
+      expect(clientFilters.at(-1)).toMatchObject({ ruleId: 941100 }),
+    );
+    expect(screen.getByText(/Showing rule/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Clear" })).toBeTruthy();
+  });
+
+  // The summary above already says "no detections in the last 24 hours", with
+  // the guidance to widen the period. The table must not say it a second time.
+  it("does not repeat the summary's empty-period sentence", () => {
+    status = base({
+      enabled: true,
+      state: { active: true, hosts: 1 },
+      summary: { ...base().summary, events: 0, total: 19 },
+    });
+    render(<WafTab />);
+    expect(
+      screen.getAllByText(/No detections in the last 24 hours/),
+    ).toHaveLength(1);
+    expect(
+      screen.getByText("No client tripped a rule in this period."),
+    ).toBeTruthy();
+  });
+
+  it("filters the grouped table by address", async () => {
+    clients = [group()];
+    render(<WafTab />);
+    fireEvent.change(screen.getByLabelText("Filter by client address"), {
+      target: { value: "198.51.100.7" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Filter" }));
+    await waitFor(() =>
+      expect(clientFilters.at(-1)).toMatchObject({ clientIp: "198.51.100.7" }),
     );
     expect(screen.getByRole("button", { name: "Clear" })).toBeTruthy();
   });
@@ -190,7 +375,16 @@ describe("WafTab", () => {
     );
   });
 
-  it("explains an empty list by whether it is on", () => {
+  // The list is capped rather than paged, so it has to say when it is not
+  // showing everything — otherwise a thousand-client scan looks like fifty.
+  it("says out loud when more clients matched than are listed", () => {
+    clients = [group()];
+    hasMore = true;
+    render(<WafTab />);
+    expect(screen.getByText(/More matched/)).toBeTruthy();
+  });
+
+  it("explains an empty table by whether it is on", () => {
     const { unmount } = render(<WafTab />);
     expect(screen.getByText(/The WAF is off/)).toBeTruthy();
     unmount();
@@ -222,66 +416,39 @@ describe("WafTab", () => {
     expect(screen.getByText("No detections yet.")).toBeTruthy();
   });
 
-  it("asks the server for the window that was picked", async () => {
+  it("asks the server for the window that was picked, for both tables", async () => {
     status = base({
       summary: { ...base().summary, events: 3, total: 19 },
     });
+    clients = [group()];
     render(<WafTab />);
     expect(windows.at(-1)).toBe("24h");
+    expect(clientFilters.at(-1)).toMatchObject({ window: "24h" });
 
     fireEvent.click(screen.getByRole("button", { name: "All kept" }));
     await waitFor(() => expect(windows.at(-1)).toBe("all"));
+    expect(clientFilters.at(-1)).toMatchObject({ window: "all" });
   });
 
-  // Coraza reports no severity for the anomaly-score rule, so the row that says
-  // the request would have been blocked used to render as "unknown".
-  it("names the anomaly-score row as the verdict, not unknown", () => {
-    events = [
-      event({ id: 9, rule_id: 949110, severity: "unknown", category: null }),
-    ];
+  // One list of clients per page: the grouped table below is what the summary's
+  // "Top clients" card used to be, over the same period and in the same order.
+  it("does not show a second list of clients above the table", () => {
+    status = base({
+      summary: {
+        ...base().summary,
+        events: 3,
+        total: 19,
+        top_clients: [
+          {
+            client_ip: "203.0.113.9",
+            events: 3,
+            last_seen: "2026-10-26T00:00:00Z",
+          },
+        ],
+      },
+    });
     render(<WafTab />);
-    expect(screen.getByText("Would block")).toBeTruthy();
-    expect(screen.queryByText("unknown")).toBeNull();
-  });
-
-  it("filters to one rule from a row", async () => {
-    events = [event()];
-    render(<WafTab />);
-    fireEvent.click(screen.getByRole("button", { name: "941100" }));
-    await waitFor(() =>
-      expect(eventFilters.at(-1)).toEqual({
-        clientIp: undefined,
-        ruleId: 941100,
-      }),
-    );
-    expect(screen.getByText(/Showing rule/)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Clear" })).toBeTruthy();
-  });
-
-  it("shows the request behind a detection when it is still on record", () => {
-    events = [
-      event({
-        rule_id: 920420,
-        request: {
-          method: "POST",
-          path: "/checkout?step=2",
-          status: 500,
-          content_type: "text/plain",
-          user_agent: "curl/8.7.1",
-        },
-      }),
-    ];
-    render(<WafTab />);
-    expect(screen.getByText("POST /checkout?step=2")).toBeTruthy();
-    expect(screen.getByText("500")).toBeTruthy();
-  });
-
-  it("says a missing request is not kept, rather than leaving it blank", () => {
-    events = [event({ request: null })];
-    render(<WafTab />);
-    const cell = screen.getByText("not kept");
-    expect(cell).toBeTruthy();
-    // The reason has to be reachable: an empty cell reads as a bug in the page.
-    expect(cell.getAttribute("title")).toContain("retention");
+    expect(screen.queryByText("Top clients")).toBeNull();
+    expect(screen.getByText("Top rules")).toBeTruthy();
   });
 });

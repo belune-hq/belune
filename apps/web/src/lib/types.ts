@@ -1038,6 +1038,38 @@ export interface WafRequestDetail {
   user_agent: string | null;
 }
 
+/**
+ * One client's detections in the summary window, collapsed into a row.
+ *
+ * `events` and `requests` are both here on purpose: one request can trip a
+ * dozen rules, so a bare "12 detections" reads as twelve attacks when it was
+ * one request with twelve opinions about it.
+ */
+export interface WafClientGroup {
+  client_ip: string;
+  /** Rule matches. */
+  events: number;
+  /** How many requests those matches came from. */
+  requests: number;
+  rules: number;
+  /**
+   * Distinct paths, counted through the request log. 0 is normal rather than
+   * wrong: a detection stores no URI of its own, so once its request log is
+   * swept there is no URL left to count.
+   */
+  urls: number;
+  last_seen: string;
+  /** Whether any of these requests passed the anomaly-score threshold. */
+  would_block: boolean;
+}
+
+export interface WafClientsPage {
+  window: WafWindow;
+  clients: WafClientGroup[];
+  /** More clients matched than are listed. There is no page after this one. */
+  has_more: boolean;
+}
+
 export interface WafEventsPage {
   events: WafEvent[];
   /** Pass as `before` for the next page; null on the last. */

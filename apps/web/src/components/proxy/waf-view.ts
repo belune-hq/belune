@@ -276,8 +276,10 @@ export function isIpAddress(v: string): boolean {
  * leaving a blank cell: the detection is not broken and nothing failed, the
  * evidence simply has its own retention.
  */
-export const REQUEST_DETAIL_ABSENT =
-  "No request on record. Request logs have their own retention, so a detection outlives its request once that window is shorter — and a detection recorded before Belune kept request detail never had one.";
+export const REQUEST_DETAIL_RETENTION =
+  "Request logs have their own retention, so a detection outlives its request once that window is shorter — and a detection recorded before Belune kept request detail never had one.";
+
+export const REQUEST_DETAIL_ABSENT = `No request on record. ${REQUEST_DETAIL_RETENTION}`;
 
 export interface RequestSummary {
   /** The request as one line: "POST /checkout?step=2". */
@@ -305,6 +307,110 @@ export function describeRequestDetail(r: WafRequestDetail): RequestSummary {
     line: `${r.method} ${r.path}`,
     title: parts.join("\n"),
     status: r.status >= 100 && r.status <= 599 ? r.status : null,
+  };
+}
+
+/**
+ * The flag on a client that tripped the anomaly-score rule at least once.
+ *
+ * It is the only column that separates an attack from rule noise: a client with
+ * four hundred detections and no flag is usually one benign application posting
+ * the wrong content type, while one flagged request is a request the CRS would
+ * have refused outright.
+ */
+export const CLIENT_WOULD_BLOCK =
+  "At least one request from this client passed the anomaly-score threshold, so a blocking WAF would have refused it. Nothing was blocked.";
+
+export interface UrlCount {
+  /** What the cell says: a number, or a dash when there is nothing to count. */
+  text: string;
+  /** Why, when the number is not the whole story. Null when it is. */
+  title: string | null;
+}
+
+/**
+ * The URLs cell.
+ *
+ * A detection stores no URI of its own — the URL is read from the request log
+ * through the uuid both carry — so this count is a floor, and falls to zero for
+ * detections older than the request logs behind them. A bare "0" beside "12
+ * requests" reads as a bug in the page, so the gap is named instead.
+ */
+export function describeUrlCount(urls: number, requests: number): UrlCount {
+  if (urls === 0) {
+    return {
+      text: "—",
+      title:
+        requests > 0
+          ? `No URL on record for ${requests === 1 ? "this request" : "any of these requests"}. ${REQUEST_DETAIL_RETENTION}`
+          : REQUEST_DETAIL_ABSENT,
+    };
+  }
+  if (urls < requests) {
+    // The retention clause alone, not REQUEST_DETAIL_ABSENT: that one opens
+    // "No request on record", which flatly contradicts the "at least 3 of 7"
+    // this sentence just said. Found by reading the hover in a browser.
+    return {
+      text: urls.toLocaleString(),
+      title: `At least ${urls.toLocaleString()} of ${requests.toLocaleString()} requests still have their URL on record; the rest have been swept. ${REQUEST_DETAIL_RETENTION}`,
+    };
+  }
+  return { text: urls.toLocaleString(), title: null };
+}
+
+/**
+ * What the grouped table is showing, in words, including when it is not showing
+ * everything. The list is capped rather than paged: under a distributed scan the
+ * client count runs to thousands and the loudest are the actionable set, so the
+ * way through is a narrower period or a filter, not a next page.
+ */
+export function describeClientList(
+  shown: number,
+  hasMore: boolean,
+  window: WafWindow,
+): string | null {
+  if (!hasMore) return null;
+  return `Showing the ${shown.toLocaleString()} clients with the most detections in ${windowPhrase(window)}. More matched — narrow the period, or filter by address.`;
+}
+
+export interface DetectionUrl {
+  /** The part known from the detection alone: the method, when there is one, and the host. */
+  prefix: string;
+  /** The path and query. Empty when the request log behind this detection is gone. */
+  path: string;
+  status: number | null;
+  title: string;
+  /** Whether the URL itself is on record at all. */
+  kept: boolean;
+}
+
+/**
+ * The URL a detection was for, as completely as it is known.
+ *
+ * The host comes from the detection and the path from the request log, so the
+ * host survives a sweep the path does not. Showing the host alone is better than
+ * an empty cell: it still names the application that was targeted.
+ */
+export function describeDetectionUrl(
+  e: Pick<WafEvent, "host" | "request">,
+): DetectionUrl {
+  const host = eventHost(e);
+  if (!e.request) {
+    return {
+      prefix: host,
+      path: "",
+      status: null,
+      title: REQUEST_DETAIL_ABSENT,
+      kept: false,
+    };
+  }
+  const d = describeRequestDetail(e.request);
+  return {
+    prefix: `${e.request.method} ${host}`,
+    path: e.request.path,
+    status: d.status,
+    title: d.title,
+    kept: true,
   };
 }
 

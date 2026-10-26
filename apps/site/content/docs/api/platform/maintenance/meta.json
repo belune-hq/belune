@@ -17,6 +17,7 @@
     "update-waf",
     "list-waf-events",
     "get-crowd-sec-status",
+    "list-waf-clients",
     "update-crowd-sec",
     "list-crowd-sec-decisions",
     "create-crowd-sec-ban",

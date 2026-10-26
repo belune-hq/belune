@@ -1,6 +1,12 @@
 import { useState } from "react";
 import { useForm } from "@tanstack/react-form";
-import { ShieldCheckIcon, ShieldIcon, XIcon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  ShieldCheckIcon,
+  ShieldIcon,
+  XIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -42,13 +48,14 @@ import {
 import { StatCard } from "@/lib/components/stats/stat-card";
 import {
   categoryLabel,
+  CLIENT_WOULD_BLOCK,
+  describeClientList,
+  describeDetectionUrl,
   describeEventVerdict,
   describeRecorder,
-  describeRequestDetail,
+  describeUrlCount,
   describeWaf,
-  eventHost,
   isIpAddress,
-  REQUEST_DETAIL_ABSENT,
   statusTone,
   WAF_ENABLE_POINTS,
   WAF_WINDOWS,
@@ -57,13 +64,20 @@ import {
 } from "@/components/proxy/waf-view";
 import {
   useSetWafEnabled,
+  useWafClients,
   useWafEvents,
   useWafStatus,
 } from "@/lib/hooks/use-waf";
 import { cn } from "@/lib/utils";
 import { fieldError } from "@/lib/utils/field-error";
 import { formatRelativeTime } from "@/lib/utils/format";
-import type { WafEvent, WafStatus, WafWindow } from "@/lib/types";
+import type { WafEventFilters } from "@/lib/api/waf";
+import type {
+  WafClientGroup,
+  WafEvent,
+  WafStatus,
+  WafWindow,
+} from "@/lib/types";
 
 const PILL_TONE = {
   neutral: "neutral",
@@ -105,7 +119,7 @@ export function WafTab() {
             windowKey={windowKey}
             onWindow={setWindowKey}
           />
-          <EventsCard status={status} />
+          <EventsCard status={status} windowKey={windowKey} />
         </>
       )}
     </div>
@@ -280,78 +294,83 @@ function Summary({
               hint={period}
             />
           </div>
-          <div className="grid gap-4 lg:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Top rules</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2 text-sm">
-                  {s.top_rules.map((r) => (
-                    <li key={r.rule_id} className="flex items-baseline gap-2">
-                      <span className="text-muted-foreground font-mono text-xs">
-                        {r.rule_id}
-                      </span>
-                      <span className="min-w-0 flex-1 truncate">
-                        {r.message}
-                      </span>
-                      <span className="tabular-nums">
-                        {r.events.toLocaleString()}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Top clients</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2 text-sm">
-                  {s.top_clients.map((c) => (
-                    <li key={c.client_ip} className="flex items-baseline gap-2">
-                      <span className="min-w-0 flex-1 truncate font-mono">
-                        {c.client_ip}
-                      </span>
-                      <span className="text-text-faint text-xs">
-                        {formatRelativeTime(c.last_seen)}
-                      </span>
-                      <span className="tabular-nums">
-                        {c.events.toLocaleString()}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          </div>
+          {/* No "Top clients" card beside this one: the detections table below
+              is that list, over the same period and in the same order, with the
+              requests, URLs and rules each client touched. Two of them stacked
+              read as a bug in the page. `top_clients` stays in the API, which
+              other callers already consume. */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Top rules</CardTitle>
+              <CardDescription>
+                The rules that matched most. A noisy one is usually a false
+                positive, not an attack.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-2 text-sm">
+                {s.top_rules.map((r) => (
+                  <li key={r.rule_id} className="flex items-baseline gap-2">
+                    <span className="text-muted-foreground font-mono text-xs">
+                      {r.rule_id}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{r.message}</span>
+                    <span className="tabular-nums">
+                      {r.events.toLocaleString()}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
         </>
       )}
     </div>
   );
 }
 
-function EventsCard({ status }: { status: WafStatus }) {
+/**
+ * Detections, grouped by the client that caused them.
+ *
+ * A flat feed was unreadable exactly when it mattered: one scanner writes
+ * thousands of rows, so the pages it filled said only that something was
+ * happening. One line per client says who, how hard, how broadly, and whether
+ * any of it would have been refused — and expanding it gives back the per-rule
+ * detail the flat list had.
+ *
+ * The grouped counts cover the period chosen above, which is what makes that
+ * control the recency filter; the list behind an expanded client is scoped to
+ * the same period, or three hits would expand into forty rows.
+ */
+function EventsCard({
+  status,
+  windowKey,
+}: {
+  status: WafStatus;
+  windowKey: WafWindow;
+}) {
   const [clientIp, setClientIp] = useState("");
   // The events endpoint has always taken rule_id; nothing in the page set it, so
   // one noisy rule could not be isolated or excluded from view.
   const [ruleId, setRuleId] = useState<number | null>(null);
-  const events = useWafEvents({
+  const filters = {
     clientIp: clientIp || undefined,
     ruleId: ruleId ?? undefined,
-  });
-  const rows = events.data?.pages.flatMap((p) => p.events) ?? [];
+    window: windowKey,
+  };
+  const clients = useWafClients(windowKey, filters);
+  const groups = clients.data?.clients ?? [];
   const filtered = clientIp !== "" || ruleId !== null;
+  const capped = describeClientList(
+    groups.length,
+    clients.data?.has_more ?? false,
+    windowKey,
+  );
 
   const form = useForm({
     defaultValues: { ip: "" },
     onSubmit: ({ value }) => setClientIp(value.ip.trim()),
   });
-  const filterBy = (ip: string) => {
-    form.setFieldValue("ip", ip);
-    setClientIp(ip);
-  };
   const clear = () => {
     form.reset();
     setClientIp("");
@@ -363,8 +382,9 @@ function EventsCard({ status }: { status: WafStatus }) {
       <CardHeader>
         <CardTitle>Detections</CardTitle>
         <CardDescription>
-          Each row is one rule matching one request; a request can match
-          several. The matched payload is never stored.
+          One row per client, over {windowPhrase(windowKey)}. A single request
+          can trip several rules, so hits outnumber requests. The matched
+          payload is never stored.
         </CardDescription>
         <CardAction>
           <form
@@ -417,51 +437,50 @@ function EventsCard({ status }: { status: WafStatus }) {
             Showing rule <span className="font-mono">{ruleId}</span> only.
           </p>
         )}
-        {events.isLoading ? (
+        {clients.isLoading ? (
           <Skeleton className="h-24 w-full" />
-        ) : rows.length === 0 ? (
+        ) : groups.length === 0 ? (
           <p className="text-muted-foreground text-sm">
+            {/* Deliberately not "No detections in the last 24 hours": the
+                summary above says exactly that, with the guidance to widen the
+                period, and the same sentence twice reads as a rendering bug.
+                This table lists clients, so it says so in its own terms. */}
             {filtered
-              ? "No detections match that filter."
-              : status.enabled
-                ? "No detections yet."
-                : "The WAF is off. Detections recorded while it was on appear here."}
+              ? "No client matches that filter in this period."
+              : !status.enabled
+                ? "The WAF is off. Detections recorded while it was on appear here."
+                : status.summary.total > 0
+                  ? "No client tripped a rule in this period."
+                  : "No detections yet."}
           </p>
         ) : (
           <>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>When</TableHead>
+                  <TableHead className="w-9">
+                    <span className="sr-only">Expand</span>
+                  </TableHead>
                   <TableHead>Client</TableHead>
-                  <TableHead>Rule</TableHead>
-                  <TableHead>Severity</TableHead>
-                  <TableHead>Host</TableHead>
-                  <TableHead>Request</TableHead>
+                  <TableHead className="text-right">Hits</TableHead>
+                  <TableHead className="text-right">Requests</TableHead>
+                  <TableHead className="text-right">URLs</TableHead>
+                  <TableHead className="text-right">Rules</TableHead>
+                  <TableHead>Last seen</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.map((e) => (
-                  <EventRow
-                    key={e.id}
-                    event={e}
-                    onClient={filterBy}
+                {groups.map((g) => (
+                  <ClientRow
+                    key={g.client_ip}
+                    group={g}
+                    filters={filters}
                     onRule={setRuleId}
                   />
                 ))}
               </TableBody>
             </Table>
-            {events.hasNextPage && (
-              <div className="mt-4 flex justify-center">
-                <Button
-                  variant="outline"
-                  onClick={() => events.fetchNextPage()}
-                  disabled={events.isFetchingNextPage}
-                >
-                  {events.isFetchingNextPage ? "Loading…" : "Load more"}
-                </Button>
-              </div>
-            )}
+            {capped && <p className="text-text-faint mt-3 text-xs">{capped}</p>}
           </>
         )}
       </CardContent>
@@ -469,17 +488,170 @@ function EventsCard({ status }: { status: WafStatus }) {
   );
 }
 
-function EventRow({
+/** How many columns the row spans, so the panel below it lines up. */
+const CLIENT_COLUMNS = 7;
+
+function ClientRow({
+  group: g,
+  filters,
+  onRule,
+}: {
+  group: WafClientGroup;
+  filters: WafEventFilters;
+  onRule: (ruleId: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const panelId = `waf-client-${g.client_ip.replace(/[^a-zA-Z0-9]/g, "-")}`;
+  const toggle = () => setOpen((o) => !o);
+  const urls = describeUrlCount(g.urls, g.requests);
+  const Chevron = open ? ChevronDownIcon : ChevronRightIcon;
+  const label = `${open ? "Hide" : "Show"} detections from ${g.client_ip}`;
+
+  return (
+    <>
+      <TableRow>
+        <TableCell className="w-9 p-1">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={label}
+            aria-expanded={open}
+            aria-controls={open ? panelId : undefined}
+            onClick={toggle}
+          >
+            <Chevron aria-hidden="true" className="size-3.5" />
+          </Button>
+        </TableCell>
+        <TableCell>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="text-brand-text font-mono text-sm hover:underline"
+              aria-expanded={open}
+              aria-controls={open ? panelId : undefined}
+              onClick={toggle}
+              title={label}
+            >
+              {g.client_ip}
+            </button>
+            {g.would_block && (
+              <Badge variant="destructive-solid" title={CLIENT_WOULD_BLOCK}>
+                Would block
+              </Badge>
+            )}
+          </div>
+        </TableCell>
+        <TableCell className="text-right tabular-nums">
+          {g.events.toLocaleString()}
+        </TableCell>
+        <TableCell className="text-right tabular-nums">
+          {g.requests.toLocaleString()}
+        </TableCell>
+        <TableCell
+          className={cn(
+            "text-right tabular-nums",
+            urls.title && "text-muted-foreground cursor-help",
+          )}
+          title={urls.title ?? undefined}
+        >
+          {urls.text}
+        </TableCell>
+        <TableCell className="text-right tabular-nums">
+          {g.rules.toLocaleString()}
+        </TableCell>
+        <TableCell
+          className="text-muted-foreground"
+          title={new Date(g.last_seen).toLocaleString()}
+        >
+          {formatRelativeTime(g.last_seen)}
+        </TableCell>
+      </TableRow>
+      {open && (
+        <TableRow id={panelId} className="hover:bg-transparent">
+          {/* Tinted and ruled down its left edge, or the nested header row reads
+              as a new section of the outer table rather than as this row's. */}
+          <TableCell
+            colSpan={CLIENT_COLUMNS}
+            className="bg-muted/40 border-brand/40 border-l-2 p-0"
+          >
+            <ClientDetections
+              filters={{ ...filters, clientIp: g.client_ip }}
+              onRule={onRule}
+            />
+          </TableCell>
+        </TableRow>
+      )}
+    </>
+  );
+}
+
+/**
+ * One client's detections, rule by rule. Mounted only while the row is open, so
+ * a table of fifty clients is one request rather than fifty.
+ */
+function ClientDetections({
+  filters,
+  onRule,
+}: {
+  filters: WafEventFilters;
+  onRule: (ruleId: number) => void;
+}) {
+  const events = useWafEvents(filters);
+  const rows = events.data?.pages.flatMap((p) => p.events) ?? [];
+
+  if (events.isLoading) {
+    return <Skeleton className="m-3 h-16 w-[calc(100%-1.5rem)]" />;
+  }
+  if (rows.length === 0) {
+    return (
+      <p className="text-muted-foreground p-3 text-sm">
+        These detections were swept since the counts above were taken.
+      </p>
+    );
+  }
+  return (
+    <div className="px-3 py-2">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Date</TableHead>
+            <TableHead>Rule</TableHead>
+            <TableHead>Severity</TableHead>
+            <TableHead>URL</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((e) => (
+            <DetectionRow key={e.id} event={e} onRule={onRule} />
+          ))}
+        </TableBody>
+      </Table>
+      {events.hasNextPage && (
+        <div className="mt-2 flex justify-center">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => events.fetchNextPage()}
+            disabled={events.isFetchingNextPage}
+          >
+            {events.isFetchingNextPage ? "Loading…" : "Load more"}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DetectionRow({
   event: e,
-  onClient,
   onRule,
 }: {
   event: WafEvent;
-  onClient: (ip: string) => void;
   onRule: (ruleId: number) => void;
 }) {
   const category = categoryLabel(e.category);
   const verdict = describeEventVerdict(e);
+  const url = describeDetectionUrl(e);
   return (
     <TableRow>
       <TableCell
@@ -487,16 +659,6 @@ function EventRow({
         title={new Date(e.recorded_at).toLocaleString()}
       >
         {formatRelativeTime(e.recorded_at)}
-      </TableCell>
-      <TableCell>
-        <button
-          type="button"
-          className="text-brand-text font-mono text-sm hover:underline"
-          onClick={() => onClient(e.client_ip)}
-          title="Show only this client"
-        >
-          {e.client_ip}
-        </button>
       </TableCell>
       <TableCell className="max-w-xs">
         <div className="flex items-baseline gap-2">
@@ -522,43 +684,25 @@ function EventRow({
           {verdict.label}
         </Badge>
       </TableCell>
-      <TableCell className={cn(!e.host && "text-muted-foreground italic")}>
-        {eventHost(e)}
+      <TableCell className="max-w-md">
+        <div className="flex items-baseline gap-2" title={url.title}>
+          <span className="truncate font-mono text-xs">
+            <span className="text-muted-foreground">{url.prefix}</span>
+            {url.path}
+          </span>
+          {url.kept ? (
+            url.status !== null && (
+              <Badge variant={BADGE_VARIANT[statusTone(url.status)]}>
+                {url.status}
+              </Badge>
+            )
+          ) : (
+            <span className="text-muted-foreground cursor-help text-xs italic">
+              URL not kept
+            </span>
+          )}
+        </div>
       </TableCell>
-      <RequestCell request={e.request} />
     </TableRow>
-  );
-}
-
-/**
- * The request behind a detection. A detection stores no request data of its own,
- * so this is joined from the request log and is often absent — which is said in
- * words rather than left as an empty cell.
- */
-function RequestCell({ request }: { request: WafEvent["request"] }) {
-  if (!request) {
-    return (
-      <TableCell className="text-muted-foreground max-w-xs">
-        <span
-          className="cursor-help text-xs italic"
-          title={REQUEST_DETAIL_ABSENT}
-        >
-          not kept
-        </span>
-      </TableCell>
-    );
-  }
-  const d = describeRequestDetail(request);
-  return (
-    <TableCell className="max-w-xs">
-      <div className="flex items-baseline gap-2" title={d.title}>
-        <span className="truncate font-mono text-xs">{d.line}</span>
-        {d.status !== null && (
-          <Badge variant={BADGE_VARIANT[statusTone(d.status)]}>
-            {d.status}
-          </Badge>
-        )}
-      </div>
-    </TableCell>
   );
 }

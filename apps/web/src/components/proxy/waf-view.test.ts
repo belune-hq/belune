@@ -5,7 +5,10 @@ import {
   categoryLabel,
   describeEventVerdict,
   describeRecorder,
+  describeClientList,
+  describeDetectionUrl,
   describeRequestDetail,
+  describeUrlCount,
   describeWaf,
   eventHost,
   isIpAddress,
@@ -348,5 +351,92 @@ describe("describeRequestDetail", () => {
     expect(statusTone(500)).toBe("error");
     expect(statusTone(403)).toBe("attention");
     expect(statusTone(200)).toBe("neutral");
+  });
+});
+
+describe("describeUrlCount", () => {
+  // A detection stores no URI of its own, so this count comes from the request
+  // log and falls to zero once that is swept. A bare "0" beside three requests
+  // reads as a bug in the page rather than as a retention window.
+  it("names the gap instead of showing a zero", () => {
+    const none = describeUrlCount(0, 3);
+    expect(none.text).toBe("—");
+    expect(none.title).toContain("any of these requests");
+    expect(none.title).toContain("retention");
+    expect(none.title).not.toContain("No request on record");
+  });
+
+  it("says one request, not any of these requests, when there was one", () => {
+    expect(describeUrlCount(0, 1).title).toContain("this request");
+  });
+
+  // The honest reading of a partial count: some of these requests still have
+  // their URL, the rest never will again.
+  it("calls a count short of the requests a floor", () => {
+    const partial = describeUrlCount(1, 3);
+    expect(partial.text).toBe("1");
+    expect(partial.title).toContain("At least 1 of 3");
+    expect(partial.title).toContain("retention");
+    // One of the three IS on record, so the sentence must not open by denying it.
+    expect(partial.title).not.toContain("No request on record");
+  });
+
+  it("adds nothing to a count that covers every request", () => {
+    const full = describeUrlCount(3, 3);
+    expect(full.text).toBe("3");
+    expect(full.title).toBeNull();
+  });
+});
+
+describe("describeDetectionUrl", () => {
+  const request = {
+    method: "POST",
+    path: "/checkout?step=2",
+    status: 500,
+    content_type: "text/plain",
+    user_agent: "curl/8.7.1",
+  };
+
+  it("joins the host from the detection to the path from the request log", () => {
+    const url = describeDetectionUrl({ host: "shop.example.com", request });
+    expect(url.prefix).toBe("POST shop.example.com");
+    expect(url.path).toBe("/checkout?step=2");
+    expect(url.status).toBe(500);
+    expect(url.kept).toBe(true);
+  });
+
+  // The host outlives the path, so a swept request log still names the
+  // application that was targeted rather than leaving the cell blank.
+  it("keeps the host when the path is gone", () => {
+    const url = describeDetectionUrl({
+      host: "shop.example.com",
+      request: null,
+    });
+    expect(url.prefix).toBe("shop.example.com");
+    expect(url.path).toBe("");
+    expect(url.kept).toBe(false);
+    expect(url.title).toContain("retention");
+  });
+
+  it("does not render an unattributed detection as blank", () => {
+    expect(describeDetectionUrl({ host: null, request: null }).prefix).toBe(
+      "unknown host",
+    );
+  });
+});
+
+describe("describeClientList", () => {
+  // The list is capped rather than paged, so silence would turn a
+  // thousand-client scan into a page that looks like fifty clients.
+  it("says nothing when the whole list is on screen", () => {
+    expect(describeClientList(12, false, "24h")).toBeNull();
+  });
+
+  it("says what is missing and how to reach it", () => {
+    const text = describeClientList(50, true, "24h")!;
+    expect(text).toContain("50 clients");
+    expect(text).toContain("the last 24 hours");
+    expect(text).toContain("More matched");
+    expect(text).toContain("narrow the period");
   });
 });

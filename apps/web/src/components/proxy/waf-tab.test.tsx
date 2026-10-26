@@ -12,9 +12,13 @@ const setEnabled = vi.fn();
 let status: WafStatus | undefined;
 let events: WafEvent[] = [];
 const eventFilters: unknown[] = [];
+const windows: string[] = [];
 
 vi.mock("@/lib/hooks/use-waf", () => ({
-  useWafStatus: () => ({ data: status, isLoading: status === undefined }),
+  useWafStatus: (window: string) => {
+    windows.push(window);
+    return { data: status, isLoading: status === undefined };
+  },
   useSetWafEnabled: () => ({ mutateAsync: setEnabled, isPending: false }),
   useWafEvents: (filters: unknown) => {
     eventFilters.push(filters);
@@ -44,10 +48,12 @@ const base = (over: Partial<WafStatus> = {}): WafStatus => ({
   retention_days: 7,
   max_events: 200000,
   summary: {
+    window: "24h",
     window_hours: 24,
     events: 0,
     requests: 0,
     clients: 0,
+    total: 0,
     top_rules: [],
     top_clients: [],
   },
@@ -75,6 +81,7 @@ describe("WafTab", () => {
     status = base();
     events = [];
     eventFilters.length = 0;
+    windows.length = 0;
   });
 
   // The test that matters: if `unknown` rendered as `unavailable`, someone whose
@@ -188,5 +195,63 @@ describe("WafTab", () => {
     status = base({ enabled: true, state: { active: true, hosts: 1 } });
     render(<WafTab />);
     expect(screen.getByText("No detections yet.")).toBeTruthy();
+  });
+
+  // The regression this card was rebuilt for. The summary was hardcoded to 24
+  // hours and returned null on an empty window, so a day after an attack the
+  // whole dashboard disappeared and left a bare table with no totals at all.
+  it("stays on screen when the window is empty but events are kept", () => {
+    status = base({
+      enabled: true,
+      state: { active: true, hosts: 1 },
+      summary: { ...base().summary, events: 0, total: 19 },
+    });
+    render(<WafTab />);
+    expect(screen.getByText(/No detections in the last 24 hours/)).toBeTruthy();
+    expect(screen.getByText(/19 kept in total/)).toBeTruthy();
+    expect(screen.getByLabelText("Summary period")).toBeTruthy();
+  });
+
+  it("shows nothing above the table when nothing was ever recorded", () => {
+    status = base({ enabled: true, state: { active: true, hosts: 1 } });
+    render(<WafTab />);
+    expect(screen.queryByLabelText("Summary period")).toBeNull();
+    expect(screen.getByText("No detections yet.")).toBeTruthy();
+  });
+
+  it("asks the server for the window that was picked", async () => {
+    status = base({
+      summary: { ...base().summary, events: 3, total: 19 },
+    });
+    render(<WafTab />);
+    expect(windows.at(-1)).toBe("24h");
+
+    fireEvent.click(screen.getByRole("button", { name: "All kept" }));
+    await waitFor(() => expect(windows.at(-1)).toBe("all"));
+  });
+
+  // Coraza reports no severity for the anomaly-score rule, so the row that says
+  // the request would have been blocked used to render as "unknown".
+  it("names the anomaly-score row as the verdict, not unknown", () => {
+    events = [
+      event({ id: 9, rule_id: 949110, severity: "unknown", category: null }),
+    ];
+    render(<WafTab />);
+    expect(screen.getByText("Would block")).toBeTruthy();
+    expect(screen.queryByText("unknown")).toBeNull();
+  });
+
+  it("filters to one rule from a row", async () => {
+    events = [event()];
+    render(<WafTab />);
+    fireEvent.click(screen.getByRole("button", { name: "941100" }));
+    await waitFor(() =>
+      expect(eventFilters.at(-1)).toEqual({
+        clientIp: undefined,
+        ruleId: 941100,
+      }),
+    );
+    expect(screen.getByText(/Showing rule/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Clear" })).toBeTruthy();
   });
 });

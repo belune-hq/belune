@@ -4,6 +4,7 @@ import type {
   WafRecorderStats,
   WafSeverity,
   WafStatus,
+  WafWindow,
 } from "@/lib/types";
 
 export type WafTone = "neutral" | "attention" | "ready" | "error";
@@ -81,7 +82,14 @@ export function describeWaf(s: WafStatus): WafDescription {
       case "no_applications":
         return {
           pill: { label: "Waiting for an application", tone: "neutral" },
-          body: "The WAF is on. It starts as soon as an application has a domain to inspect.",
+          // Said in the present tense, and only about now. The first wording
+          // ("It starts as soon as an application has a domain") sat directly
+          // above a table of detections once the drill application was removed,
+          // which reads as though nothing had ever been inspected.
+          body:
+            s.summary.total > 0
+              ? "The WAF is on, but no application has a domain to inspect right now, so nothing is being watched. What it recorded earlier is still listed below."
+              : "The WAF is on. It starts as soon as an application has a domain to inspect.",
           notice: null,
           canEnable: true,
         };
@@ -177,6 +185,71 @@ export function severityTone(sev: WafSeverity): WafTone {
 
 /** The CRS rule that says a request would have been blocked. */
 export const ANOMALY_SUMMARY_RULE = 949110;
+
+export interface EventVerdict {
+  label: string;
+  tone: WafTone;
+  /** Hover text; null when the badge needs no explaining. */
+  title: string | null;
+  /**
+   * Whether this outranks the severities around it, and must not render at the
+   * same weight. A verdict on the whole request sits in a column of per-rule
+   * severities, and "critical" is a common one — so the error tone alone leaves
+   * the verdict indistinguishable from the noise it is a verdict about.
+   */
+  strong: boolean;
+}
+
+/**
+ * The badge on a detection row.
+ *
+ * Rule 949110 is the anomaly-score summary — the one rule that states a verdict
+ * on the whole request — and Coraza reports it with NO severity, because the rule
+ * declares none. Rendering that verbatim puts the only row that means anything in
+ * the faintest badge on the page, while the benign `text/plain` content-type match
+ * beside it reads "critical" in red. So the verdict is named instead.
+ */
+export function describeEventVerdict(
+  e: Pick<WafEvent, "rule_id" | "severity">,
+): EventVerdict {
+  if (e.rule_id === ANOMALY_SUMMARY_RULE) {
+    return {
+      label: "Would block",
+      tone: "error",
+      title:
+        "This request's anomaly score passed the threshold, so a blocking WAF would have refused it. Nothing was blocked.",
+      strong: true,
+    };
+  }
+  return {
+    label: e.severity,
+    tone: severityTone(e.severity),
+    title: null,
+    strong: false,
+  };
+}
+
+/** The windows the summary offers, in the order they are shown. */
+export const WAF_WINDOWS: readonly { value: WafWindow; label: string }[] = [
+  { value: "1h", label: "1h" },
+  { value: "24h", label: "24h" },
+  { value: "7d", label: "7d" },
+  { value: "all", label: "All kept" },
+] as const;
+
+/** The window as a phrase, for use inside a sentence. */
+export function windowPhrase(w: WafWindow): string {
+  switch (w) {
+    case "1h":
+      return "the last hour";
+    case "24h":
+      return "the last 24 hours";
+    case "7d":
+      return "the last 7 days";
+    case "all":
+      return "everything still kept";
+  }
+}
 
 export function eventHost(e: Pick<WafEvent, "host">): string {
   return e.host ?? "unknown host";

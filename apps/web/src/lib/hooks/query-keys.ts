@@ -285,7 +285,9 @@ export const queryKeys = {
   proxyMetrics: ["proxy", "metrics"] as const,
   proxyConfig: ["proxy", "config"] as const,
   waf: {
+    /** The prefix, so invalidating it refreshes whichever window is on screen. */
     status: ["proxy", "waf", "status"] as const,
+    statusFor: (window: string) => ["proxy", "waf", "status", window] as const,
     /** Under one prefix so a refresh of the page invalidates every filter at once. */
     events: ["proxy", "waf", "events"] as const,
     eventsFiltered: (clientIp: string, ruleId: number | null) =>

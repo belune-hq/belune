@@ -7,12 +7,16 @@ import {
 import { queryKeys } from "./query-keys";
 import * as wafApi from "@/lib/api/waf";
 import type { WafEventFilters } from "@/lib/api/waf";
+import type { WafWindow } from "@/lib/types";
 
-export function useWafStatus() {
+export function useWafStatus(window: WafWindow = "24h") {
   return useQuery({
-    queryKey: queryKeys.waf.status,
-    queryFn: wafApi.getWafStatus,
+    queryKey: queryKeys.waf.statusFor(window),
+    queryFn: () => wafApi.getWafStatus(window),
     refetchInterval: 15_000,
+    // Switching window keeps the previous window's numbers on screen while the
+    // new ones load, rather than collapsing the summary to a skeleton each time.
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -35,8 +39,12 @@ export function useSetWafEnabled() {
   return useMutation({
     mutationFn: wafApi.setWafEnabled,
     onSuccess: (status) => {
-      // The response is the state the proxy is in after the switch was applied.
-      qc.setQueryData(queryKeys.waf.status, status);
+      // The response is the state the proxy is in after the switch was applied,
+      // but its summary only ever covers the default window — write it into that
+      // window's entry alone, or a 7d view would relabel 24h numbers as 7d. The
+      // invalidation below then refreshes whichever window is actually on screen.
+      qc.setQueryData(queryKeys.waf.statusFor(status.summary.window), status);
+      qc.invalidateQueries({ queryKey: queryKeys.waf.status });
       qc.invalidateQueries({ queryKey: queryKeys.proxyReconciler });
       qc.invalidateQueries({ queryKey: queryKeys.waf.events });
     },

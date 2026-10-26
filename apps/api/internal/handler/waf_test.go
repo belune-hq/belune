@@ -241,8 +241,10 @@ func TestWAFStatus_SummarisesTheLastDay(t *testing.T) {
 	seedWAFEvents(t, evt("203.0.113.9", 941100, "a"), evt("203.0.113.9", 941100, "a"), evt("198.51.100.7", 942100, "b"), old)
 
 	sum := wafStatus(t, token)["summary"].(map[string]any)
+	assert.Equal(t, "24h", sum["window"])
 	assert.EqualValues(t, 24, sum["window_hours"])
 	assert.EqualValues(t, 3, sum["events"], "older events are outside the window")
+	assert.EqualValues(t, 4, sum["total"], "but they are still kept, and the total says so")
 	assert.EqualValues(t, 2, sum["clients"])
 	top := sum["top_rules"].([]any)
 	require.Len(t, top, 2)
@@ -277,4 +279,58 @@ func TestPlatformLogs_WAFLinesAreRedactedForTheAdmin(t *testing.T) {
 	}
 	assert.Contains(t, content, "WAF rule 941100 (critical) matched")
 	assert.Contains(t, content, "storage cleaning happened too recently", "every other line is untouched")
+}
+
+// The summary used to cover a hardcoded 24 hours and the dashboard rendered
+// nothing when that came back empty, so a day after an attack the whole summary
+// vanished and left a bare table.
+func TestWAFStatus_TheSummaryWindowIsSelectable(t *testing.T) {
+	token := wafFixture(t)
+	at := func(d time.Duration) generated.BulkInsertWAFEventsParams {
+		e := evt("203.0.113.9", 941100, "a")
+		e.RecordedAt = pgtype.Timestamptz{Time: time.Now().Add(-d), Valid: true}
+		return e
+	}
+	seedWAFEvents(t,
+		at(10*time.Minute), // inside every window
+		at(6*time.Hour),    // outside 1h
+		at(72*time.Hour),   // outside 24h
+		at(30*24*time.Hour),
+	)
+
+	summary := func(q string) map[string]any {
+		resp := env.DoRequest(t, "GET", "/api/maintenance/proxy/waf"+q, nil, testutil.AuthHeader(token))
+		require.Equal(t, http.StatusOK, resp.StatusCode, q)
+		return testutil.ReadJSON(t, resp)["summary"].(map[string]any)
+	}
+
+	for _, tc := range []struct {
+		query  string
+		window string
+		hours  int
+		events int
+	}{
+		{"", "24h", 24, 2}, // the default must not move: it is what v0.2.4 clients get
+		{"?window=1h", "1h", 1, 1},
+		{"?window=24h", "24h", 24, 2},
+		{"?window=7d", "7d", 168, 3},
+		{"?window=all", "all", 0, 4},
+	} {
+		sum := summary(tc.query)
+		assert.Equal(t, tc.window, sum["window"], tc.query)
+		assert.EqualValues(t, tc.hours, sum["window_hours"], tc.query)
+		assert.EqualValues(t, tc.events, sum["events"], tc.query)
+		// Whatever the window, the total is every event still kept — that is what
+		// lets an empty window say "nothing lately" rather than "nothing ever".
+		assert.EqualValues(t, 4, sum["total"], tc.query)
+	}
+}
+
+func TestWAFStatus_RejectsAWindowItDoesNotOffer(t *testing.T) {
+	token := wafFixture(t)
+	for _, q := range []string{"?window=30d", "?window=1", "?window=24", "?window=hour", "?window=ALL"} {
+		resp := env.DoRequest(t, "GET", "/api/maintenance/proxy/waf"+q, nil, testutil.AuthHeader(token))
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode, q)
+		_ = resp.Body.Close()
+	}
 }

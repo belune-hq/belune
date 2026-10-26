@@ -390,45 +390,62 @@ export function describeClientList(
   return `Showing the ${shown.toLocaleString()} clients with the most detections in ${windowPhrase(window)}. More matched — narrow the period, or filter by address.`;
 }
 
-export interface DetectionUrl {
-  /** The part known from the detection alone: the method, when there is one, and the host. */
-  prefix: string;
-  /** The path and query. Empty when the request log behind this detection is gone. */
-  path: string;
+export interface DetectionRequest {
+  /** The method, or null when the request behind this detection is gone. */
+  method: string | null;
+  /** The status, or null when there is none worth showing. */
   status: number | null;
+  /** The host. Always present: it comes from the detection, not the request log. */
+  host: string;
   title: string;
-  /** Whether the URL itself is on record at all. */
+  /** Whether the request behind the detection is on record at all. */
   kept: boolean;
 }
 
 /**
- * The URL a detection was for, as completely as it is known.
+ * The request a detection was for, as the table shows it: method, status, host.
  *
- * The host comes from the detection and the path from the request log, so the
- * host survives a sweep the path does not. Showing the host alone is better than
+ * No path. The path is the long field — a query string carrying an injection
+ * attempt runs past any column width — so it lives in the detail panel, which
+ * can show it whole, and the column keeps what can be read at a glance. The
+ * distinct-path count is still on the client row above.
+ *
+ * The host comes from the detection and the method and status from the request
+ * log, so the host survives a sweep they do not. Showing it alone is better than
  * an empty cell: it still names the application that was targeted.
  */
-export function describeDetectionUrl(
+export function describeDetectionRequest(
   e: Pick<WafEvent, "host" | "request">,
-): DetectionUrl {
+): DetectionRequest {
   const host = eventHost(e);
   if (!e.request) {
     return {
-      prefix: host,
-      path: "",
+      method: null,
       status: null,
+      host,
       title: REQUEST_DETAIL_ABSENT,
       kept: false,
     };
   }
   const d = describeRequestDetail(e.request);
   return {
-    prefix: `${e.request.method} ${host}`,
-    path: e.request.path,
+    method: e.request.method,
     status: d.status,
+    host,
     title: d.title,
     kept: true,
   };
+}
+
+/**
+ * Status as text rather than a pill, since it sits inside one monospace line.
+ * The classes are the Requests page's own, so a 500 does not read one way there
+ * and another way here.
+ */
+export function statusTextClass(status: number): string {
+  if (status >= 500) return "text-status-error";
+  if (status >= 400) return "text-status-building";
+  return "text-muted-foreground";
 }
 
 /** Status tone, so a 500 does not read as calmly as a 200. */

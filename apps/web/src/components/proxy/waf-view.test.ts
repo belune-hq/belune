@@ -7,7 +7,7 @@ import {
   describeEventVerdict,
   describeRecorder,
   describeClientList,
-  describeDetectionUrl,
+  describeDetectionRequest,
   describeRequestDetail,
   describeUrlCount,
   detectionHeaders,
@@ -15,6 +15,7 @@ import {
   eventHost,
   isIpAddress,
   severityTone,
+  statusTextClass,
   statusTone,
   WAF_ENABLE_POINTS,
   windowPhrase,
@@ -390,7 +391,7 @@ describe("describeUrlCount", () => {
   });
 });
 
-describe("describeDetectionUrl", () => {
+describe("describeDetectionRequest", () => {
   const request = {
     method: "POST",
     path: "/checkout?step=2",
@@ -399,31 +400,49 @@ describe("describeDetectionUrl", () => {
     user_agent: "curl/8.7.1",
   };
 
-  it("joins the host from the detection to the path from the request log", () => {
-    const url = describeDetectionUrl({ host: "shop.example.com", request });
-    expect(url.prefix).toBe("POST shop.example.com");
-    expect(url.path).toBe("/checkout?step=2");
-    expect(url.status).toBe(500);
-    expect(url.kept).toBe(true);
+  it("reads as method, status and host", () => {
+    const r = describeDetectionRequest({ host: "shop.example.com", request });
+    expect(r.method).toBe("POST");
+    expect(r.status).toBe(500);
+    expect(r.host).toBe("shop.example.com");
+    expect(r.kept).toBe(true);
   });
 
-  // The host outlives the path, so a swept request log still names the
+  // The column deliberately has no path: a query string carrying an injection
+  // attempt runs past any width, so it belongs in the panel that shows it whole.
+  it("leaves the path to the detail panel", () => {
+    const r = describeDetectionRequest({ host: "shop.example.com", request });
+    expect(JSON.stringify(r)).not.toContain("/checkout");
+  });
+
+  // The host outlives the request log, so a swept one still names the
   // application that was targeted rather than leaving the cell blank.
-  it("keeps the host when the path is gone", () => {
-    const url = describeDetectionUrl({
+  it("keeps the host when the request behind it is gone", () => {
+    const r = describeDetectionRequest({
       host: "shop.example.com",
       request: null,
     });
-    expect(url.prefix).toBe("shop.example.com");
-    expect(url.path).toBe("");
-    expect(url.kept).toBe(false);
-    expect(url.title).toContain("retention");
+    expect(r.host).toBe("shop.example.com");
+    expect(r.method).toBeNull();
+    expect(r.status).toBeNull();
+    expect(r.kept).toBe(false);
+    expect(r.title).toContain("retention");
   });
 
   it("does not render an unattributed detection as blank", () => {
-    expect(describeDetectionUrl({ host: null, request: null }).prefix).toBe(
+    expect(describeDetectionRequest({ host: null, request: null }).host).toBe(
       "unknown host",
     );
+  });
+});
+
+describe("statusTextClass", () => {
+  // The Requests page's own classes, so a 500 does not read one way there and
+  // another way here.
+  it("separates a server error from a refusal from the rest", () => {
+    expect(statusTextClass(500)).toBe("text-status-error");
+    expect(statusTextClass(403)).toBe("text-status-building");
+    expect(statusTextClass(200)).toBe("text-muted-foreground");
   });
 });
 

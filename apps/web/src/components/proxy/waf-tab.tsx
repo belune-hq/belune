@@ -55,13 +55,13 @@ import {
   CLIENT_WOULD_BLOCK,
   describeCategory,
   describeClientList,
-  describeDetectionUrl,
+  describeDetectionRequest,
   describeEventVerdict,
   describeRecorder,
   describeUrlCount,
   describeWaf,
   isIpAddress,
-  statusTone,
+  statusTextClass,
   WAF_ENABLE_POINTS,
   WAF_WINDOWS,
   windowPhrase,
@@ -625,7 +625,9 @@ function ClientDetections({
             <TableHead title={CATEGORY_COLUMN_HELP}>Category</TableHead>
             <TableHead>Rule</TableHead>
             <TableHead>Severity</TableHead>
-            <TableHead>URL</TableHead>
+            {/* Not "URL": the path is in the detail panel, so what this column
+                shows is the request, not its address. */}
+            <TableHead>Request</TableHead>
             <TableHead className="w-0" />
           </TableRow>
         </TableHeader>
@@ -674,7 +676,7 @@ function DetectionRow({
 }) {
   const category = describeCategory(e);
   const verdict = describeEventVerdict(e);
-  const url = describeDetectionUrl(e);
+  const req = describeDetectionRequest(e);
   return (
     <TableRow>
       {/* Absolute, not relative: the outer row answers "when was this client
@@ -711,7 +713,11 @@ function DetectionRow({
           >
             {e.rule_id}
           </button>
-          <span className="truncate">{e.message}</span>
+          {/* The message is the one field here with no second home: the panel's
+              own title carries it, but only once the row has been opened. */}
+          <span className="truncate" title={e.message}>
+            {e.message}
+          </span>
         </div>
       </TableCell>
       <TableCell>
@@ -725,24 +731,28 @@ function DetectionRow({
         </Badge>
       </TableCell>
       {/* Narrower than it was: the eye now carries the whole URL, so the column
-          only has to be wide enough to recognise one, not to read it. */}
+          only has to be wide enough to recognise a request, not to read one. */}
       <TableCell className="max-w-[15rem]">
-        <div className="flex items-baseline gap-2" title={url.title}>
-          <span className="truncate font-mono text-xs">
-            <span className="text-muted-foreground">{url.prefix}</span>
-            {url.path}
-          </span>
-          {url.kept ? (
-            url.status !== null && (
-              <Badge variant={BADGE_VARIANT[statusTone(url.status)]}>
-                {url.status}
-              </Badge>
-            )
+        <div
+          className="flex items-baseline gap-1.5 font-mono text-xs"
+          title={req.title}
+        >
+          {req.kept ? (
+            <>
+              <span className="text-muted-foreground">{req.method}</span>
+              {req.status !== null && (
+                <span className={statusTextClass(req.status)}>
+                  ({req.status})
+                </span>
+              )}
+            </>
           ) : (
-            <span className="text-muted-foreground cursor-help text-xs italic">
-              URL not kept
-            </span>
+            // The same dash the Category column uses for "nothing on record",
+            // with the reason in the hover. The host is still known, because it
+            // comes from the detection rather than from the request log.
+            <span className="text-muted-foreground cursor-help">—</span>
           )}
+          <span className="truncate">{req.host}</span>
         </div>
       </TableCell>
       <TableCell className="text-right">

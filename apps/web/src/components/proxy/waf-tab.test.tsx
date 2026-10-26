@@ -243,7 +243,7 @@ describe("WafTab", () => {
     ).toBeTruthy();
   });
 
-  it("lists the rules behind an expanded client, with the URL each matched", async () => {
+  it("lists the rules behind an expanded client, with the request each matched", async () => {
     clients = [group()];
     events = [
       event({
@@ -263,11 +263,15 @@ describe("WafTab", () => {
     );
 
     await waitFor(() => expect(screen.getByText("Severity")).toBeTruthy());
-    // The host comes from the detection, the path from the request log, and the
-    // URL is only complete with both.
-    expect(screen.getByText("POST shop.example.com")).toBeTruthy();
-    expect(screen.getByText("/checkout?step=2")).toBeTruthy();
-    expect(screen.getByText("500")).toBeTruthy();
+    const panel = screen.getAllByRole("table")[1];
+    // The method and status come from the request log, the host from the
+    // detection, and they read as one line.
+    expect(within(panel).getByText("POST")).toBeTruthy();
+    expect(within(panel).getByText("(500)")).toBeTruthy();
+    expect(within(panel).getByText("shop.example.com")).toBeTruthy();
+    // The path is deliberately not here: it is the field that runs past any
+    // column width, so the detail panel owns it.
+    expect(within(panel).queryByText(/checkout/)).toBeNull();
     expect(
       screen.getByText("XSS Attack Detected via libinjection"),
     ).toBeTruthy();
@@ -301,7 +305,13 @@ describe("WafTab", () => {
 
     expect(within(panel).getByText("xss")).toBeTruthy();
     expect(within(panel).getByText("protocol")).toBeTruthy();
-    expect(within(panel).getByText("—")).toBeTruthy();
+    // Scoped to the Category cell: these fixtures carry no request either, so
+    // the Request column shows its own dash on every row.
+    const anomalyRow = within(panel).getByText("949110").closest("tr")!;
+    expect(anomalyRow.cells[1].textContent).toBe("—");
+    expect(anomalyRow.cells[1].getAttribute("title")).toContain(
+      "verdict on the whole request",
+    );
   });
 
   // Severity cannot carry this: 920420 reports `critical` exactly like a SQLi
@@ -436,9 +446,9 @@ describe("WafTab", () => {
     ).toBeTruthy();
   });
 
-  // The host survives a sweep the path does not, so the cell still names the
-  // application that was targeted instead of going blank.
-  it("keeps the host when the URL behind a detection is gone", async () => {
+  // The host survives a sweep the method and status do not, so the cell still
+  // names the application that was targeted instead of going blank.
+  it("keeps the host when the request behind a detection is gone", async () => {
     clients = [group()];
     events = [event({ request: null })];
     render(<WafTab />);
@@ -446,14 +456,12 @@ describe("WafTab", () => {
       screen.getByRole("button", { name: "Show detections from 203.0.113.9" }),
     );
 
-    await waitFor(() => expect(screen.getByText("URL not kept")).toBeTruthy());
-    expect(screen.getByText("shop.example.com")).toBeTruthy();
-    expect(
-      screen
-        .getByText("shop.example.com")
-        .closest("div")!
-        .getAttribute("title"),
-    ).toContain("retention");
+    await waitFor(() => expect(screen.getByText("Severity")).toBeTruthy());
+    const cell = screen.getByText("shop.example.com").closest("td")!;
+    expect(cell.textContent).toBe("—shop.example.com");
+    expect(cell.querySelector("div")!.getAttribute("title")).toContain(
+      "retention",
+    );
   });
 
   it("an event with no host is not blank in the panel", async () => {

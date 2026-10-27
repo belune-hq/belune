@@ -1070,7 +1070,11 @@ export interface WafClientGroup {
    */
   urls: number;
   last_seen: string;
-  /** Whether any of these requests passed the anomaly-score threshold. */
+  /**
+   * Whether this client passed the anomaly-score threshold anywhere in the
+   * window. Unlike the counts beside it, this is not narrowed by a rule filter:
+   * it is a fact about the client, not about the rule being listed.
+   */
   would_block: boolean;
 }
 

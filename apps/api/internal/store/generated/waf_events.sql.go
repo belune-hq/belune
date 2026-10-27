@@ -249,7 +249,12 @@ SELECT e.client_ip,
        count(DISTINCT e.rule_id)::bigint  AS rules,
        count(DISTINCT req.path)::bigint   AS urls,
        max(e.recorded_at)::timestamptz    AS last_seen,
-       COALESCE(bool_or(e.rule_id = $1::int), false)::boolean AS would_block
+       EXISTS (
+           SELECT 1 FROM waf_events a
+           WHERE a.client_ip = e.client_ip
+             AND a.recorded_at >= $1
+             AND a.rule_id = $2::int
+       )::boolean AS would_block
 FROM waf_events e
 LEFT JOIN LATERAL (
     SELECT r.path FROM request_logs r
@@ -257,7 +262,7 @@ LEFT JOIN LATERAL (
     ORDER BY r.recorded_at DESC
     LIMIT 1
 ) req ON true
-WHERE e.recorded_at >= $2
+WHERE e.recorded_at >= $1
   AND ($3::inet IS NULL OR e.client_ip = $3::inet)
   AND ($4::int IS NULL OR e.rule_id = $4::int)
 GROUP BY e.client_ip
@@ -266,8 +271,8 @@ LIMIT $5
 `
 
 type WAFClientSummaryParams struct {
-	AnomalyRule int32              `json:"anomaly_rule"`
 	Since       pgtype.Timestamptz `json:"since"`
+	AnomalyRule int32              `json:"anomaly_rule"`
 	ClientIp    *netip.Addr        `json:"client_ip"`
 	RuleID      pgtype.Int4        `json:"rule_id"`
 	RowLimit    int32              `json:"row_limit"`
@@ -296,12 +301,20 @@ type WAFClientSummaryRow struct {
 //
 // No outer-joined column is selected, only aggregated, so sqlc has no source
 // column here to infer the wrong nullability from.
+//
+// ⚠️ would_block is an EXISTS over the client's own rows and NOT an aggregate
+// over the ones this call selected, because rule_id filters the rows before
+// they are aggregated: bool_or(rule_id = 949110) under "WHERE rule_id = 941100"
+// is false by arithmetic, so every client came back unflagged whenever the
+// caller filtered by any other rule. The flag answers "was this client ever
+// over the threshold in this window", which does not change with the rule being
+// listed, and (client_ip, recorded_at) indexes the lookup.
 // Loudest first. Recency is the window's job, not the sort's: a one-hit scanner
 // from a minute ago must not push a sustained attack off a capped list.
 func (q *Queries) WAFClientSummary(ctx context.Context, arg WAFClientSummaryParams) ([]WAFClientSummaryRow, error) {
 	rows, err := q.db.Query(ctx, wAFClientSummary,
-		arg.AnomalyRule,
 		arg.Since,
+		arg.AnomalyRule,
 		arg.ClientIp,
 		arg.RuleID,
 		arg.RowLimit,

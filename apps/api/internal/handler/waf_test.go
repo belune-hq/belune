@@ -556,6 +556,28 @@ func TestWAFClients_TwoRequestLogsForOneRequestDoNotDoubleTheHits(t *testing.T) 
 	assert.Equal(t, float64(1), g["urls"], "one URL, however many log rows carry it")
 }
 
+// ⚠️ would_block says whether the client was ever over the anomaly threshold in
+// the window, which is a fact about the client and not about the rule being
+// listed. Computed as an aggregate over the selected rows it could not survive
+// a rule filter: "WHERE rule_id = 941100" leaves no 949110 row to find, so
+// every client came back unflagged — the flag read false exactly when someone
+// was looking into one rule.
+func TestWAFClients_TheVerdictSurvivesARuleFilter(t *testing.T) {
+	token := wafFixture(t)
+	hit := evt("203.0.113.9", 941100, "shop.example.com")
+	hit.TxID = pgtype.Text{String: "tx-a", Valid: true}
+	verdict := evt("203.0.113.9", int32(waf.AnomalySummaryRule), "shop.example.com")
+	verdict.TxID = pgtype.Text{String: "tx-a", Valid: true}
+	seedWAFEvents(t, hit, verdict)
+
+	unfiltered := groupFor(t, wafClients(t, token, ""), "203.0.113.9")
+	require.Equal(t, true, unfiltered["would_block"])
+
+	filtered := groupFor(t, wafClients(t, token, "?rule_id=941100"), "203.0.113.9")
+	assert.Equal(t, float64(1), filtered["events"], "counts are scoped to the rule asked for")
+	assert.Equal(t, true, filtered["would_block"], "the verdict is not")
+}
+
 func TestWAFClients_HonourTheWindowTheFiltersAndTheCap(t *testing.T) {
 	token := wafFixture(t)
 	recent := evt("203.0.113.9", 941100, "shop.example.com")

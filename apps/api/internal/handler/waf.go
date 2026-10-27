@@ -181,8 +181,10 @@ type wafClientGroup struct {
 	// never stored on the detection itself.
 	URLs     int64     `json:"urls"`
 	LastSeen time.Time `json:"last_seen"`
-	// WouldBlock is whether any of these requests tripped the anomaly-score rule,
-	// which is the only signal that separates a real attack from rule noise.
+	// WouldBlock is whether this client tripped the anomaly-score rule anywhere
+	// in the window, which is the only signal that separates a real attack from
+	// rule noise. ⚠️ Deliberately NOT scoped by rule_id: it is a fact about the
+	// client, so filtering the list to one rule must not turn the verdict off.
 	WouldBlock bool `json:"would_block"`
 }
 

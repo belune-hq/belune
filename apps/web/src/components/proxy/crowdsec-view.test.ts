@@ -7,6 +7,7 @@ import type {
 } from "@/lib/types";
 import {
   BOUNCER_STALE_SECONDS,
+  addedAt,
   autobanEnablePoints,
   bouncerNotice,
   crowdSecEnablePoints,
@@ -395,5 +396,23 @@ describe("crowdSecShield", () => {
 
   it("is off before the status has loaded", () => {
     expect(crowdSecShield(undefined)).toBe("off");
+  });
+});
+
+describe("addedAt", () => {
+  it("formats a timestamp CrowdSec gave", () => {
+    expect(addedAt("2026-10-27T09:05:00Z")).toMatch(
+      /^2026-10-2[67] \d\d:\d\d:\d\d$/,
+    );
+  });
+
+  // The Go side discards the parse error, so a timestamp cscli did not give
+  // arrives as the zero time, not as an absent field. Printed, it would read
+  // "0001-01-01 00:00:00" — a date, and therefore a claim.
+  it("says nothing rather than claiming the year one", () => {
+    expect(addedAt("0001-01-01T00:00:00Z")).toBeNull();
+    expect(addedAt("")).toBeNull();
+    expect(addedAt(undefined)).toBeNull();
+    expect(addedAt("not a date")).toBeNull();
   });
 });

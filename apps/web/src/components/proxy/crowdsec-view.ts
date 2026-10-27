@@ -1,4 +1,5 @@
 import { describeModuleTab } from "@/components/proxy/proxy-traffic";
+import { formatDateTime } from "@/lib/utils/format";
 import type {
   CrowdSecAutobanStatus,
   CrowdSecProtection,
@@ -288,6 +289,19 @@ export function sourceLabel(source: CrowdSecSource): string {
  *  where a ban came from and the Source column already does. */
 export function reasonText(reason: string): string {
   return reason.replace(/^belune(-waf)?: /, "");
+}
+
+/** The absolute timestamp for an "Added at" cell, or null when CrowdSec gave
+ *  none. The Go side parses cscli's `created_at` with the error discarded, so a
+ *  missing or reshaped timestamp arrives as the zero time rather than as an
+ *  absent field — and printing that reads "0001-01-01 00:00:00", which looks
+ *  like a record from the year one instead of a gap in what we were told. */
+export function addedAt(createdAt: string | undefined): string | null {
+  if (!createdAt) return null;
+  const t = new Date(createdAt).getTime();
+  // NaN for a string that is not a date, far negative for Go's zero time.
+  if (!Number.isFinite(t) || t <= 0) return null;
+  return formatDateTime(createdAt);
 }
 
 /** "59 minutes", "23 hours", "6 days": time until an expiry. */

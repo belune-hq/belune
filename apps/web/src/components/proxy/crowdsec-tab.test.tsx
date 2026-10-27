@@ -258,6 +258,21 @@ describe("CrowdSecTab", () => {
       expect(screen.getAllByText("3 hours")).toHaveLength(2);
     });
 
+    // A ban and an allowlist entry both answer "when did this get here?", which
+    // an expiry alone cannot: two entries expiring at the same hour may have
+    // been added days apart.
+    it("says when each entry was added, and nothing when CrowdSec did not say", () => {
+      h.state.status = on();
+      h.state.decisions = [decision({ created_at: "2026-10-27T09:05:00Z" })];
+      h.state.allowlist = [
+        { value: "192.0.2.0/28", description: "office", created_at: "" },
+      ];
+      render(<CrowdSecTab />);
+      expect(screen.getAllByText("Added at")).toHaveLength(2);
+      expect(screen.getByText(/^2026-10-2[67] \d\d:\d\d:\d\d$/)).toBeTruthy();
+      expect(screen.getByText("—")).toBeTruthy();
+    });
+
     it("lifts a ban with one click, and also when the feature is off", async () => {
       h.state.status = base({ enabled: false });
       h.state.decisions = [decision()];

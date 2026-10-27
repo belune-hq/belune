@@ -53,6 +53,7 @@ import {
 import {
   ALLOW_DURATIONS,
   BAN_DURATIONS,
+  addedAt,
   autobanEnablePoints,
   bouncerNotice,
   crowdSecEnablePoints,
@@ -400,6 +401,7 @@ function BansCard({ status }: { status: CrowdSecStatus }) {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>Added at</TableHead>
                 <TableHead>Address</TableHead>
                 <TableHead>Source</TableHead>
                 <TableHead>Reason</TableHead>
@@ -423,6 +425,9 @@ function BanRow({ decision: d }: { decision: CrowdSecDecision }) {
   const lift = useLiftBan();
   return (
     <TableRow>
+      <TableCell className="text-muted-foreground whitespace-nowrap">
+        {addedAt(d.created_at) ?? "—"}
+      </TableCell>
       <TableCell className="font-mono text-sm">
         {d.value}
         {d.scope === "range" && (
@@ -597,6 +602,7 @@ function AllowlistCard({ status }: { status: CrowdSecStatus }) {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>Added at</TableHead>
                 <TableHead>Address</TableHead>
                 <TableHead>Note</TableHead>
                 <TableHead>Expires in</TableHead>
@@ -629,6 +635,9 @@ function AllowRow({
   const remove = useRemoveAllowed();
   return (
     <TableRow>
+      <TableCell className="text-muted-foreground whitespace-nowrap">
+        {addedAt(i.created_at) ?? "—"}
+      </TableCell>
       <TableCell className="font-mono text-sm">
         {i.value}
         {yours && (

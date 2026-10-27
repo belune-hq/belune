@@ -14,6 +14,8 @@ let events: WafEvent[] = [];
 let clients: WafClientGroup[] = [];
 let hasMore = false;
 const eventFilters: unknown[] = [];
+let hasNextPage = false;
+const fetchNextPage = vi.fn();
 const clientFilters: unknown[] = [];
 const windows: string[] = [];
 
@@ -35,9 +37,9 @@ vi.mock("@/lib/hooks/use-waf", () => ({
     return {
       data: { pages: [{ events, next_before: null }] },
       isLoading: false,
-      hasNextPage: false,
+      hasNextPage,
       isFetchingNextPage: false,
-      fetchNextPage: vi.fn(),
+      fetchNextPage,
     };
   },
 }));
@@ -106,6 +108,8 @@ describe("WafTab", () => {
     events = [];
     clients = [];
     hasMore = false;
+    hasNextPage = false;
+    fetchNextPage.mockReset();
     eventFilters.length = 0;
     clientFilters.length = 0;
     windows.length = 0;
@@ -548,6 +552,124 @@ describe("WafTab", () => {
 
   // The list is capped rather than paged, so it has to say when it is not
   // showing everything — otherwise a thousand-client scan looks like fifty.
+  it("shows ten clients at a time and pages through the rest", async () => {
+    clients = Array.from({ length: 23 }, (_, i) =>
+      group({ client_ip: `203.0.113.${i + 1}`, events: 23 - i }),
+    );
+    render(<WafTab />);
+
+    expect(
+      screen.getAllByRole("button", { name: /^Show detections from/ }),
+    ).toHaveLength(10);
+    expect(screen.getByText(/1–10 of 23 clients/)).toBeTruthy();
+    expect(screen.getByLabelText("Rows per page")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() =>
+      expect(screen.getByText(/11–20 of 23 clients/)).toBeTruthy(),
+    );
+    expect(
+      screen.getByRole("button", { name: "Show detections from 203.0.113.11" }),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() =>
+      expect(screen.getByText(/21–23 of 23 clients/)).toBeTruthy(),
+    );
+    expect(
+      screen.getByRole("button", { name: "Next" }).hasAttribute("disabled"),
+    ).toBe(true);
+  });
+
+  // Narrowing the list under the cursor must not leave an empty table: the page
+  // is clamped rather than reset, so page three of twenty-three becomes the last
+  // page of what is left.
+  it("does not strand the reader on a page that no longer exists", async () => {
+    clients = Array.from({ length: 23 }, (_, i) =>
+      group({ client_ip: `203.0.113.${i + 1}` }),
+    );
+    const { rerender } = render(<WafTab />);
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() =>
+      expect(screen.getByText(/21–23 of 23 clients/)).toBeTruthy(),
+    );
+
+    clients = clients.slice(0, 4);
+    rerender(<WafTab />);
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("button", { name: /^Show detections from/ }),
+      ).toHaveLength(4),
+    );
+  });
+
+  it("pages a client's detections, and fetches more at the end of them", async () => {
+    clients = [group()];
+    events = Array.from({ length: 12 }, (_, i) => event({ id: i + 1 }));
+    hasNextPage = true;
+    render(<WafTab />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show detections from 203.0.113.9" }),
+    );
+
+    await waitFor(() => expect(screen.getByText("Severity")).toBeTruthy());
+    const panel = screen.getAllByRole("table")[1];
+    expect(within(panel).getAllByRole("row")).toHaveLength(11); // header + 10
+    // "+" because the server has more than the twelve loaded.
+    expect(screen.getByText(/1–10 of 12\+ detections/)).toBeTruthy();
+
+    const next = screen.getAllByRole("button", { name: "Next" }).at(-1)!;
+    fireEvent.click(next);
+    await waitFor(() =>
+      expect(screen.getByText(/11–12 of 12\+ detections/)).toBeTruthy(),
+    );
+    expect(fetchNextPage).not.toHaveBeenCalled();
+
+    // Stepping off the end of what is loaded is what asks the server for more,
+    // which is the job the "Load more" button used to do.
+    fireEvent.click(screen.getAllByRole("button", { name: "Next" }).at(-1)!);
+    await waitFor(() => expect(fetchNextPage).toHaveBeenCalledTimes(1));
+  });
+
+  it("stops offering more detections when the server has none", async () => {
+    clients = [group()];
+    events = Array.from({ length: 12 }, (_, i) => event({ id: i + 1 }));
+    hasNextPage = false;
+    render(<WafTab />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show detections from 203.0.113.9" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText(/1–10 of 12 detections/)).toBeTruthy(),
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: "Next" }).at(-1)!);
+    await waitFor(() =>
+      expect(screen.getByText(/11–12 of 12 detections/)).toBeTruthy(),
+    );
+    expect(
+      screen
+        .getAllByRole("button", { name: "Next" })
+        .at(-1)!
+        .hasAttribute("disabled"),
+    ).toBe(true);
+  });
+
+  // A short list has nothing to page and nothing to resize.
+  it("shows no pagination when everything fits on one page", async () => {
+    clients = [group()];
+    events = [event()];
+    render(<WafTab />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show detections from 203.0.113.9" }),
+    );
+
+    await waitFor(() => expect(screen.getByText("Severity")).toBeTruthy());
+    expect(screen.queryByText("Rows per page")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Next" })).toBeNull();
+  });
+
   it("says out loud when more clients matched than are listed", () => {
     clients = [group()];
     hasMore = true;

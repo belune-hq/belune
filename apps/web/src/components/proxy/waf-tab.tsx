@@ -47,6 +47,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { LIST_PAGE_SIZES, ListPagination } from "@/components/ui/data-table";
 import { StatCard } from "@/lib/components/stats/stat-card";
 import { WafDetectionSheet } from "@/components/proxy/waf-detection-sheet";
 import {
@@ -358,6 +359,19 @@ function EventsCard({
   };
   const clients = useWafClients(windowKey, filters);
   const groups = clients.data?.clients ?? [];
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState<number>(LIST_PAGE_SIZES[0]);
+  const pageCount = Math.max(1, Math.ceil(groups.length / pageSize));
+  // Clamped rather than reset in an effect: narrowing the filter while on page
+  // four shortens the list under the cursor, and a page past the end should
+  // show the last one, not an empty table.
+  const [pagedWindow, setPagedWindow] = useState(windowKey);
+  if (pagedWindow !== windowKey) {
+    setPagedWindow(windowKey);
+    setPage(0);
+  }
+  const current = Math.min(page, pageCount - 1);
+  const visible = groups.slice(current * pageSize, (current + 1) * pageSize);
   const filtered = clientIp !== "" || ruleId !== null;
   const capped = describeClientList(
     groups.length,
@@ -367,12 +381,16 @@ function EventsCard({
 
   const form = useForm({
     defaultValues: { ip: "" },
-    onSubmit: ({ value }) => setClientIp(value.ip.trim()),
+    onSubmit: ({ value }) => {
+      setClientIp(value.ip.trim());
+      setPage(0);
+    },
   });
   const clear = () => {
     form.reset();
     setClientIp("");
     setRuleId(null);
+    setPage(0);
   };
 
   return (
@@ -468,16 +486,30 @@ function EventsCard({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {groups.map((g) => (
+                {visible.map((g) => (
                   <ClientRow
                     key={g.client_ip}
                     group={g}
                     filters={filters}
-                    onRule={setRuleId}
+                    onRule={(id) => {
+                      setRuleId(id);
+                      setPage(0);
+                    }}
                   />
                 ))}
               </TableBody>
             </Table>
+            <ListPagination
+              page={current}
+              pageSize={pageSize}
+              total={groups.length}
+              onPageChange={setPage}
+              onPageSizeChange={(n) => {
+                setPageSize(n);
+                setPage(0);
+              }}
+              noun="clients"
+            />
             {capped && <p className="text-text-faint mt-3 text-xs">{capped}</p>}
           </>
         )}
@@ -597,6 +629,23 @@ function ClientDetections({
   const events = useWafEvents(filters);
   const rows = events.data?.pages.flatMap((p) => p.events) ?? [];
   const [viewId, setViewId] = useState<number | null>(null);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState<number>(LIST_PAGE_SIZES[0]);
+  const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
+  const current = Math.min(page, pageCount - 1);
+  const visible = rows.slice(current * pageSize, (current + 1) * pageSize);
+
+  // Two layers of paging: the server hands over 50 detections at a time and
+  // this pages through them ten at a time, so stepping off the end of what is
+  // loaded fetches the next 50 rather than stopping. Setting the page before
+  // the rows arrive is safe — `current` clamps until they do, so the table
+  // holds still instead of blanking.
+  const changePage = (p: number) => {
+    if (p >= pageCount && events.hasNextPage && !events.isFetchingNextPage) {
+      events.fetchNextPage();
+    }
+    setPage(p);
+  };
 
   // Looked up from the live rows rather than held as state: retention sweeps
   // this table while the panel is open, and a detection that is gone should
@@ -632,7 +681,7 @@ function ClientDetections({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.map((e) => (
+          {visible.map((e) => (
             <DetectionRow
               key={e.id}
               event={e}
@@ -642,18 +691,19 @@ function ClientDetections({
           ))}
         </TableBody>
       </Table>
-      {events.hasNextPage && (
-        <div className="mt-2 flex justify-center">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => events.fetchNextPage()}
-            disabled={events.isFetchingNextPage}
-          >
-            {events.isFetchingNextPage ? "Loading…" : "Load more"}
-          </Button>
-        </div>
-      )}
+      <ListPagination
+        page={current}
+        pageSize={pageSize}
+        total={rows.length}
+        onPageChange={changePage}
+        onPageSizeChange={(n) => {
+          setPageSize(n);
+          setPage(0);
+        }}
+        hasMore={events.hasNextPage}
+        isLoadingMore={events.isFetchingNextPage}
+        noun="detections"
+      />
       {viewed && (
         <WafDetectionSheet
           event={viewed}

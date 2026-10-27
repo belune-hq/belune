@@ -364,6 +364,11 @@ function EventsCard({
       : null;
 
   useEffect(() => {
+    // Nothing to commit — including on mount, where both are "". Without this
+    // the effect armed a timer on every mount that fired setPage(0) 300ms
+    // later, so a Next clicked inside that window put the reader back on page
+    // one. CI caught it as a flaky test; it was the page, not the test.
+    if (typed === clientIp) return;
     // A half-typed address matches nothing, so the last good filter is held
     // rather than emptying the table between the first octet and the last.
     if (typed !== "" && !isIpAddress(typed)) return;
@@ -372,7 +377,7 @@ function EventsCard({
       setPage(0);
     }, FILTER_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [typed]);
+  }, [typed, clientIp]);
 
   const filters = {
     clientIp: clientIp || undefined,

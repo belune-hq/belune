@@ -8,6 +8,9 @@ import {
 } from "@testing-library/react";
 import type { WafClientGroup, WafEvent, WafStatus } from "@/lib/types";
 
+/** Comfortably past the filter's 300ms debounce. */
+const FILTER_DEBOUNCE_WINDOW_MS = 500;
+
 const setEnabled = vi.fn();
 let status: WafStatus | undefined;
 let events: WafEvent[] = [];
@@ -616,6 +619,23 @@ describe("WafTab", () => {
     expect(
       screen.getByRole("button", { name: "Next" }).hasAttribute("disabled"),
     ).toBe(true);
+  });
+
+  // The filter's debounce used to arm a timer on mount whose only effect was
+  // setPage(0), so a page turned inside that window was quietly undone. It
+  // failed in CI and passed locally, because the window is 300ms.
+  it("does not send the reader back to page one once the debounce elapses", async () => {
+    clients = Array.from({ length: 23 }, (_, i) =>
+      group({ client_ip: `203.0.113.${i + 1}` }),
+    );
+    render(<WafTab />);
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() =>
+      expect(screen.getByText(/11–20 of 23 clients/)).toBeTruthy(),
+    );
+
+    await new Promise((r) => setTimeout(r, FILTER_DEBOUNCE_WINDOW_MS));
+    expect(screen.getByText(/11–20 of 23 clients/)).toBeTruthy();
   });
 
   // Narrowing the list under the cursor must not leave an empty table: the page

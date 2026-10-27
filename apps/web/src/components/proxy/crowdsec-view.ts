@@ -104,7 +104,12 @@ export function describeCrowdSec(
         };
       case "no_applications":
         return {
-          pill: { label: "Waiting for an application", tone: "neutral" },
+          // Amber and worded as the WAF tab words it, because it is the same
+          // condition on the same page: the operator asked for CrowdSec and is
+          // not getting it, since no hostname is being evaluated. Grey read as
+          // a resting state, which is how a gap between what was asked for and
+          // what is running goes unnoticed.
+          pill: { label: "Nothing to inspect", tone: "attention" },
           body: "CrowdSec is on. It starts as soon as an application has a domain to protect.",
           notice: null,
           canEnable: true,

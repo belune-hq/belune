@@ -156,7 +156,7 @@ describe("describeCrowdSec", () => {
     expect(d.notice).toEqual({ tone: "error", text: "HTTP 500: nope" });
   });
 
-  it("covers the waiting states without alarm", () => {
+  it("flags having nothing to inspect, and holds off on what it cannot confirm", () => {
     const wait = describeCrowdSec(
       status({
         enabled: true,
@@ -164,7 +164,11 @@ describe("describeCrowdSec", () => {
       }),
       NOW,
     );
-    expect(wait.pill.tone).toBe("neutral");
+    // Switched on and evaluating nothing is a gap, not a resting state — and it
+    // is worded and toned exactly as the WAF tab words the same condition, on
+    // the same page.
+    expect(wait.pill.label).toBe("Nothing to inspect");
+    expect(wait.pill.tone).toBe("attention");
     const unknown = describeCrowdSec(
       status({
         enabled: true,

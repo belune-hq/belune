@@ -1,0 +1,24 @@
+-- The request variable a WAF detection matched in.
+--
+-- 000070 keeps a rule id, severity, client, host and time and no request data,
+-- because the matched payload and the URI are attacker-controlled and can hold
+-- the operator's own credentials. 000073 then joined the request log for the
+-- URL. What is still missing is the field the rule actually matched in, and its
+-- absence has a measured cost: a stock Next.js app on a dev install tripped
+-- 920420-class rule 942290 ("MongoDB SQL injection") on every single request,
+-- and diagnosing it meant reading Caddy's container log by hand to find that
+-- the match was in a PostHog analytics cookie the application sets itself.
+--
+-- ⛔ The NAME only, never the value. "REQUEST_COOKIES:session" says where to
+-- look without saying what was in it. The parser stops at the colon that
+-- introduces the value; see waf.matchedTarget.
+--
+-- ⚠️ It is a hint, not evidence: the text it is read from is the rule's own
+-- match output, which a payload can influence, so the name can be forged. It is
+-- bounded in length and charset for that reason and nothing keys a decision on
+-- it.
+--
+-- Null for every row written before this migration, and for every rule that
+-- matches on the request as a whole rather than on one variable.
+ALTER TABLE waf_events
+    ADD COLUMN matched_target TEXT;

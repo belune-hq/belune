@@ -243,3 +243,85 @@ func BenchmarkParseCaddyLine_NotWAF(b *testing.B) {
 		}
 	}
 }
+
+func TestMatchedTarget_NamesTheVariableAndNeverItsValue(t *testing.T) {
+	// The real shape, from the detection that motivated the column: a stock
+	// Next.js app tripping a MongoDB-injection rule on every request because
+	// the match was inside a PostHog cookie the application sets itself.
+	cases := []struct {
+		name string
+		data string
+		want string
+	}{
+		{
+			name: "cookie with a key",
+			data: `Matched Data: $in found within REQUEST_COOKIES:ph_phc_abc123_posthog: {"distinct_id":"x","$in`,
+			want: "REQUEST_COOKIES:ph_phc_abc123_posthog",
+		},
+		{
+			name: "an argument",
+			data: `Matched Data: 1=1 found within ARGS:q: 1' OR 1=1 --`,
+			want: "ARGS:q",
+		},
+		{
+			// No key, and the value must not be read as one: the ": " that
+			// introduces it carries a space, which the key group forbids.
+			name: "a keyless collection",
+			data: `Matched Data: /etc/passwd found within REQUEST_URI: /x?f=/etc/passwd`,
+			want: "REQUEST_URI",
+		},
+		{
+			name: "a header",
+			data: `Matched Data: sqlmap found within REQUEST_HEADERS:User-Agent: sqlmap/1.8#stable`,
+			want: "REQUEST_HEADERS:User-Agent",
+		},
+		{
+			name: "nothing to read",
+			data: "",
+			want: "",
+		},
+		{
+			name: "a rule that reports no variable",
+			data: "Inbound Anomaly Score Exceeded (Total Score: 15)",
+			want: "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ev, out := ParseCaddyLine(realLine("x", tc.data, "/", goodID))
+			require.Equal(t, Matched, out)
+			assert.Equal(t, tc.want, ev.MatchedTarget)
+		})
+	}
+}
+
+// ⛔ The reason the column is a name and not the match: everything after the
+// colon is the payload, which is what 000070 exists to not keep.
+func TestMatchedTarget_LeavesTheMatchedValueBehind(t *testing.T) {
+	secret := "s3cret-token-value"
+	data := `Matched Data: $ne found within REQUEST_COOKIES:session: ` + secret
+	ev, out := ParseCaddyLine(realLine("x", data, "/", goodID))
+	require.Equal(t, Matched, out)
+
+	assert.Equal(t, "REQUEST_COOKIES:session", ev.MatchedTarget)
+	stored, err := json.Marshal(ev)
+	require.NoError(t, err)
+	assert.NotContains(t, string(stored), secret)
+	assert.NotContains(t, string(stored), "$ne")
+}
+
+// ⚠️ The field is a hint, not evidence. The data field's head is the rule's own
+// match output, so a payload can put the words this pattern looks for into it.
+// What the bounds guarantee is that the worst case is a wrong NAME of bounded
+// length and charset — never a value, and never an unbounded string.
+func TestMatchedTarget_IsBoundedWhenTheRequestForgesIt(t *testing.T) {
+	long := strings.Repeat("a", 500)
+	forged := `Matched Data: found within FAKE:` + long + `: real found within ARGS:q: v`
+	ev, out := ParseCaddyLine(realLine("x", forged, "/", goodID))
+	require.Equal(t, Matched, out)
+
+	assert.LessOrEqual(t, len(ev.MatchedTarget), maxTarget)
+	assert.NotContains(t, ev.MatchedTarget, " ")
+	// Whatever it read, it did not read the value at the end.
+	assert.NotContains(t, ev.MatchedTarget, ": v")
+}

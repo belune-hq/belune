@@ -16,6 +16,8 @@ import {
   DETECTION_PAYLOAD_ABSENT,
   detectionHeaders,
   eventHost,
+  MATCHED_TARGET_ABSENT,
+  MATCHED_TARGET_NOTE,
   REQUEST_DETAIL_ABSENT,
   statusTone,
 } from "@/components/proxy/waf-view";
@@ -94,6 +96,23 @@ export function WafDetectionSheet({
           <DetailRow label="Host">
             <span className="font-mono text-xs">{eventHost(event)}</span>
           </DetailRow>
+          {/* Directly under the identity of the detection, above the request:
+              it is the field that answers "is this mine or theirs", which is
+              the question the panel exists for. */}
+          <DetailRow label="Matched in">
+            {event.matched_target ? (
+              <span className="font-mono text-xs break-all">
+                {event.matched_target}
+              </span>
+            ) : (
+              <span
+                className="text-muted-foreground cursor-help text-xs italic"
+                title={MATCHED_TARGET_ABSENT}
+              >
+                no single field
+              </span>
+            )}
+          </DetailRow>
           {event.request ? (
             <>
               <DetailRow label="Request">
@@ -158,7 +177,9 @@ export function WafDetectionSheet({
             the last line reads as page furniture rather than as part of this
             record. Seen in a browser. */}
         <p className="text-muted-foreground text-xs">
-          {DETECTION_PAYLOAD_ABSENT}
+          {event.matched_target
+            ? `${MATCHED_TARGET_NOTE} ${DETECTION_PAYLOAD_ABSENT}`
+            : DETECTION_PAYLOAD_ABSENT}
         </p>
       </SheetContent>
     </Sheet>

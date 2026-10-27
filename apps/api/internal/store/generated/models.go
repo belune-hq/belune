@@ -653,4 +653,5 @@ type WafEvent struct {
 	Host          pgtype.Text        `json:"host"`
 	ApplicationID pgtype.UUID        `json:"application_id"`
 	TxID          pgtype.Text        `json:"tx_id"`
+	MatchedTarget pgtype.Text        `json:"matched_target"`
 }

@@ -22,6 +22,7 @@ type BulkInsertWAFEventsParams struct {
 	Host          pgtype.Text        `json:"host"`
 	ApplicationID pgtype.UUID        `json:"application_id"`
 	TxID          pgtype.Text        `json:"tx_id"`
+	MatchedTarget pgtype.Text        `json:"matched_target"`
 }
 
 const countWAFEvents = `-- name: CountWAFEvents :one
@@ -76,7 +77,7 @@ func (q *Queries) ListApplicationIDsForHost(ctx context.Context, hostname string
 }
 
 const listWAFEvents = `-- name: ListWAFEvents :many
-SELECT id, recorded_at, client_ip, rule_id, severity, category, message, host, application_id, tx_id
+SELECT id, recorded_at, client_ip, rule_id, severity, category, message, host, application_id, tx_id, matched_target
 FROM waf_events
 WHERE ($1::bigint IS NULL OR id < $1::bigint)
   AND ($2::inet IS NULL OR client_ip = $2::inet)
@@ -125,6 +126,7 @@ func (q *Queries) ListWAFEvents(ctx context.Context, arg ListWAFEventsParams) ([
 			&i.Host,
 			&i.ApplicationID,
 			&i.TxID,
+			&i.MatchedTarget,
 		); err != nil {
 			return nil, err
 		}

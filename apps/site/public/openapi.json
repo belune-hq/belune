@@ -21460,6 +21460,12 @@
           "id": {
             "type": "integer"
           },
+          "matched_target": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "message": {
             "type": "string"
           },

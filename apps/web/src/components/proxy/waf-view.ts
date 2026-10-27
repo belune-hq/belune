@@ -535,3 +535,16 @@ export function describeCategory(
       `The rule set's own classification: ${e.category}.`,
   };
 }
+
+/**
+ * Why the panel names a field and not the text that matched it.
+ *
+ * Said on the panel because the absence is the surprising part: an operator who
+ * sees where a rule matched will reasonably expect to see what it matched.
+ */
+export const MATCHED_TARGET_NOTE =
+  "Where the rule matched, not what it matched. The text itself is never stored, and this name is read from the rule's own output, so treat it as a pointer rather than as proof.";
+
+/** The label for a detection that reported no variable at all. */
+export const MATCHED_TARGET_ABSENT =
+  "This rule matched on the request as a whole rather than on one field. Detections recorded before Belune kept this also show no field.";

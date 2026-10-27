@@ -1022,6 +1022,15 @@ export interface WafEvent {
    * nothing to join.
    */
   request: WafRequestDetail | null;
+  /**
+   * The request variable the rule matched in, as a name — "REQUEST_COOKIES:session",
+   * "ARGS:q" — and never the value found in it. Null for a rule that matches on the
+   * request as a whole, and for detections recorded before Belune kept it.
+   *
+   * ⚠️ A hint, not evidence: the text it is read from can be influenced by the
+   * request, so the name can be forged. Never key a decision on it.
+   */
+  matched_target: string | null;
 }
 
 /**

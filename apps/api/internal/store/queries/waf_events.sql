@@ -2,13 +2,13 @@
 -- Bulk path for the recorder, which flushes batches: under attack this table
 -- takes writes at the rate requests arrive, so one round trip per row is the
 -- wrong shape (see BulkInsertContainerLogs, which had the same problem).
-INSERT INTO waf_events (recorded_at, client_ip, rule_id, severity, category, message, host, application_id, tx_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);
+INSERT INTO waf_events (recorded_at, client_ip, rule_id, severity, category, message, host, application_id, tx_id, matched_target)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
 
 -- name: ListWAFEvents :many
 -- Keyset pagination on id (newest first): an offset would re-scan the head of a
 -- table that is being written to while it is read.
-SELECT id, recorded_at, client_ip, rule_id, severity, category, message, host, application_id, tx_id
+SELECT id, recorded_at, client_ip, rule_id, severity, category, message, host, application_id, tx_id, matched_target
 FROM waf_events
 WHERE (sqlc.narg('before_id')::bigint IS NULL OR id < sqlc.narg('before_id')::bigint)
   AND (sqlc.narg('client_ip')::inet IS NULL OR client_ip = sqlc.narg('client_ip')::inet)

@@ -182,6 +182,8 @@ func (r *Recorder) flush(ctx context.Context, events []Event) {
 			Message:    ev.Message,
 			Host:       text(ev.Host),
 			TxID:       text(ev.TxID),
+			// The variable the rule matched in, never what was in it.
+			MatchedTarget: text(ev.MatchedTarget),
 		}
 		// Attribution is best-effort and per row: a failed lookup costs the
 		// application, never the event.

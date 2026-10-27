@@ -175,7 +175,27 @@ function StatusCard({
           Ban addresses from your applications. Caddy turns each ban into a 403.
         </CardDescription>
         {status && d && (
-          <CardAction>
+          <CardAction className="flex items-center gap-2">
+            {/* Beside the switch rather than under the body text: it only shows
+                when the bouncer has already stopped pulling, and the notice
+                that says so is what sends the operator looking for it. */}
+            {status.enabled && stale && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={rotate.isPending}
+                onClick={() =>
+                  toast.promise(rotate.mutateAsync(), {
+                    loading: "Replacing the bouncer's key…",
+                    success: "Bouncer key replaced",
+                    error: (e: Error) =>
+                      e.message || "Could not replace the key",
+                  })
+                }
+              >
+                Rotate the bouncer key
+              </Button>
+            )}
             <Switch
               aria-label="Enforce bans with CrowdSec"
               checked={status.enabled}
@@ -199,23 +219,6 @@ function StatusCard({
               <p className={cn("text-sm", TEXT_TONE[d.notice.tone])}>
                 {d.notice.text}
               </p>
-            )}
-            {status.enabled && stale && (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={rotate.isPending}
-                onClick={() =>
-                  toast.promise(rotate.mutateAsync(), {
-                    loading: "Replacing the bouncer's key…",
-                    success: "Bouncer key replaced",
-                    error: (e: Error) =>
-                      e.message || "Could not replace the key",
-                  })
-                }
-              >
-                Rotate the bouncer key
-              </Button>
             )}
             <p
               className={cn(

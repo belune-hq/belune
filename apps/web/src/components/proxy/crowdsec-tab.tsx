@@ -4,11 +4,10 @@ import {
   BanIcon,
   BrickWallFireIcon,
   ListCheckIcon,
-  ShieldCheckIcon,
-  ShieldIcon,
   ShieldXIcon,
 } from "lucide-react";
 import { toast } from "sonner";
+import { CROWDSEC_SHIELD } from "@/components/proxy/crowdsec-shield";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -61,7 +60,7 @@ import {
   describeCrowdSec,
   describeYourAddress,
   isBanTarget,
-  isCrowdSecEnforcing,
+  crowdSecShield,
   reasonText,
   sourceLabel,
   timeLeft,
@@ -141,7 +140,7 @@ function StatusCard({
   const rotate = useRotateCrowdSecKey();
   const [confirming, setConfirming] = useState(false);
   const d = status ? describeCrowdSec(status) : null;
-  const Icon = isCrowdSecEnforcing(status) ? ShieldCheckIcon : ShieldIcon;
+  const Icon = CROWDSEC_SHIELD[crowdSecShield(status)];
   const stale = status ? bouncerNotice(status.local_api, new Date()) : null;
   const yours = status
     ? describeYourAddress(

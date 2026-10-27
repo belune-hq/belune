@@ -1,15 +1,14 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import {
-  BrickWallShieldIcon,
-  RouteIcon,
-  ShieldCheckIcon,
-  ShieldIcon,
-} from "lucide-react";
+import { BrickWallShieldIcon, RouteIcon } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageTabs, type PageTab } from "@/components/ui/page-tabs";
 import { CaddyTab } from "@/components/proxy/caddy-tab";
 import { CrowdSecTab } from "@/components/proxy/crowdsec-tab";
-import { isCrowdSecEnforcing } from "@/components/proxy/crowdsec-view";
+import { CROWDSEC_SHIELD } from "@/components/proxy/crowdsec-shield";
+import {
+  crowdSecShield,
+  type CrowdSecShield,
+} from "@/components/proxy/crowdsec-view";
 import { useCrowdSecStatus } from "@/lib/hooks/use-crowdsec";
 import { WafTab } from "@/components/proxy/waf-tab";
 import { RouteError } from "@/lib/components/route-error";
@@ -20,12 +19,12 @@ type ProxyTab = "caddy" | "crowdsec" | "waf";
 // The CrowdSec tab's glyph reports whether it is enforcing, which is the one
 // piece of state readable from the other two tabs — there is no pill out here.
 // The rule lives in crowdsec-view so the tab and the card cannot disagree.
-const proxyTabs = (enforcing: boolean): PageTab<ProxyTab>[] => [
+const proxyTabs = (shield: CrowdSecShield): PageTab<ProxyTab>[] => [
   { value: "caddy", label: "Caddy", icon: RouteIcon },
   {
     value: "crowdsec",
     label: "CrowdSec",
-    icon: enforcing ? ShieldCheckIcon : ShieldIcon,
+    icon: CROWDSEC_SHIELD[shield],
   },
   { value: "waf", label: "WAF", icon: BrickWallShieldIcon },
 ];
@@ -49,7 +48,7 @@ function ProxyPage() {
   // Shares the CrowdSec tab's own query key, so this is the same request that
   // tab already makes rather than a second one.
   const crowdsec = useCrowdSecStatus();
-  const tabs = proxyTabs(isCrowdSecEnforcing(crowdsec.data));
+  const tabs = proxyTabs(crowdSecShield(crowdsec.data));
   const setTab = (next: ProxyTab) =>
     navigate({ search: () => ({ tab: next === "caddy" ? undefined : next }) });
 

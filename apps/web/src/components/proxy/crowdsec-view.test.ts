@@ -14,7 +14,7 @@ import {
   describeCrowdSec,
   describeYourAddress,
   isBanTarget,
-  isCrowdSecEnforcing,
+  crowdSecShield,
   reasonText,
   sourceLabel,
   timeLeft,
@@ -368,29 +368,32 @@ describe("describeAutoban", () => {
   });
 });
 
-describe("isCrowdSecEnforcing", () => {
-  // The tab's glyph is read from across the page with no pill beside it, so a
-  // tick has to mean "covering something", not "the switch is on".
-  it("is false while the switch is on but nothing is covered", () => {
+describe("crowdSecShield", () => {
+  // Two icons were not enough and the gap showed: with the switch on and no
+  // application running, turning CrowdSec on changed nothing on screen.
+  it("separates off from on-but-covering-nothing", () => {
+    expect(crowdSecShield(status({ enabled: false }))).toBe("off");
     expect(
-      isCrowdSecEnforcing(
+      crowdSecShield(
         status({
           enabled: true,
           state: { active: false, hosts: 0, reason: "no_applications" },
         }),
       ),
-    ).toBe(false);
+    ).toBe("idle");
   });
 
-  it("is true once a hostname is covered", () => {
+  // ⛔ The tick is the one that may not be generous: out on the tab strip there
+  // is no pill beside it to say that nothing is covered.
+  it("keeps the tick for a hostname actually being covered", () => {
     expect(
-      isCrowdSecEnforcing(
+      crowdSecShield(
         status({ enabled: true, state: { active: true, hosts: 2 } }),
       ),
-    ).toBe(true);
+    ).toBe("enforcing");
   });
 
-  it("is false before the status has loaded", () => {
-    expect(isCrowdSecEnforcing(undefined)).toBe(false);
+  it("is off before the status has loaded", () => {
+    expect(crowdSecShield(undefined)).toBe("off");
   });
 });

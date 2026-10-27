@@ -367,17 +367,27 @@ export function autobanEnablePoints(p: CrowdSecPolicy): string[] {
   ];
 }
 
+/** Which shield the tab and the card draw. */
+export type CrowdSecShield = "off" | "idle" | "enforcing";
+
 /**
- * Whether CrowdSec is actually enforcing — the test behind its shield icon.
+ * CrowdSec's state as one glyph, in three steps rather than two.
  *
- * `state.active` rather than `enabled`, so the check mark appears only when a
- * hostname is covered. A tick on the tab is read from across the page as "this
- * is handled", and it would be the same false reassurance the pill avoids when
- * it says "Nothing to protect" with the switch on. Shared with the route so the
- * tab and the card cannot disagree about what the glyph means.
+ * Two was not enough, and the gap was visible: with the switch ON and no
+ * application running, "enforcing" is false — correctly, because no hostname is
+ * covered — so turning CrowdSec on changed nothing on screen but the pill, and
+ * the switch looked like it had not worked.
+ *
+ * ⛔ "enforcing" still means `state.active`, never `enabled`. A tick is read
+ * from across the page as "this is handled", with no pill beside it out on the
+ * tab strip, so it may only appear once something is actually covered — the
+ * same reason the pill says "Nothing to protect" instead of "On". What the
+ * third icon buys is that the switch has somewhere to show, without the tick
+ * having to lie.
  */
-export function isCrowdSecEnforcing(
-  s: Pick<CrowdSecStatus, "state"> | undefined,
-): boolean {
-  return s?.state.active ?? false;
+export function crowdSecShield(
+  s: Pick<CrowdSecStatus, "enabled" | "state"> | undefined,
+): CrowdSecShield {
+  if (!s?.enabled) return "off";
+  return s.state.active ? "enforcing" : "idle";
 }

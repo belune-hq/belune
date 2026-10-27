@@ -164,11 +164,12 @@ describe("describeCrowdSec", () => {
       }),
       NOW,
     );
-    // Switched on and evaluating nothing is a gap, not a resting state — and it
-    // is worded and toned exactly as the WAF tab words the same condition, on
-    // the same page.
-    expect(wait.pill.label).toBe("Nothing to inspect");
+    // Switched on and protecting nothing is a gap, not a resting state. Same
+    // amber as the WAF tab in the same state; its own verb, because this card
+    // bans addresses rather than reading requests.
+    expect(wait.pill.label).toBe("Nothing to protect");
     expect(wait.pill.tone).toBe("attention");
+    expect(wait.pill.label).not.toMatch(/inspect/i);
     const unknown = describeCrowdSec(
       status({
         enabled: true,

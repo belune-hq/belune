@@ -104,12 +104,16 @@ export function describeCrowdSec(
         };
       case "no_applications":
         return {
-          // Amber and worded as the WAF tab words it, because it is the same
-          // condition on the same page: the operator asked for CrowdSec and is
-          // not getting it, since no hostname is being evaluated. Grey read as
+          // Amber for the same reason the WAF tab is amber in this state: the
+          // operator asked for CrowdSec and is not getting it, and grey read as
           // a resting state, which is how a gap between what was asked for and
           // what is running goes unnoticed.
-          pill: { label: "Nothing to inspect", tone: "attention" },
+          //
+          // The verb is CrowdSec's own, though, not the WAF's. This card bans
+          // addresses and its body says "a domain to protect"; the WAF reads
+          // requests and says "inspect". Matching the tone is what makes the two
+          // tabs one page — matching the verb would have made this one wrong.
+          pill: { label: "Nothing to protect", tone: "attention" },
           body: "CrowdSec is on. It starts as soon as an application has a domain to protect.",
           notice: null,
           canEnable: true,

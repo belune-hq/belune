@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { useForm } from "@tanstack/react-form";
+import { useEffect, useState } from "react";
 import {
   ChevronDownIcon,
   ChevronRightIcon,
@@ -75,7 +74,6 @@ import {
   useWafStatus,
 } from "@/lib/hooks/use-waf";
 import { cn } from "@/lib/utils";
-import { fieldError } from "@/lib/utils/field-error";
 import { formatDateTime, formatRelativeTime } from "@/lib/utils/format";
 import type { WafEventFilters } from "@/lib/api/waf";
 import type {
@@ -348,19 +346,37 @@ function EventsCard({
   status: WafStatus;
   windowKey: WafWindow;
 }) {
+  // What is typed, and what the queries actually filter on. They are separate
+  // because the second only moves once typing pauses: the address is part of
+  // the query key, so following every keystroke would be a request per
+  // character, each one a GROUP BY over the window.
+  const [draft, setDraft] = useState("");
   const [clientIp, setClientIp] = useState("");
-  // The events endpoint has always taken rule_id; nothing in the page set it, so
-  // one noisy rule could not be isolated or excluded from view.
-  const [ruleId, setRuleId] = useState<number | null>(null);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState<number>(LIST_PAGE_SIZES[0]);
+  const typed = draft.trim();
+  const draftError =
+    typed !== "" && !isIpAddress(typed)
+      ? "Enter an IPv4 or IPv6 address"
+      : null;
+
+  useEffect(() => {
+    // A half-typed address matches nothing, so the last good filter is held
+    // rather than emptying the table between the first octet and the last.
+    if (typed !== "" && !isIpAddress(typed)) return;
+    const timer = setTimeout(() => {
+      setClientIp(typed);
+      setPage(0);
+    }, FILTER_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [typed]);
+
   const filters = {
     clientIp: clientIp || undefined,
-    ruleId: ruleId ?? undefined,
     window: windowKey,
   };
   const clients = useWafClients(windowKey, filters);
   const groups = clients.data?.clients ?? [];
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState<number>(LIST_PAGE_SIZES[0]);
   const pageCount = Math.max(1, Math.ceil(groups.length / pageSize));
   // Clamped rather than reset in an effect: narrowing the filter while on page
   // four shortens the list under the cursor, and a page past the end should
@@ -372,24 +388,18 @@ function EventsCard({
   }
   const current = Math.min(page, pageCount - 1);
   const visible = groups.slice(current * pageSize, (current + 1) * pageSize);
-  const filtered = clientIp !== "" || ruleId !== null;
+  const filtered = clientIp !== "";
   const capped = describeClientList(
     groups.length,
     clients.data?.has_more ?? false,
     windowKey,
   );
 
-  const form = useForm({
-    defaultValues: { ip: "" },
-    onSubmit: ({ value }) => {
-      setClientIp(value.ip.trim());
-      setPage(0);
-    },
-  });
+  // Immediate rather than through the debounce: clearing is deliberate, and
+  // waiting 300ms to act on a button press reads as a dropped click.
   const clear = () => {
-    form.reset();
+    setDraft("");
     setClientIp("");
-    setRuleId(null);
     setPage(0);
   };
 
@@ -402,57 +412,29 @@ function EventsCard({
           can trip several rules, so hits outnumber requests. The matched
           payload is never stored.
         </CardDescription>
-        <CardAction>
-          <form
-            className="flex items-start gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              form.handleSubmit();
-            }}
-          >
-            <form.Field
-              name="ip"
-              validators={{
-                onChange: ({ value }) =>
-                  value === "" || isIpAddress(value)
-                    ? undefined
-                    : "Enter an IPv4 or IPv6 address",
-              }}
-              children={(field) => {
-                const error = fieldError(field.state.meta.errors);
-                return (
-                  <Field data-invalid={!!error} className="w-44">
-                    <Input
-                      aria-label="Filter by client address"
-                      placeholder="Client address"
-                      value={field.state.value}
-                      onBlur={field.handleBlur}
-                      onChange={(e) => field.handleChange(e.target.value)}
-                    />
-                    {error && <FieldError>{error}</FieldError>}
-                  </Field>
-                );
-              }}
-            />
-            <Button type="submit" variant="outline">
-              Filter
-            </Button>
-            {filtered && (
-              <Button type="button" variant="ghost" onClick={clear}>
-                <XIcon aria-hidden="true" className="size-4" />
-                Clear
-              </Button>
-            )}
-          </form>
-        </CardAction>
       </CardHeader>
       <CardContent>
-        {ruleId !== null && (
-          <p className="text-muted-foreground mb-3 text-sm">
-            Showing rule <span className="font-mono">{ruleId}</span> only.
-          </p>
-        )}
+        {/* Above the table and on its left, because it filters this table and
+            nothing else on the card. Outside the loading and empty branches
+            below, or a filter that matches nothing would take away the control
+            needed to undo it. */}
+        <div className="mb-3 flex items-start gap-2">
+          <Field data-invalid={!!draftError} className="w-56">
+            <Input
+              aria-label="Filter by client address"
+              placeholder="Client address"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+            />
+            {draftError && <FieldError>{draftError}</FieldError>}
+          </Field>
+          {draft !== "" && (
+            <Button type="button" variant="ghost" onClick={clear}>
+              <XIcon aria-hidden="true" className="size-4" />
+              Clear
+            </Button>
+          )}
+        </div>
         {clients.isLoading ? (
           <Skeleton className="h-24 w-full" />
         ) : groups.length === 0 ? (
@@ -487,15 +469,7 @@ function EventsCard({
               </TableHeader>
               <TableBody>
                 {visible.map((g) => (
-                  <ClientRow
-                    key={g.client_ip}
-                    group={g}
-                    filters={filters}
-                    onRule={(id) => {
-                      setRuleId(id);
-                      setPage(0);
-                    }}
-                  />
+                  <ClientRow key={g.client_ip} group={g} filters={filters} />
                 ))}
               </TableBody>
             </Table>
@@ -521,14 +495,20 @@ function EventsCard({
 /** How many columns the row spans, so the panel below it lines up. */
 const CLIENT_COLUMNS = 7;
 
+/**
+ * How long typing has to pause before the address filter is applied. The
+ * address is part of the query key, so each change is a request — a GROUP BY
+ * over the whole window — and following every keystroke would fire one per
+ * character typed.
+ */
+const FILTER_DEBOUNCE_MS = 300;
+
 function ClientRow({
   group: g,
   filters,
-  onRule,
 }: {
   group: WafClientGroup;
   filters: WafEventFilters;
-  onRule: (ruleId: number) => void;
 }) {
   const [open, setOpen] = useState(false);
   const panelId = `waf-client-${g.client_ip.replace(/[^a-zA-Z0-9]/g, "-")}`;
@@ -604,10 +584,7 @@ function ClientRow({
             colSpan={CLIENT_COLUMNS}
             className="bg-muted/40 border-brand/40 border-l-2 p-0"
           >
-            <ClientDetections
-              filters={{ ...filters, clientIp: g.client_ip }}
-              onRule={onRule}
-            />
+            <ClientDetections filters={{ ...filters, clientIp: g.client_ip }} />
           </TableCell>
         </TableRow>
       )}
@@ -619,13 +596,7 @@ function ClientRow({
  * One client's detections, rule by rule. Mounted only while the row is open, so
  * a table of fifty clients is one request rather than fifty.
  */
-function ClientDetections({
-  filters,
-  onRule,
-}: {
-  filters: WafEventFilters;
-  onRule: (ruleId: number) => void;
-}) {
+function ClientDetections({ filters }: { filters: WafEventFilters }) {
   const events = useWafEvents(filters);
   const rows = events.data?.pages.flatMap((p) => p.events) ?? [];
   const [viewId, setViewId] = useState<number | null>(null);
@@ -682,12 +653,7 @@ function ClientDetections({
         </TableHeader>
         <TableBody>
           {visible.map((e) => (
-            <DetectionRow
-              key={e.id}
-              event={e}
-              onRule={onRule}
-              onView={() => setViewId(e.id)}
-            />
+            <DetectionRow key={e.id} event={e} onView={() => setViewId(e.id)} />
           ))}
         </TableBody>
       </Table>
@@ -717,11 +683,9 @@ function ClientDetections({
 
 function DetectionRow({
   event: e,
-  onRule,
   onView,
 }: {
   event: WafEvent;
-  onRule: (ruleId: number) => void;
   onView: () => void;
 }) {
   const category = describeCategory(e);
@@ -755,14 +719,12 @@ function DetectionRow({
           to ~905px, so the panel fits a 1280-wide window. */}
       <TableCell className="max-w-[17rem]">
         <div className="flex items-baseline gap-2">
-          <button
-            type="button"
-            className="text-brand-text font-mono text-xs hover:underline"
-            onClick={() => onRule(e.rule_id)}
-            title="Show only this rule"
-          >
+          {/* Plain text, not a control: it reads as an identifier, the way the
+              timestamp does, and the brand colour it used to carry promised a
+              link it never was. */}
+          <span className="text-muted-foreground font-mono text-xs">
             {e.rule_id}
-          </button>
+          </span>
           {/* The message is the one field here with no second home: the panel's
               own title carries it, but only once the row has been opened. */}
           <span className="truncate" title={e.message}>

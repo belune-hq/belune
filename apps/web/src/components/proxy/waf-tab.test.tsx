@@ -493,7 +493,7 @@ describe("WafTab", () => {
     expect(screen.queryByText("unknown")).toBeNull();
   });
 
-  it("filters to one rule from inside a panel", async () => {
+  it("renders the rule id as an identifier, not as a control", async () => {
     clients = [group()];
     events = [event()];
     render(<WafTab />);
@@ -502,12 +502,8 @@ describe("WafTab", () => {
     );
     await waitFor(() => expect(screen.getByText("Severity")).toBeTruthy());
 
-    fireEvent.click(screen.getByRole("button", { name: "941100" }));
-    await waitFor(() =>
-      expect(clientFilters.at(-1)).toMatchObject({ ruleId: 941100 }),
-    );
-    expect(screen.getByText(/Showing rule/)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Clear" })).toBeTruthy();
+    expect(screen.getByText("941100")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "941100" })).toBeNull();
   });
 
   // The summary above already says "no detections in the last 24 hours", with
@@ -527,20 +523,53 @@ describe("WafTab", () => {
     ).toBeTruthy();
   });
 
-  it("filters the grouped table by address", async () => {
+  it("filters the grouped table once typing stops", async () => {
+    clients = [group()];
+    render(<WafTab />);
+    const box = screen.getByLabelText("Filter by client address");
+
+    // Each of these is a complete address, so without the debounce each would
+    // have been a request of its own.
+    for (const value of ["198.51.100.1", "198.51.100.2", "198.51.100.7"]) {
+      fireEvent.change(box, { target: { value } });
+    }
+    expect(
+      clientFilters.filter((f) => (f as { clientIp?: string }).clientIp),
+    ).toHaveLength(0);
+
+    await waitFor(() =>
+      expect(clientFilters.at(-1)).toMatchObject({ clientIp: "198.51.100.7" }),
+    );
+    // Only the address typing settled on was ever asked for.
+    const asked = clientFilters
+      .map((f) => (f as { clientIp?: string }).clientIp)
+      .filter(Boolean);
+    expect([...new Set(asked)]).toEqual(["198.51.100.7"]);
+    expect(screen.getByRole("button", { name: "Clear" })).toBeTruthy();
+  });
+
+  it("clears the filter without waiting for the debounce", async () => {
     clients = [group()];
     render(<WafTab />);
     fireEvent.change(screen.getByLabelText("Filter by client address"), {
       target: { value: "198.51.100.7" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Filter" }));
     await waitFor(() =>
       expect(clientFilters.at(-1)).toMatchObject({ clientIp: "198.51.100.7" }),
     );
-    expect(screen.getByRole("button", { name: "Clear" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(
+      (screen.getByLabelText("Filter by client address") as HTMLInputElement)
+        .value,
+    ).toBe("");
+    await waitFor(() =>
+      expect(clientFilters.at(-1)).toMatchObject({ clientIp: undefined }),
+    );
   });
 
   it("rejects a malformed address before asking the server", async () => {
+    clients = [group()];
     render(<WafTab />);
     fireEvent.change(screen.getByLabelText("Filter by client address"), {
       target: { value: "example.com" },
@@ -548,6 +577,14 @@ describe("WafTab", () => {
     await waitFor(() =>
       expect(screen.getByText("Enter an IPv4 or IPv6 address")).toBeTruthy(),
     );
+    // And it is never sent: half an address matches nothing, so the table holds
+    // what it had rather than emptying between the first octet and the last.
+    expect(
+      clientFilters.filter((f) => (f as { clientIp?: string }).clientIp),
+    ).toHaveLength(0);
+    expect(
+      screen.getByRole("button", { name: "Show detections from 203.0.113.9" }),
+    ).toBeTruthy();
   });
 
   // The list is capped rather than paged, so it has to say when it is not

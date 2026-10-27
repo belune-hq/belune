@@ -93,7 +93,15 @@ export function describeWaf(s: WafStatus): WafDescription {
         };
       case "no_applications":
         return {
-          pill: { label: "Waiting for an application", tone: "neutral" },
+          // Amber, not grey. The operator asked for the WAF and is not getting
+          // it: the switch is on and nothing on this box is being inspected.
+          // Grey reads as a resting state, which is how a gap between what was
+          // asked for and what is running goes unnoticed.
+          // "Waiting for a request" would be the wrong promise: with no
+          // hostname in the route, a request arriving now is not inspected at
+          // all. This state is about having nothing to watch, not about the
+          // absence of traffic.
+          pill: { label: "Nothing to inspect", tone: "attention" },
           // Said in the present tense, and only about now. The first wording
           // ("It starts as soon as an application has a domain") sat directly
           // above a table of detections once the drill application was removed,

@@ -117,7 +117,12 @@ describe("describeWaf", () => {
         state: { active: false, hosts: 0, reason: "no_applications" },
       }),
     );
-    expect(d.pill.label).toBe("Waiting for an application");
+    expect(d.pill.label).toBe("Nothing to inspect");
+    // Never about traffic: a request arriving in this state is not inspected,
+    // so a label implying the WAF is listening would be a false assurance.
+    expect(d.pill.label).not.toMatch(/request/i);
+    // Not neutral: on-but-inspecting-nothing is a gap, not a resting state.
+    expect(d.pill.tone).toBe("attention");
   });
 
   it("surfaces a refusal from Caddy rather than hiding it", () => {

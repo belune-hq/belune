@@ -153,8 +153,10 @@ type wafEventResponse struct {
 
 // wafRequestDetail is the request behind a detection, as far as Belune keeps it.
 // Not the matched payload and not the headers at large — the URI is already
-// redacted at Caddy's encoder and Content-Type is an allowlisted header, which is
-// the whole of what is stored (000073).
+// redacted at Caddy's encoder, and the headers are an allowlist of two:
+// Content-Type, added for this by 000073, and User-Agent, which request_logs has
+// carried since 000001. Both are what this struct hands to the panel, so a claim
+// that only the content type is kept is wrong wherever it is made.
 type wafRequestDetail struct {
 	Method string `json:"method"`
 	Path   string `json:"path"`
@@ -179,8 +181,10 @@ type wafClientGroup struct {
 	// never stored on the detection itself.
 	URLs     int64     `json:"urls"`
 	LastSeen time.Time `json:"last_seen"`
-	// WouldBlock is whether any of these requests tripped the anomaly-score rule,
-	// which is the only signal that separates a real attack from rule noise.
+	// WouldBlock is whether this client tripped the anomaly-score rule anywhere
+	// in the window, which is the only signal that separates a real attack from
+	// rule noise. ⚠️ Deliberately NOT scoped by rule_id: it is a fact about the
+	// client, so filtering the list to one rule must not turn the verdict off.
 	WouldBlock bool `json:"would_block"`
 }
 

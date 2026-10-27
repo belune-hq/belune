@@ -1036,7 +1036,9 @@ export interface WafEvent {
 /**
  * What Belune keeps of the request behind a detection. Deliberately not the
  * matched payload and not the headers at large — the URI arrives already
- * redacted from Caddy's encoder, and Content-Type is the one allowlisted header.
+ * redacted from Caddy's encoder, and the headers are an allowlist of two:
+ * Content-Type and User-Agent. Anything said about this in the UI has to name
+ * both, or it promises less than is kept.
  */
 export interface WafRequestDetail {
   method: string;
@@ -1068,7 +1070,11 @@ export interface WafClientGroup {
    */
   urls: number;
   last_seen: string;
-  /** Whether any of these requests passed the anomaly-score threshold. */
+  /**
+   * Whether this client passed the anomaly-score threshold anywhere in the
+   * window. Unlike the counts beside it, this is not narrowed by a rule filter:
+   * it is a fact about the client, not about the rule being listed.
+   */
   would_block: boolean;
 }
 

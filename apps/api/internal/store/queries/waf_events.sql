@@ -58,13 +58,26 @@ LIMIT sqlc.arg('row_limit');
 --
 -- No outer-joined column is selected, only aggregated, so sqlc has no source
 -- column here to infer the wrong nullability from.
+--
+-- ⚠️ would_block is an EXISTS over the client's own rows and NOT an aggregate
+-- over the ones this call selected, because rule_id filters the rows before
+-- they are aggregated: bool_or(rule_id = 949110) under "WHERE rule_id = 941100"
+-- is false by arithmetic, so every client came back unflagged whenever the
+-- caller filtered by any other rule. The flag answers "was this client ever
+-- over the threshold in this window", which does not change with the rule being
+-- listed, and (client_ip, recorded_at) indexes the lookup.
 SELECT e.client_ip,
        count(*)::bigint                   AS events,
        count(DISTINCT e.tx_id)::bigint    AS requests,
        count(DISTINCT e.rule_id)::bigint  AS rules,
        count(DISTINCT req.path)::bigint   AS urls,
        max(e.recorded_at)::timestamptz    AS last_seen,
-       COALESCE(bool_or(e.rule_id = sqlc.arg('anomaly_rule')::int), false)::boolean AS would_block
+       EXISTS (
+           SELECT 1 FROM waf_events a
+           WHERE a.client_ip = e.client_ip
+             AND a.recorded_at >= sqlc.arg('since')
+             AND a.rule_id = sqlc.arg('anomaly_rule')::int
+       )::boolean AS would_block
 FROM waf_events e
 LEFT JOIN LATERAL (
     SELECT r.path FROM request_logs r

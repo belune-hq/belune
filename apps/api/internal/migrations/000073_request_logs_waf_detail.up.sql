@@ -26,10 +26,12 @@ ALTER TABLE request_logs
     -- no row to find at all, which the API reports as absent detail rather than as
     -- an error.
     ADD COLUMN request_uuid TEXT,
-    -- The one allowlisted request header worth keeping: it is what makes 920420
-    -- legible. Headers are an allowlist, never a denylist — Caddy redacts Cookie
-    -- and Authorization for us, but not a custom X-Api-Token an application
-    -- invents, so nothing is stored unless it is named here.
+    -- The second allowlisted request header, after user_agent, which this table
+    -- has carried since 000001: it is what makes 920420 legible. Headers are an
+    -- allowlist, never a denylist — Caddy redacts Cookie and Authorization for
+    -- us, but not a custom X-Api-Token an application invents, so nothing is
+    -- stored unless it is named here. Two are named; anything telling the
+    -- operator otherwise is understating what is kept.
     ADD COLUMN content_type TEXT;
 
 -- Partial: only WAF-inspected requests carry a uuid, so this indexes a small

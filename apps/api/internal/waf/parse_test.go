@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -324,4 +325,46 @@ func TestMatchedTarget_IsBoundedWhenTheRequestForgesIt(t *testing.T) {
 	assert.NotContains(t, ev.MatchedTarget, " ")
 	// Whatever it read, it did not read the value at the end.
 	assert.NotContains(t, ev.MatchedTarget, ": v")
+	// ⚠️ 500 a's defeat the pattern's own {1,80} and the match falls through to
+	// the real ARGS:q, so this case never reaches the length cut. The one that
+	// does is below, and it is the one that was broken.
+	assert.Equal(t, "ARGS:q", ev.MatchedTarget)
+}
+
+// What the stored name must satisfy is not "short" but "a value Postgres will
+// take". The rows are inserted with COPY, which fails whole, so a single name
+// carrying a split rune or a NUL discards its entire batch of detections — and
+// the request chooses that name. An unauthenticated GET with a 60-character
+// multi-byte parameter name was enough: 60 runes is inside the pattern's limit
+// and 120 bytes is outside the column's, and the old cut landed mid-rune.
+func TestMatchedTarget_IsAlwaysStorable(t *testing.T) {
+	cases := []struct {
+		name string
+		key  string
+	}{
+		{"multi-byte name longer than the cap", strings.Repeat("é", 60)},
+		{"multi-byte name just over the cap", strings.Repeat("ü", 49)},
+		{"four-byte runes", strings.Repeat("😀", 30)},
+		{"a NUL smuggled into the name", "a\x00b"},
+		{"control characters", "a\x01\x02b"},
+		{"mixed, ending on a multi-byte rune", strings.Repeat("aé", 40)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			data := `Matched Data: X found within ARGS:` + tc.key + `: payload`
+			ev, out := ParseCaddyLine(realLine("x", data, "/", goodID))
+			require.Equal(t, Matched, out)
+
+			got := ev.MatchedTarget
+			assert.True(t, utf8.ValidString(got), "Postgres refuses invalid UTF-8: %q", got)
+			assert.NotContains(t, got, "\x00", "Postgres refuses NUL in a text column")
+			assert.LessOrEqual(t, len(got), maxTarget, "bytes, not runes: the column is bounded in bytes")
+			for _, r := range got {
+				assert.True(t, r >= 0x20 && r < 0x7f, "stored name is printable ASCII, got %q", r)
+			}
+			// Still a name, and still not the value behind it.
+			assert.True(t, strings.HasPrefix(got, "ARGS:"))
+			assert.NotContains(t, got, "payload")
+		})
+	}
 }

@@ -211,6 +211,10 @@ Four independent retention windows, each a dropdown of presets:
 Logs are pruned daily and host metrics are pruned hourly to whatever window is selected.
 </Callout>
 
+<Callout type="warn" title="Request Logs After 0.2.5">
+**Upgrading to 0.2.5 raises the request-log window from 3 days to 7.** It only moves installs still on the original default — a window you chose yourself is left alone. Request logs are the detail behind a WAF detection, and detections are kept for 7 days, so at 3 the evidence expired four days before the detection it explained. Nothing is deleted by the change, but this is the highest-volume table and it has no row cap, so expect it to grow. Set it back here if disk is tight.
+</Callout>
+
 ### Email (SMTP)
 
 <Screenshot name="server-smtp" alt="The Email (SMTP) configuration card." />

@@ -97,8 +97,9 @@ const AnomalySummaryRule = 949110
 // maxMessage bounds a stored rule message; CRS messages are far shorter.
 const maxMessage = 120
 
-// maxTarget bounds a stored variable name. A cookie or parameter name is
-// client-supplied, so it is bounded here as well as by the pattern.
+// maxTarget bounds a stored variable name, in bytes. A cookie or parameter name
+// is client-supplied, so it is bounded here as well as by the pattern — see
+// asciiBounded for why the pattern's own limit is not enough.
 const maxTarget = 100
 
 // fixedFields is the order Coraza writes the block that follows the free-text
@@ -257,10 +258,11 @@ func matchedTarget(data string) string {
 	if m[2] != "" {
 		target += ":" + m[2]
 	}
-	if len(target) > maxTarget {
-		target = target[:maxTarget]
-	}
-	return target
+	// The pattern bounds the shape, not the bytes: the key group admits any rune
+	// that is neither a space nor a colon, so a parameter name the request chose
+	// can be multi-byte, or carry a NUL that survived the scanner's Unquote. Both
+	// are stored verbatim without this, and neither is a value Postgres accepts.
+	return asciiBounded(target, maxTarget)
 }
 
 // splitTxID separates "<host>_<uuid>". Coraza falls back to a random id of its own
@@ -292,9 +294,24 @@ func staticMessage(msg string) string {
 	if i := strings.Index(msg, " ("); i >= 0 {
 		msg = msg[:i]
 	}
+	return strings.TrimSpace(asciiBounded(msg, maxMessage))
+}
+
+// asciiBounded renders s as printable ASCII within max bytes. Both halves are
+// load-bearing for anything client-supplied that is then stored.
+//
+// ⚠️⚠️ The cap is checked BEFORE a rune is written, never by slicing after. A
+// Go regexp quantifier counts RUNES while a slice index counts BYTES, so a
+// pattern that admits 80 characters admits up to 320 bytes, and cutting that at
+// a byte offset ends mid-rune. Postgres rejects invalid UTF-8 and NUL outright,
+// and these rows are inserted with COPY — which fails whole, so one such value
+// takes its entire batch of detections with it, at the moment the detections
+// are the evidence. Filtering to ASCII is what bounds the charset; breaking
+// before the write is what keeps the length cut on a character boundary.
+func asciiBounded(s string, max int) string {
 	var b strings.Builder
-	for _, r := range msg {
-		if b.Len() >= maxMessage {
+	for _, r := range s {
+		if b.Len() >= max {
 			break
 		}
 		if r >= 0x20 && r < 0x7f {
@@ -303,7 +320,7 @@ func staticMessage(msg string) string {
 			b.WriteByte('?')
 		}
 	}
-	return strings.TrimSpace(b.String())
+	return b.String()
 }
 
 // scanner consumes a string from the front.

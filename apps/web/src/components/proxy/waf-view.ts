@@ -156,8 +156,8 @@ export const WAF_ENABLE_POINTS = [
   "Nothing is blocked. The rules only record what they would have blocked.",
   "It inspects requests to your applications, not to this dashboard.",
   "Request bodies over 128 KiB, or of unknown length, are not inspected, so uploads are never touched. A payload inside one goes unseen.",
-  "The rule, severity, client address and host are stored. The URL, method and content type are shown from the request log beside them, for as long as that keeps them.",
-  "The matched text is never stored, and neither are the request body or headers beyond its content type.",
+  "The rule, its severity and class, the client address, the host and the name of the field the rule matched in are stored — the name only, never what was in it. The URL, method, content type and user agent are shown from the request log beside them, for as long as that keeps them.",
+  "The matched text is never stored, and neither is the request body. Of the request's headers, exactly two are kept: Content-Type and User-Agent.",
   "One application's false positives share this log with every other application's.",
 ] as const;
 

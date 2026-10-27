@@ -5,6 +5,8 @@ import {
   BrickWallFireIcon,
   ListCheckIcon,
   ShieldXIcon,
+  Trash2Icon,
+  Undo2Icon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { CROWDSEC_SHIELD } from "@/components/proxy/crowdsec-shield";
@@ -30,6 +32,7 @@ import {
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldError } from "@/components/ui/field";
+import { IconAction } from "@/components/ui/icon-action";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -450,11 +453,12 @@ function BanRow({ decision: d }: { decision: CrowdSecDecision }) {
       >
         {timeLeft(d.expires_at)}
       </TableCell>
-      <TableCell>
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label={`Lift the ban on ${d.value}`}
+      <TableCell className="text-right">
+        {/* Not destructive: lifting a ban restores access rather than removing
+            anything the operator would miss. The red one in this tab is the
+            allowlist's Remove, which takes protection away. */}
+        <IconAction
+          label={`Lift the ban on ${d.value}`}
           disabled={lift.isPending}
           onClick={() =>
             toast.promise(lift.mutateAsync(d.value), {
@@ -464,8 +468,8 @@ function BanRow({ decision: d }: { decision: CrowdSecDecision }) {
             })
           }
         >
-          Lift
-        </Button>
+          <Undo2Icon aria-hidden="true" className="size-4" />
+        </IconAction>
       </TableCell>
     </TableRow>
   );
@@ -652,11 +656,10 @@ function AllowRow({
       <TableCell className="text-muted-foreground whitespace-nowrap">
         {i.expires_at ? timeLeft(i.expires_at) : "never"}
       </TableCell>
-      <TableCell>
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label={`Remove ${i.value} from the allowlist`}
+      <TableCell className="text-right">
+        <IconAction
+          label={`Remove ${i.value} from the allowlist`}
+          destructive
           disabled={remove.isPending}
           onClick={() =>
             toast.promise(remove.mutateAsync(i.value), {
@@ -666,8 +669,8 @@ function AllowRow({
             })
           }
         >
-          Remove
-        </Button>
+          <Trash2Icon aria-hidden="true" className="size-4" />
+        </IconAction>
       </TableCell>
     </TableRow>
   );

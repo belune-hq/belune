@@ -494,7 +494,11 @@ function AllowlistCard({ status }: { status: CrowdSecStatus }) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <ListCheckIcon aria-hidden="true" className="size-4" />
-          Never banned
+          {/* The API's own word: the endpoint is /crowdsec/allowlist and the
+              published reference says "List CrowdSec Allowlist". "Never banned"
+              described it accurately but matched nothing an operator reading
+              the API would search for. */}
+          Allowlist
         </CardTitle>
         <CardDescription>
           Addresses CrowdSec will not ban, and a ban already on one is lifted

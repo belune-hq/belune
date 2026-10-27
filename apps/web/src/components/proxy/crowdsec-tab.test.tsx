@@ -207,7 +207,7 @@ describe("CrowdSecTab", () => {
     render(<CrowdSecTab />);
     expect(screen.getByText("Local API down")).toBeTruthy();
     expect(screen.queryByText("Bans")).toBeNull();
-    expect(screen.queryByText("Never banned")).toBeNull();
+    expect(screen.queryByText("Allowlist")).toBeNull();
     // The way back is always on the page.
     expect(screen.getByText("If a ban locks you out")).toBeTruthy();
   });

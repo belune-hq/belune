@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import {
+  BrickWallShieldIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   EyeIcon,
-  ShieldCheckIcon,
-  ShieldIcon,
+  ScaleIcon,
+  SearchAlertIcon,
   XIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -133,7 +134,6 @@ function WafCard({
   const setEnabled = useSetWafEnabled();
   const [confirming, setConfirming] = useState(false);
   const d = status ? describeWaf(status) : null;
-  const Icon = status?.state.active ? ShieldCheckIcon : ShieldIcon;
 
   const apply = (enabled: boolean) =>
     toast.promise(setEnabled.mutateAsync(enabled), {
@@ -146,7 +146,7 @@ function WafCard({
     <Card>
       <CardHeader>
         <CardTitle className="flex flex-wrap items-center gap-2">
-          <Icon aria-hidden="true" className="size-4" />
+          <BrickWallShieldIcon aria-hidden="true" className="size-4" />
           Web Application Firewall
           {d && (
             <StatusPill
@@ -298,7 +298,10 @@ function Summary({
               other callers already consume. */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Top rules</CardTitle>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <ScaleIcon aria-hidden="true" className="size-4" />
+                Top rules
+              </CardTitle>
               <CardDescription>
                 The rules that matched most. A noisy one is usually a false
                 positive, not an attack.
@@ -406,7 +409,10 @@ function EventsCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Detections</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <SearchAlertIcon aria-hidden="true" className="size-4" />
+          Detections
+        </CardTitle>
         <CardDescription>
           One row per client, over {windowPhrase(windowKey)}. A single request
           can trip several rules, so hits outnumber requests. The matched

@@ -3,9 +3,14 @@ import type { WafStatus } from "@/lib/types";
 import {
   ANOMALY_SUMMARY_RULE,
   categoryLabel,
+  describeCategory,
   describeEventVerdict,
   describeRecorder,
+  describeClientList,
+  describeDetectionRequest,
   describeRequestDetail,
+  describeUrlCount,
+  detectionHeaders,
   describeWaf,
   eventHost,
   isIpAddress,
@@ -112,7 +117,12 @@ describe("describeWaf", () => {
         state: { active: false, hosts: 0, reason: "no_applications" },
       }),
     );
-    expect(d.pill.label).toBe("Waiting for an application");
+    expect(d.pill.label).toBe("Nothing to inspect");
+    // Never about traffic: a request arriving in this state is not inspected,
+    // so a label implying the WAF is listening would be a false assurance.
+    expect(d.pill.label).not.toMatch(/request/i);
+    // Not neutral: on-but-inspecting-nothing is a gap, not a resting state.
+    expect(d.pill.tone).toBe("attention");
   });
 
   it("surfaces a refusal from Caddy rather than hiding it", () => {
@@ -348,5 +358,172 @@ describe("describeRequestDetail", () => {
     expect(statusTone(500)).toBe("error");
     expect(statusTone(403)).toBe("attention");
     expect(statusTone(200)).toBe("neutral");
+  });
+});
+
+describe("describeUrlCount", () => {
+  // A detection stores no URI of its own, so this count comes from the request
+  // log and falls to zero once that is swept. A bare "0" beside three requests
+  // reads as a bug in the page rather than as a retention window.
+  it("names the gap instead of showing a zero", () => {
+    const none = describeUrlCount(0, 3);
+    expect(none.text).toBe("—");
+    expect(none.title).toContain("any of these requests");
+    expect(none.title).toContain("retention");
+    expect(none.title).not.toContain("No request on record");
+  });
+
+  it("says one request, not any of these requests, when there was one", () => {
+    expect(describeUrlCount(0, 1).title).toContain("this request");
+  });
+
+  // The honest reading of a partial count: some of these requests still have
+  // their URL, the rest never will again.
+  it("calls a count short of the requests a floor", () => {
+    const partial = describeUrlCount(1, 3);
+    expect(partial.text).toBe("1");
+    expect(partial.title).toContain("At least 1 of 3");
+    expect(partial.title).toContain("retention");
+    // One of the three IS on record, so the sentence must not open by denying it.
+    expect(partial.title).not.toContain("No request on record");
+  });
+
+  it("adds nothing to a count that covers every request", () => {
+    const full = describeUrlCount(3, 3);
+    expect(full.text).toBe("3");
+    expect(full.title).toBeNull();
+  });
+});
+
+describe("describeDetectionRequest", () => {
+  const request = {
+    method: "POST",
+    path: "/checkout?step=2",
+    status: 500,
+    content_type: "text/plain",
+    user_agent: "curl/8.7.1",
+  };
+
+  it("reads as method, status and host", () => {
+    const r = describeDetectionRequest({ host: "shop.example.com", request });
+    expect(r.method).toBe("POST");
+    expect(r.status).toBe(500);
+    expect(r.host).toBe("shop.example.com");
+    expect(r.kept).toBe(true);
+  });
+
+  // The column deliberately has no path: a query string carrying an injection
+  // attempt runs past any width, so it belongs in the panel that shows it whole.
+  it("leaves the path to the detail panel", () => {
+    const r = describeDetectionRequest({ host: "shop.example.com", request });
+    expect(JSON.stringify(r)).not.toContain("/checkout");
+  });
+
+  // The host outlives the request log, so a swept one still names the
+  // application that was targeted rather than leaving the cell blank.
+  it("keeps the host when the request behind it is gone", () => {
+    const r = describeDetectionRequest({
+      host: "shop.example.com",
+      request: null,
+    });
+    expect(r.host).toBe("shop.example.com");
+    expect(r.method).toBeNull();
+    expect(r.status).toBeNull();
+    expect(r.kept).toBe(false);
+    expect(r.title).toContain("retention");
+  });
+
+  it("does not render an unattributed detection as blank", () => {
+    expect(describeDetectionRequest({ host: null, request: null }).host).toBe(
+      "unknown host",
+    );
+  });
+});
+
+describe("describeClientList", () => {
+  // The list is capped rather than paged, so silence would turn a
+  // thousand-client scan into a page that looks like fifty clients.
+  it("says nothing when the whole list is on screen", () => {
+    expect(describeClientList(12, false, "24h")).toBeNull();
+  });
+
+  it("says what is missing and how to reach it", () => {
+    const text = describeClientList(50, true, "24h")!;
+    expect(text).toContain("50 clients");
+    expect(text).toContain("the last 24 hours");
+    expect(text).toContain("More matched");
+    expect(text).toContain("narrow the period");
+  });
+});
+
+describe("detectionHeaders", () => {
+  const detail = {
+    method: "POST",
+    path: "/checkout?step=2",
+    status: 500,
+    content_type: "text/plain",
+    user_agent: "curl/8.7.1",
+  };
+
+  // Content-Type first: it is what tells a benign text/plain POST from an
+  // attack when 920420 fires, so it should not be read second.
+  it("leads with the header that decides a 920420 row", () => {
+    expect(detectionHeaders(detail).map((h) => h.name)).toEqual([
+      "Content-Type",
+      "User-Agent",
+    ]);
+    expect(detectionHeaders(detail)[0].value).toBe("text/plain");
+  });
+
+  it("omits a header that was not sent rather than listing it empty", () => {
+    expect(
+      detectionHeaders({ ...detail, content_type: null }).map((h) => h.name),
+    ).toEqual(["User-Agent"]);
+    expect(
+      detectionHeaders({ ...detail, content_type: null, user_agent: null }),
+    ).toEqual([]);
+  });
+
+  // A detection outlives its request log, and the panel renders the empty list
+  // as a sentence rather than as a header section that looks broken.
+  it("has nothing to show for a detection whose request is gone", () => {
+    expect(detectionHeaders(null)).toEqual([]);
+  });
+});
+
+describe("describeCategory", () => {
+  it("shows the tag as the rule set names it", () => {
+    expect(
+      describeCategory({ rule_id: 941100, category: "attack-xss" }),
+    ).toEqual({
+      label: "xss",
+      title: "The rule set's own classification: attack-xss.",
+    });
+  });
+
+  // The one class whose name misleads: it is about the shape of a request, not
+  // its contents, and 920420 reports `critical` exactly like a SQLi match does.
+  it("says what the protocol class actually means", () => {
+    const c = describeCategory({
+      rule_id: 920420,
+      category: "attack-protocol",
+    });
+    expect(c.label).toBe("protocol");
+    expect(c.title).toContain("not an attack payload");
+    expect(c.title).toContain("920420");
+  });
+
+  // A dash in a column reads as missing data in a way an absent inline badge
+  // never did, so the empty cell carries the reason.
+  it("names the anomaly summary as the reason its cell is empty", () => {
+    const c = describeCategory({ rule_id: 949110, category: null });
+    expect(c.label).toBeNull();
+    expect(c.title).toContain("verdict on the whole request");
+  });
+
+  it("falls back to a plain reason for any other uncategorised rule", () => {
+    const c = describeCategory({ rule_id: 913100, category: null });
+    expect(c.label).toBeNull();
+    expect(c.title).toBe("This rule declares no attack class.");
   });
 });

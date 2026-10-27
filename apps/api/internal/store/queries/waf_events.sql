@@ -13,6 +13,10 @@ FROM waf_events
 WHERE (sqlc.narg('before_id')::bigint IS NULL OR id < sqlc.narg('before_id')::bigint)
   AND (sqlc.narg('client_ip')::inet IS NULL OR client_ip = sqlc.narg('client_ip')::inet)
   AND (sqlc.narg('rule_id')::int IS NULL OR rule_id = sqlc.narg('rule_id')::int)
+  -- NULL means every event still kept, which is what every caller got before the
+  -- list could be scoped. It is set when the list sits under a windowed count, so
+  -- that expanding a client showing three hits cannot list forty.
+  AND (sqlc.narg('since')::timestamptz IS NULL OR recorded_at >= sqlc.narg('since')::timestamptz)
 ORDER BY id DESC
 LIMIT sqlc.arg('row_limit');
 
@@ -38,6 +42,43 @@ FROM waf_events
 WHERE recorded_at >= sqlc.arg('since')
 GROUP BY client_ip
 ORDER BY events DESC, client_ip
+LIMIT sqlc.arg('row_limit');
+
+-- name: WAFClientSummary :many
+-- One row per client that tripped a rule in the window: how many rules it
+-- tripped, across how many requests and URLs, and whether any one of those
+-- requests would have been refused. This is the shape the detections table is
+-- read in — a thousand rows of one scanner are one line here.
+--
+-- The URL count comes from the request log, through the uuid Caddy writes into
+-- the access entry and the transaction id alike (000073), via LATERAL ... LIMIT 1
+-- and NOT a plain join: nothing enforces one request_logs row per uuid, so a
+-- second matching row would multiply count(*) and report twice the hits that
+-- happened. Newest row wins, as in ListRequestDetailsByUUID.
+--
+-- No outer-joined column is selected, only aggregated, so sqlc has no source
+-- column here to infer the wrong nullability from.
+SELECT e.client_ip,
+       count(*)::bigint                   AS events,
+       count(DISTINCT e.tx_id)::bigint    AS requests,
+       count(DISTINCT e.rule_id)::bigint  AS rules,
+       count(DISTINCT req.path)::bigint   AS urls,
+       max(e.recorded_at)::timestamptz    AS last_seen,
+       COALESCE(bool_or(e.rule_id = sqlc.arg('anomaly_rule')::int), false)::boolean AS would_block
+FROM waf_events e
+LEFT JOIN LATERAL (
+    SELECT r.path FROM request_logs r
+    WHERE r.request_uuid = e.tx_id
+    ORDER BY r.recorded_at DESC
+    LIMIT 1
+) req ON true
+WHERE e.recorded_at >= sqlc.arg('since')
+  AND (sqlc.narg('client_ip')::inet IS NULL OR e.client_ip = sqlc.narg('client_ip')::inet)
+  AND (sqlc.narg('rule_id')::int IS NULL OR e.rule_id = sqlc.narg('rule_id')::int)
+GROUP BY e.client_ip
+-- Loudest first. Recency is the window's job, not the sort's: a one-hit scanner
+-- from a minute ago must not push a sustained attack off a capped list.
+ORDER BY events DESC, last_seen DESC, e.client_ip
 LIMIT sqlc.arg('row_limit');
 
 -- name: CountWAFEvents :one

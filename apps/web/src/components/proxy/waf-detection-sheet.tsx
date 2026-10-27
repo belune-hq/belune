@@ -1,0 +1,181 @@
+import type { ReactNode } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import {
+  BADGE_VARIANT,
+  categoryLabel,
+  describeEventVerdict,
+  DETECTION_HEADERS_ALLOWLIST,
+  DETECTION_PAYLOAD_ABSENT,
+  detectionHeaders,
+  eventHost,
+  REQUEST_DETAIL_ABSENT,
+  statusTone,
+} from "@/components/proxy/waf-view";
+import { formatDateTime, formatRelativeTime } from "@/lib/utils/format";
+import type { WafEvent } from "@/lib/types";
+
+/**
+ * Everything Belune kept about one detection.
+ *
+ * A panel rather than more columns because the URL is the long field and the
+ * one that matters: a query string carrying an injection attempt runs past any
+ * column width, and truncating it is exactly the part the operator needs to
+ * read to judge the detection. The table stays scannable; this is where a row
+ * is judged.
+ */
+export function WafDetectionSheet({
+  event,
+  open,
+  onOpenChange,
+}: {
+  event: WafEvent;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const category = categoryLabel(event.category);
+  const verdict = describeEventVerdict(event);
+  const headers = detectionHeaders(event.request);
+  const status =
+    event.request && event.request.status >= 100 && event.request.status <= 599
+      ? event.request.status
+      : null;
+  const relative = formatRelativeTime(event.recorded_at);
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="sm:max-w-lg">
+        <SheetHeader>
+          {/* The rule's message is the human reading of the detection; the id is
+              what an operator searches the CRS for, so both are here. */}
+          <SheetTitle className="pr-8">
+            {event.message || `Rule ${event.rule_id}`}
+          </SheetTitle>
+          <SheetDescription>
+            Rule {event.rule_id}
+            {category && ` · ${category}`}
+          </SheetDescription>
+        </SheetHeader>
+
+        {/* One badge. For every rule but the anomaly summary the verdict label
+            IS the severity, so a severity badge beside it said the same word
+            twice; for that one rule the verdict is the truer of the two, since
+            Coraza reports its severity as "unknown". */}
+        <div>
+          <Badge
+            variant={
+              verdict.strong ? "destructive-solid" : BADGE_VARIANT[verdict.tone]
+            }
+            title={verdict.title ?? undefined}
+          >
+            {verdict.label}
+          </Badge>
+        </div>
+
+        <dl className="flex flex-col gap-3">
+          <DetailRow label="Date">
+            <span className="font-mono text-xs tabular-nums">
+              {formatDateTime(event.recorded_at)}
+            </span>
+            <span className="text-muted-foreground ml-2 text-xs">
+              {relative === "now" ? "just now" : `${relative} ago`}
+            </span>
+          </DetailRow>
+          <DetailRow label="Client">
+            <span className="font-mono text-xs">{event.client_ip}</span>
+          </DetailRow>
+          <DetailRow label="Host">
+            <span className="font-mono text-xs">{eventHost(event)}</span>
+          </DetailRow>
+          {event.request ? (
+            <>
+              <DetailRow label="Request">
+                <span className="font-mono text-xs">
+                  {event.request.method}
+                </span>
+                {status !== null && (
+                  <Badge
+                    variant={BADGE_VARIANT[statusTone(status)]}
+                    className="ml-2"
+                  >
+                    {status}
+                  </Badge>
+                )}
+              </DetailRow>
+              <DetailRow label="URL">
+                {/* break-all, not truncate: the query string is the evidence,
+                    and this panel exists because the table had to cut it. */}
+                <span className="font-mono text-xs break-all">
+                  {event.request.path}
+                </span>
+              </DetailRow>
+            </>
+          ) : (
+            <DetailRow label="URL">
+              <span className="text-muted-foreground text-xs italic">
+                {REQUEST_DETAIL_ABSENT}
+              </span>
+            </DetailRow>
+          )}
+        </dl>
+
+        <Separator />
+
+        <section className="flex flex-col gap-2">
+          <h3 className="text-sm font-medium">Headers</h3>
+          <p className="text-muted-foreground text-xs">
+            {DETECTION_HEADERS_ALLOWLIST}
+          </p>
+          {headers.length > 0 ? (
+            <dl className="flex flex-col gap-2">
+              {headers.map((h) => (
+                <DetailRow key={h.name} label={h.name}>
+                  <span className="font-mono text-xs break-all">{h.value}</span>
+                </DetailRow>
+              ))}
+            </dl>
+          ) : (
+            <p className="text-muted-foreground text-xs italic">
+              {/* Two reasons, and they are different: a GET simply has no
+                  content type, while a missing request log means the headers
+                  were swept with it. */}
+              {event.request
+                ? "Neither header was present on this request."
+                : "They went with the request log."}
+            </p>
+          )}
+        </section>
+
+        {/* Flowing under the headers, not pinned to the bottom of the panel:
+            most detections fill a third of it, and a note floating 500px below
+            the last line reads as page furniture rather than as part of this
+            record. Seen in a browser. */}
+        <p className="text-muted-foreground text-xs">
+          {DETECTION_PAYLOAD_ABSENT}
+        </p>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function DetailRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="grid grid-cols-[6rem_1fr] items-baseline gap-x-3">
+      <dt className="text-muted-foreground text-xs">{label}</dt>
+      <dd className="min-w-0">{children}</dd>
+    </div>
+  );
+}

@@ -3562,6 +3562,84 @@
         ]
       }
     },
+    "/api/maintenance/proxy/waf/clients": {
+      "get": {
+        "operationId": "ListWAFClients",
+        "summary": "List WAF Clients",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "Maintenance (Admin)"
+        ],
+        "x-belune-order": 14,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "parameters": [
+          {
+            "name": "client_ip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "rule_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "window",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/wafClientsResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "read": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/maintenance/proxy/waf/events": {
       "get": {
         "operationId": "ListWAFEvents",
@@ -3601,6 +3679,14 @@
           },
           {
             "name": "rule_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "window",
             "in": "query",
             "required": false,
             "schema": {
@@ -21299,6 +21385,50 @@
             "type": "string"
           },
           "status": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "wafClientGroup": {
+        "properties": {
+          "client_ip": {
+            "type": "string"
+          },
+          "events": {
+            "type": "integer"
+          },
+          "last_seen": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "requests": {
+            "type": "integer"
+          },
+          "rules": {
+            "type": "integer"
+          },
+          "urls": {
+            "type": "integer"
+          },
+          "would_block": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "wafClientsResponse": {
+        "properties": {
+          "clients": {
+            "items": {
+              "$ref": "#/components/schemas/wafClientGroup"
+            },
+            "type": "array"
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "window": {
             "type": "string"
           }
         },

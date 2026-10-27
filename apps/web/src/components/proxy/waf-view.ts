@@ -8,6 +8,17 @@ import type {
   WafWindow,
 } from "@/lib/types";
 
+/**
+ * Tone to badge variant. Lives here rather than in a component so the table and
+ * the detection panel cannot drift into showing the same severity two ways.
+ */
+export const BADGE_VARIANT = {
+  error: "destructive",
+  attention: "secondary",
+  neutral: "outline",
+  ready: "light",
+} as const;
+
 export type WafTone = "neutral" | "attention" | "ready" | "error";
 
 export interface WafDescription {
@@ -82,7 +93,15 @@ export function describeWaf(s: WafStatus): WafDescription {
         };
       case "no_applications":
         return {
-          pill: { label: "Waiting for an application", tone: "neutral" },
+          // Amber, not grey. The operator asked for the WAF and is not getting
+          // it: the switch is on and nothing on this box is being inspected.
+          // Grey reads as a resting state, which is how a gap between what was
+          // asked for and what is running goes unnoticed.
+          // "Waiting for a request" would be the wrong promise: with no
+          // hostname in the route, a request arriving now is not inspected at
+          // all. This state is about having nothing to watch, not about the
+          // absence of traffic.
+          pill: { label: "Nothing to inspect", tone: "attention" },
           // Said in the present tense, and only about now. The first wording
           // ("It starts as soon as an application has a domain") sat directly
           // above a table of detections once the drill application was removed,
@@ -257,7 +276,13 @@ export function eventHost(e: Pick<WafEvent, "host">): string {
   return e.host ?? "unknown host";
 }
 
-/** "attack-xss" → "XSS"-style label; anything else is shown as it is. */
+/**
+ * "attack-xss" → "xss". Lowercase and verbatim on purpose: these are the rule
+ * set's own tag names, they are what the autoban policy's checkboxes are
+ * labelled with (crowdsec-tab), and what a ban reason records in the audit log
+ * ("belune-waf: attack-sqli: 14 requests in 10m"). Prettifying them here would
+ * make the WAF tab name the same thing differently from the tab that acts on it.
+ */
 export function categoryLabel(category: string | null): string | null {
   if (!category) return null;
   return category.replace(/^attack-/, "");
@@ -276,8 +301,10 @@ export function isIpAddress(v: string): boolean {
  * leaving a blank cell: the detection is not broken and nothing failed, the
  * evidence simply has its own retention.
  */
-export const REQUEST_DETAIL_ABSENT =
-  "No request on record. Request logs have their own retention, so a detection outlives its request once that window is shorter — and a detection recorded before Belune kept request detail never had one.";
+export const REQUEST_DETAIL_RETENTION =
+  "Request logs have their own retention, so a detection outlives its request once that window is shorter — and a detection recorded before Belune kept request detail never had one.";
+
+export const REQUEST_DETAIL_ABSENT = `No request on record. ${REQUEST_DETAIL_RETENTION}`;
 
 export interface RequestSummary {
   /** The request as one line: "POST /checkout?step=2". */
@@ -308,9 +335,203 @@ export function describeRequestDetail(r: WafRequestDetail): RequestSummary {
   };
 }
 
+/**
+ * The flag on a client that tripped the anomaly-score rule at least once.
+ *
+ * It is the only column that separates an attack from rule noise: a client with
+ * four hundred detections and no flag is usually one benign application posting
+ * the wrong content type, while one flagged request is a request the CRS would
+ * have refused outright.
+ */
+export const CLIENT_WOULD_BLOCK =
+  "At least one request from this client passed the anomaly-score threshold, so a blocking WAF would have refused it. Nothing was blocked.";
+
+export interface UrlCount {
+  /** What the cell says: a number, or a dash when there is nothing to count. */
+  text: string;
+  /** Why, when the number is not the whole story. Null when it is. */
+  title: string | null;
+}
+
+/**
+ * The URLs cell.
+ *
+ * A detection stores no URI of its own — the URL is read from the request log
+ * through the uuid both carry — so this count is a floor, and falls to zero for
+ * detections older than the request logs behind them. A bare "0" beside "12
+ * requests" reads as a bug in the page, so the gap is named instead.
+ */
+export function describeUrlCount(urls: number, requests: number): UrlCount {
+  if (urls === 0) {
+    return {
+      text: "—",
+      title:
+        requests > 0
+          ? `No URL on record for ${requests === 1 ? "this request" : "any of these requests"}. ${REQUEST_DETAIL_RETENTION}`
+          : REQUEST_DETAIL_ABSENT,
+    };
+  }
+  if (urls < requests) {
+    // The retention clause alone, not REQUEST_DETAIL_ABSENT: that one opens
+    // "No request on record", which flatly contradicts the "at least 3 of 7"
+    // this sentence just said. Found by reading the hover in a browser.
+    return {
+      text: urls.toLocaleString(),
+      title: `At least ${urls.toLocaleString()} of ${requests.toLocaleString()} requests still have their URL on record; the rest have been swept. ${REQUEST_DETAIL_RETENTION}`,
+    };
+  }
+  return { text: urls.toLocaleString(), title: null };
+}
+
+/**
+ * What the grouped table is showing, in words, including when it is not showing
+ * everything. The list is capped rather than paged: under a distributed scan the
+ * client count runs to thousands and the loudest are the actionable set, so the
+ * way through is a narrower period or a filter, not a next page.
+ */
+export function describeClientList(
+  shown: number,
+  hasMore: boolean,
+  window: WafWindow,
+): string | null {
+  if (!hasMore) return null;
+  return `Showing the ${shown.toLocaleString()} clients with the most detections in ${windowPhrase(window)}. More matched — narrow the period, or filter by address.`;
+}
+
+export interface DetectionRequest {
+  /** The method, or null when the request behind this detection is gone. */
+  method: string | null;
+  /** The status, or null when there is none worth showing. */
+  status: number | null;
+  /** The host. Always present: it comes from the detection, not the request log. */
+  host: string;
+  title: string;
+  /** Whether the request behind the detection is on record at all. */
+  kept: boolean;
+}
+
+/**
+ * The request a detection was for, as the table shows it: method, status, host.
+ *
+ * No path. The path is the long field — a query string carrying an injection
+ * attempt runs past any column width — so it lives in the detail panel, which
+ * can show it whole, and the column keeps what can be read at a glance. The
+ * distinct-path count is still on the client row above.
+ *
+ * The host comes from the detection and the method and status from the request
+ * log, so the host survives a sweep they do not. Showing it alone is better than
+ * an empty cell: it still names the application that was targeted.
+ */
+export function describeDetectionRequest(
+  e: Pick<WafEvent, "host" | "request">,
+): DetectionRequest {
+  const host = eventHost(e);
+  if (!e.request) {
+    return {
+      method: null,
+      status: null,
+      host,
+      title: REQUEST_DETAIL_ABSENT,
+      kept: false,
+    };
+  }
+  const d = describeRequestDetail(e.request);
+  return {
+    method: e.request.method,
+    status: d.status,
+    host,
+    title: d.title,
+    kept: true,
+  };
+}
+
 /** Status tone, so a 500 does not read as calmly as a 200. */
 export function statusTone(status: number): WafTone {
   if (status >= 500) return "error";
   if (status >= 400) return "attention";
   return "neutral";
+}
+
+export interface DetectionHeader {
+  name: string;
+  value: string;
+}
+
+/**
+ * The request headers kept for a detection, Content-Type first because it is
+ * what makes the common false positive legible.
+ *
+ * Two, and that is the whole of it: headers are an ALLOWLIST (000073), so these
+ * are stored by being named and nothing else is — not a custom X-Api-Token an
+ * application invents, which a denylist would have carried into a table the
+ * operator reads. An empty list is normal, not a failure: a GET carries no
+ * content type, and a detection older than its request log has no detail at all.
+ */
+export function detectionHeaders(
+  r: WafRequestDetail | null,
+): DetectionHeader[] {
+  if (!r) return [];
+  const out: DetectionHeader[] = [];
+  if (r.content_type) out.push({ name: "Content-Type", value: r.content_type });
+  if (r.user_agent) out.push({ name: "User-Agent", value: r.user_agent });
+  return out;
+}
+
+/**
+ * Why the header list is two lines long. Said on the panel rather than left to
+ * be inferred: an operator who reads "Headers" and sees two assumes the request
+ * carried two, and then trusts the absence of a header as evidence.
+ */
+export const DETECTION_HEADERS_ALLOWLIST =
+  "Belune stores two request headers by name. Keeping every header would mean keeping whatever an application invents, including its own credentials.";
+
+/** What this panel deliberately cannot show, so its absence is not read as a gap. */
+export const DETECTION_PAYLOAD_ABSENT =
+  "The text that matched the rule is not stored, and neither is the request body. Invite and deploy-hook tokens are redacted out of the URL before it is written.";
+
+export interface DetectionCategory {
+  /** Badge text. Null when the rule declares no class at all, shown as a dash. */
+  label: string | null;
+  /** Hover, always present: an empty cell needs its reason more than a full one. */
+  title: string;
+}
+
+/**
+ * Said once on the column header rather than on all nineteen rows.
+ *
+ * The distinction is the whole value of the column: severity cannot carry it,
+ * because 920420 reports `critical` exactly like a SQLi match does.
+ */
+export const CATEGORY_COLUMN_HELP =
+  "The rule set's own classification of the rule, not Belune's. An injection or file-inclusion class means a payload matched an attack signature; the protocol class only means the request was not formed the way policy expects. CrowdSec's autoban acts on the injection classes alone.";
+
+// Only where the class means something other than what its name suggests. A
+// cell-level note for every category would be the column header repeated
+// nineteen times, and a claim about which classes ban would be a copy of
+// crowdsec.BanCategories that goes quietly stale when that list changes.
+const CATEGORY_NOTES: Record<string, string> = {
+  protocol:
+    "Request-format policy, not an attack payload: the 920-series checks how a request is formed. 920420 fires on an ordinary text/plain POST, which is why a wall of these is usually one application, not an attacker.",
+};
+
+/** The Category cell: the rule's class, or why there is not one. */
+export function describeCategory(
+  e: Pick<WafEvent, "rule_id" | "category">,
+): DetectionCategory {
+  const label = categoryLabel(e.category);
+  if (!label) {
+    return {
+      label: null,
+      title:
+        e.rule_id === ANOMALY_SUMMARY_RULE
+          ? "The anomaly-score summary declares no attack class of its own. It is a verdict on the whole request rather than one signature, which is what the severity column says for it."
+          : "This rule declares no attack class.",
+    };
+  }
+  return {
+    label,
+    title:
+      CATEGORY_NOTES[label] ??
+      `The rule set's own classification: ${e.category}.`,
+  };
 }

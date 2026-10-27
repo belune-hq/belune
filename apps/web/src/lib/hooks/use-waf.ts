@@ -20,17 +20,40 @@ export function useWafStatus(window: WafWindow = "24h") {
   });
 }
 
-/** Detection events, newest first, a page at a time. */
+/**
+ * Detection events, newest first, a page at a time.
+ *
+ * An expanded client's panel calls this with its own address, and is mounted
+ * only while it is open — a table of fifty clients that each held this hook
+ * would be fifty requests on first paint, refetching every 15 seconds.
+ */
 export function useWafEvents(filters: WafEventFilters) {
   return useInfiniteQuery({
     queryKey: queryKeys.waf.eventsFiltered(
       filters.clientIp ?? "",
       filters.ruleId ?? null,
+      filters.window ?? "",
     ),
     queryFn: ({ pageParam }) => wafApi.listWafEvents(filters, pageParam),
     initialPageParam: null as number | null,
     getNextPageParam: (last) => last.next_before,
     refetchInterval: 15_000,
+  });
+}
+
+/** The window's detections grouped by client. */
+export function useWafClients(window: WafWindow, filters: WafEventFilters) {
+  return useQuery({
+    queryKey: queryKeys.waf.clientsFor(
+      window,
+      filters.clientIp ?? "",
+      filters.ruleId ?? null,
+    ),
+    queryFn: () => wafApi.listWafClients(window, filters),
+    refetchInterval: 15_000,
+    // Changing window or filter keeps the table on screen while the next answer
+    // loads, rather than collapsing it to a skeleton on every click.
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -47,6 +70,7 @@ export function useSetWafEnabled() {
       qc.invalidateQueries({ queryKey: queryKeys.waf.status });
       qc.invalidateQueries({ queryKey: queryKeys.proxyReconciler });
       qc.invalidateQueries({ queryKey: queryKeys.waf.events });
+      qc.invalidateQueries({ queryKey: queryKeys.waf.clients });
     },
   });
 }

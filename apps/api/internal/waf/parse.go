@@ -72,6 +72,13 @@ var (
 	txRe       = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
 )
 
+// AnomalySummaryRule is the CRS rule that evaluates a request's accumulated
+// anomaly score against the threshold — the one rule that states a verdict on the
+// whole request rather than reporting a single match. It declares no severity, so
+// Coraza reports it as "unknown"; the dashboard names it instead, and mirrors this
+// number in waf-view.ts.
+const AnomalySummaryRule = 949110
+
 // maxMessage bounds a stored rule message; CRS messages are far shorter.
 const maxMessage = 120
 

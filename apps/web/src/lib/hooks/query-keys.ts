@@ -290,8 +290,11 @@ export const queryKeys = {
     statusFor: (window: string) => ["proxy", "waf", "status", window] as const,
     /** Under one prefix so a refresh of the page invalidates every filter at once. */
     events: ["proxy", "waf", "events"] as const,
-    eventsFiltered: (clientIp: string, ruleId: number | null) =>
-      ["proxy", "waf", "events", clientIp, ruleId] as const,
+    eventsFiltered: (clientIp: string, ruleId: number | null, window: string) =>
+      ["proxy", "waf", "events", clientIp, ruleId, window] as const,
+    clients: ["proxy", "waf", "clients"] as const,
+    clientsFor: (window: string, clientIp: string, ruleId: number | null) =>
+      ["proxy", "waf", "clients", window, clientIp, ruleId] as const,
   },
   crowdsec: {
     status: ["proxy", "crowdsec", "status"] as const,

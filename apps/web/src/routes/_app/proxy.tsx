@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { RouteIcon, ShieldIcon, ShieldCheckIcon } from "lucide-react";
+import { BrickWallShieldIcon, RouteIcon, ShieldCheckIcon } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageTabs, type PageTab } from "@/components/ui/page-tabs";
 import { CaddyTab } from "@/components/proxy/caddy-tab";
@@ -13,7 +13,7 @@ type ProxyTab = "caddy" | "crowdsec" | "waf";
 const PROXY_TABS: PageTab<ProxyTab>[] = [
   { value: "caddy", label: "Caddy", icon: RouteIcon },
   { value: "crowdsec", label: "CrowdSec", icon: ShieldCheckIcon },
-  { value: "waf", label: "WAF", icon: ShieldIcon },
+  { value: "waf", label: "WAF", icon: BrickWallShieldIcon },
 ];
 
 export const Route = createFileRoute("/_app/proxy")({

@@ -445,3 +445,168 @@ func TestWAFEvents_TheJoinIsTheUUIDAndNothingElse(t *testing.T) {
 	assert.Nil(t, events[0].(map[string]any)["request"],
 		"a request log that shares the client, host and moment but not the uuid is a different request")
 }
+
+// --- grouped by client ------------------------------------------------------
+
+func wafClients(t *testing.T, token, query string) map[string]any {
+	t.Helper()
+	resp := env.DoRequest(t, "GET", "/api/maintenance/proxy/waf/clients"+query, nil, testutil.AuthHeader(token))
+	require.Equal(t, http.StatusOK, resp.StatusCode, query)
+	return testutil.ReadJSON(t, resp)
+}
+
+// groupFor picks one client's group out of the response, so a test does not
+// depend on the order the loudest happened to land in.
+func groupFor(t *testing.T, body map[string]any, ip string) map[string]any {
+	t.Helper()
+	for _, c := range body["clients"].([]any) {
+		g := c.(map[string]any)
+		if g["client_ip"] == ip {
+			return g
+		}
+	}
+	t.Fatalf("no group for %s in %v", ip, body["clients"])
+	return nil
+}
+
+// wafApp is an application for request logs to hang off; the detections
+// themselves need none.
+func wafApp(t *testing.T, token string) string {
+	t.Helper()
+	project := env.CreateProject(t, token, "Shop", "shop")
+	app := env.CreateApplication(t, token, extractID(project["id"]), map[string]any{
+		"name":        "Shop",
+		"type":        "git",
+		"build_type":  "dockerfile",
+		"source_repo": "https://github.com/test/shop",
+	})
+	return extractID(app["id"])
+}
+
+func reqLog(t *testing.T, appID, path, uuid string) {
+	t.Helper()
+	require.NoError(t, env.Queries.InsertRequestLog(context.Background(), generated.InsertRequestLogParams{
+		ApplicationID: mustUUID(t, appID),
+		Method:        "GET",
+		Path:          path,
+		StatusCode:    200,
+		Hostname:      "shop.example.com",
+		RequestUuid:   pgtype.Text{String: uuid, Valid: true},
+	}))
+}
+
+func TestWAFClients_CollapseAClientsDetectionsIntoOneRow(t *testing.T) {
+	token := wafFixture(t)
+	appID := wafApp(t, token)
+
+	// One scanner: two requests, three rule matches between them, two URLs, and
+	// one of the two requests would have been refused.
+	reqLog(t, appID, "/admin.php", "tx-a")
+	reqLog(t, appID, "/?q=%3Cscript%3E", "tx-b")
+	a1 := evt("203.0.113.9", 941100, "shop.example.com")
+	a1.TxID = pgtype.Text{String: "tx-a", Valid: true}
+	a2 := evt("203.0.113.9", 942100, "shop.example.com")
+	a2.TxID = pgtype.Text{String: "tx-a", Valid: true}
+	b1 := evt("203.0.113.9", int32(waf.AnomalySummaryRule), "shop.example.com")
+	b1.TxID = pgtype.Text{String: "tx-b", Valid: true}
+	// A second client, quieter, and with nothing that would have been blocked.
+	c1 := evt("198.51.100.7", 920420, "shop.example.com")
+	c1.TxID = pgtype.Text{String: "tx-c", Valid: true}
+	seedWAFEvents(t, a1, a2, b1, c1)
+
+	body := wafClients(t, token, "")
+	assert.Equal(t, "24h", body["window"])
+	assert.Equal(t, false, body["has_more"])
+	require.Len(t, body["clients"], 2)
+
+	// Loudest first, so the scan does not have to be hunted for.
+	assert.Equal(t, "203.0.113.9", body["clients"].([]any)[0].(map[string]any)["client_ip"])
+
+	loud := groupFor(t, body, "203.0.113.9")
+	assert.Equal(t, float64(3), loud["events"], "three rule matches")
+	assert.Equal(t, float64(2), loud["requests"], "from two requests")
+	assert.Equal(t, float64(3), loud["rules"], "three distinct rules")
+	assert.Equal(t, float64(2), loud["urls"], "two distinct URLs, read through the request log")
+	assert.Equal(t, true, loud["would_block"], "one request passed the anomaly threshold")
+	assert.NotEmpty(t, loud["last_seen"])
+
+	quiet := groupFor(t, body, "198.51.100.7")
+	assert.Equal(t, float64(1), quiet["events"])
+	assert.Equal(t, float64(1), quiet["requests"])
+	assert.Equal(t, false, quiet["would_block"], "a content-type match is not a verdict")
+	assert.Equal(t, float64(0), quiet["urls"], "no request log on record for it")
+}
+
+// The trap this query was written around: nothing enforces one request_logs row
+// per uuid, so joining to count URLs can multiply the hit count. Two rows for
+// one request must still be one request and one hit.
+func TestWAFClients_TwoRequestLogsForOneRequestDoNotDoubleTheHits(t *testing.T) {
+	token := wafFixture(t)
+	appID := wafApp(t, token)
+	reqLog(t, appID, "/admin.php", "tx-dup")
+	reqLog(t, appID, "/admin.php", "tx-dup")
+
+	e := evt("203.0.113.9", 941100, "shop.example.com")
+	e.TxID = pgtype.Text{String: "tx-dup", Valid: true}
+	seedWAFEvents(t, e)
+
+	g := groupFor(t, wafClients(t, token, ""), "203.0.113.9")
+	assert.Equal(t, float64(1), g["events"], "one rule matched once")
+	assert.Equal(t, float64(1), g["requests"])
+	assert.Equal(t, float64(1), g["urls"], "one URL, however many log rows carry it")
+}
+
+func TestWAFClients_HonourTheWindowTheFiltersAndTheCap(t *testing.T) {
+	token := wafFixture(t)
+	recent := evt("203.0.113.9", 941100, "shop.example.com")
+	old := evt("192.0.2.1", 942100, "shop.example.com")
+	old.RecordedAt = pgtype.Timestamptz{Time: time.Now().Add(-72 * time.Hour), Valid: true}
+	seedWAFEvents(t, recent, old)
+
+	assert.Len(t, wafClients(t, token, "")["clients"], 1, "the 72-hour-old client is outside 24h")
+	assert.Len(t, wafClients(t, token, "?window=7d")["clients"], 2)
+	assert.Len(t, wafClients(t, token, "?window=all")["clients"], 2)
+	assert.Len(t, wafClients(t, token, "?window=7d&client_ip=192.0.2.1")["clients"], 1)
+	assert.Len(t, wafClients(t, token, "?window=7d&client_ip=::ffff:192.0.2.1")["clients"], 1,
+		"a mapped IPv4 address is the same client")
+	assert.Len(t, wafClients(t, token, "?window=7d&rule_id=942100")["clients"], 1)
+
+	// The cap says so rather than pretending it listed everything.
+	capped := wafClients(t, token, "?window=7d&limit=1")
+	assert.Len(t, capped["clients"], 1)
+	assert.Equal(t, true, capped["has_more"], "more clients matched than were listed")
+}
+
+func TestWAFClients_RejectBadQueries(t *testing.T) {
+	token := wafFixture(t)
+	for _, q := range []string{"?window=30d", "?limit=0", "?limit=201", "?limit=x", "?client_ip=nope", "?rule_id=x", "?rule_id=-1"} {
+		resp := env.DoRequest(t, "GET", "/api/maintenance/proxy/waf/clients"+q, nil, testutil.AuthHeader(token))
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode, q)
+		_ = resp.Body.Close()
+	}
+}
+
+// The grouped counts and the list behind an expanded client have to agree, which
+// they only do if the list can be scoped to the same window.
+func TestWAFEvents_CanBeScopedToTheSummaryWindow(t *testing.T) {
+	token := wafFixture(t)
+	recent := evt("203.0.113.9", 941100, "shop.example.com")
+	old := evt("203.0.113.9", 942100, "shop.example.com")
+	old.RecordedAt = pgtype.Timestamptz{Time: time.Now().Add(-72 * time.Hour), Valid: true}
+	seedWAFEvents(t, recent, old)
+
+	get := func(q string) []any {
+		resp := env.DoRequest(t, "GET", "/api/maintenance/proxy/waf/events"+q, nil, testutil.AuthHeader(token))
+		require.Equal(t, http.StatusOK, resp.StatusCode, q)
+		return testutil.ReadJSON(t, resp)["events"].([]any)
+	}
+
+	assert.Len(t, get(""), 2, "no window asked for is every event still kept")
+	assert.Len(t, get("?window=24h"), 1)
+	assert.Len(t, get("?window=7d"), 2)
+	assert.Len(t, get("?window=all"), 2)
+
+	resp := env.DoRequest(t, "GET", "/api/maintenance/proxy/waf/events?window=30d", nil, testutil.AuthHeader(token))
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	_ = resp.Body.Close()
+}

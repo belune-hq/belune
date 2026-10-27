@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -42,6 +43,13 @@ const (
 
 	wafEventsDefaultLimit = 50
 	wafEventsMaxLimit     = 200
+
+	// wafClientsDefaultLimit caps the grouped list. It is a summary, not an audit
+	// trail: under a distributed scan the distinct-client count runs to thousands,
+	// and the loudest 50 are the actionable set. The response says when more
+	// matched rather than paginating an aggregate.
+	wafClientsDefaultLimit = 50
+	wafClientsMaxLimit     = 200
 )
 
 // wafWindows are the periods the summary can cover, in the order the dashboard
@@ -149,6 +157,35 @@ type wafRequestDetail struct {
 	UserAgent   *string `json:"user_agent"`
 }
 
+// wafClientGroup is one client's detections in the summary window, collapsed.
+//
+// Events and Requests are deliberately both here: one request can trip a dozen
+// rules, so "12 detections" alone reads as twelve attacks when it was one.
+type wafClientGroup struct {
+	ClientIP string `json:"client_ip"`
+	// Events is rule matches; Requests is how many requests they came from.
+	Events   int64 `json:"events"`
+	Requests int64 `json:"requests"`
+	Rules    int64 `json:"rules"`
+	// URLs is distinct paths, counted through the request log. It is 0 — not
+	// wrong — for detections whose request logs have been swept, since the URI is
+	// never stored on the detection itself.
+	URLs     int64     `json:"urls"`
+	LastSeen time.Time `json:"last_seen"`
+	// WouldBlock is whether any of these requests tripped the anomaly-score rule,
+	// which is the only signal that separates a real attack from rule noise.
+	WouldBlock bool `json:"would_block"`
+}
+
+type wafClientsResponse struct {
+	// Window is the period these groups cover: 1h, 24h, 7d or all.
+	Window  string           `json:"window"`
+	Clients []wafClientGroup `json:"clients"`
+	// HasMore is whether more clients matched than are listed. There is no page
+	// after this one: narrowing the window or the filters is the way through.
+	HasMore bool `json:"has_more"`
+}
+
 type wafEventsResponse struct {
 	Events []wafEventResponse `json:"events"`
 	// NextBefore is the id to pass as `before` for the next page; null on the last.
@@ -167,13 +204,10 @@ type updateWAFRequest struct {
 //apidoc:title Get WAF Status
 //apidoc:order 11
 func (h *Handler) GetWAFStatus(w http.ResponseWriter, r *http.Request) {
-	window := wafDefaultWindow
-	if v := r.URL.Query().Get("window"); v != "" {
-		if _, ok := wafWindows[v]; !ok {
-			writeError(w, http.StatusBadRequest, "window must be one of 1h, 24h, 7d, all")
-			return
-		}
-		window = v
+	window, ok := wafWindowParam(r.URL.Query())
+	if !ok {
+		writeError(w, http.StatusBadRequest, "window must be one of 1h, 24h, 7d, all")
+		return
 	}
 
 	st, err := h.wafStatus(r, window)
@@ -243,6 +277,120 @@ func (h *Handler) UpdateWAF(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, st)
 }
 
+// wafWindowParam reads the summary period. An absent window is the default one,
+// and the second return says whether what was asked for is a period at all.
+func wafWindowParam(q url.Values) (string, bool) {
+	v := q.Get("window")
+	if v == "" {
+		return wafDefaultWindow, true
+	}
+	_, ok := wafWindows[v]
+	return v, ok
+}
+
+func wafLimitParam(q url.Values, def, max int) (int, bool) {
+	v := q.Get("limit")
+	if v == "" {
+		return def, true
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 1 || n > max {
+		return 0, false
+	}
+	return n, true
+}
+
+// wafClientIPParam unmaps the address, so ::ffff:203.0.113.9 and 203.0.113.9 are
+// the one client they are.
+func wafClientIPParam(q url.Values) (*netip.Addr, bool) {
+	v := q.Get("client_ip")
+	if v == "" {
+		return nil, true
+	}
+	ip, err := netip.ParseAddr(v)
+	if err != nil {
+		return nil, false
+	}
+	ip = ip.Unmap()
+	return &ip, true
+}
+
+func wafRuleIDParam(q url.Values) (pgtype.Int4, bool) {
+	v := q.Get("rule_id")
+	if v == "" {
+		return pgtype.Int4{}, true
+	}
+	id, err := strconv.ParseInt(v, 10, 32)
+	if err != nil || id < 0 {
+		return pgtype.Int4{}, false
+	}
+	return pgtype.Int4{Int32: int32(id), Valid: true}, true
+}
+
+// ListWAFClients groups a window's detections by the client that caused them, so
+// one scanner's thousand rule matches read as one line rather than twenty pages.
+// GET /api/maintenance/proxy/waf/clients (admin only)
+//
+//apidoc:tag platform/maintenance
+//apidoc:title List WAF Clients
+//apidoc:order 14
+func (h *Handler) ListWAFClients(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+
+	window, ok := wafWindowParam(q)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "window must be one of 1h, 24h, 7d, all")
+		return
+	}
+	limit, ok := wafLimitParam(q, wafClientsDefaultLimit, wafClientsMaxLimit)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "limit must be between 1 and "+strconv.Itoa(wafClientsMaxLimit))
+		return
+	}
+	clientIP, ok := wafClientIPParam(q)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "client_ip must be an IP address")
+		return
+	}
+	ruleID, ok := wafRuleIDParam(q)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "rule_id must be a rule number")
+		return
+	}
+
+	rows, err := h.queries.WAFClientSummary(r.Context(), generated.WAFClientSummaryParams{
+		AnomalyRule: waf.AnomalySummaryRule,
+		Since:       pgtype.Timestamptz{Time: wafSummarySince(window, time.Now()), Valid: true},
+		ClientIp:    clientIP,
+		RuleID:      ruleID,
+		// One more than asked for, to learn whether more clients matched without
+		// counting them all.
+		RowLimit: int32(limit + 1),
+	})
+	if err != nil {
+		writeServerError(w, r, "failed to group WAF detections by client", err)
+		return
+	}
+
+	resp := wafClientsResponse{Window: window, Clients: make([]wafClientGroup, 0, len(rows))}
+	if len(rows) > limit {
+		rows = rows[:limit]
+		resp.HasMore = true
+	}
+	for _, c := range rows {
+		resp.Clients = append(resp.Clients, wafClientGroup{
+			ClientIP:   c.ClientIp.String(),
+			Events:     c.Events,
+			Requests:   c.Requests,
+			Rules:      c.Rules,
+			URLs:       c.Urls,
+			LastSeen:   c.LastSeen.Time,
+			WouldBlock: c.WouldBlock,
+		})
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
 // ListWAFEvents pages through detection events, newest first.
 // GET /api/maintenance/proxy/waf/events (admin only)
 //
@@ -252,19 +400,25 @@ func (h *Handler) UpdateWAF(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListWAFEvents(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
-	limit := wafEventsDefaultLimit
-	if v := q.Get("limit"); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil || n < 1 || n > wafEventsMaxLimit {
-			writeError(w, http.StatusBadRequest, "limit must be between 1 and "+strconv.Itoa(wafEventsMaxLimit))
-			return
-		}
-		limit = n
+	limit, ok := wafLimitParam(q, wafEventsDefaultLimit, wafEventsMaxLimit)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "limit must be between 1 and "+strconv.Itoa(wafEventsMaxLimit))
+		return
+	}
+	clientIP, ok := wafClientIPParam(q)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "client_ip must be an IP address")
+		return
+	}
+	ruleID, ok := wafRuleIDParam(q)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "rule_id must be a rule number")
+		return
 	}
 
 	// One more than asked for, to learn whether there is another page without a
 	// second query.
-	params := generated.ListWAFEventsParams{RowLimit: int32(limit + 1)}
+	params := generated.ListWAFEventsParams{RowLimit: int32(limit + 1), ClientIp: clientIP, RuleID: ruleID}
 	if v := q.Get("before"); v != "" {
 		id, err := strconv.ParseInt(v, 10, 64)
 		if err != nil || id < 1 {
@@ -273,22 +427,16 @@ func (h *Handler) ListWAFEvents(w http.ResponseWriter, r *http.Request) {
 		}
 		params.BeforeID = pgtype.Int8{Int64: id, Valid: true}
 	}
-	if v := q.Get("client_ip"); v != "" {
-		ip, err := netip.ParseAddr(v)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "client_ip must be an IP address")
+	// Unscoped unless a window is asked for: that is what callers got before this
+	// list could be scoped, and widening it later would be the easy half of a
+	// breaking change. Scoped, it agrees with the grouped counts it sits under.
+	if q.Get("window") != "" {
+		window, ok := wafWindowParam(q)
+		if !ok {
+			writeError(w, http.StatusBadRequest, "window must be one of 1h, 24h, 7d, all")
 			return
 		}
-		ip = ip.Unmap()
-		params.ClientIp = &ip
-	}
-	if v := q.Get("rule_id"); v != "" {
-		id, err := strconv.ParseInt(v, 10, 32)
-		if err != nil || id < 0 {
-			writeError(w, http.StatusBadRequest, "rule_id must be a rule number")
-			return
-		}
-		params.RuleID = pgtype.Int4{Int32: int32(id), Valid: true}
+		params.Since = pgtype.Timestamptz{Time: wafSummarySince(window, time.Now()), Valid: true}
 	}
 
 	rows, err := h.queries.ListWAFEvents(r.Context(), params)

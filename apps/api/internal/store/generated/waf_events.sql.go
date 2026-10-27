@@ -81,15 +81,20 @@ FROM waf_events
 WHERE ($1::bigint IS NULL OR id < $1::bigint)
   AND ($2::inet IS NULL OR client_ip = $2::inet)
   AND ($3::int IS NULL OR rule_id = $3::int)
+  -- NULL means every event still kept, which is what every caller got before the
+  -- list could be scoped. It is set when the list sits under a windowed count, so
+  -- that expanding a client showing three hits cannot list forty.
+  AND ($4::timestamptz IS NULL OR recorded_at >= $4::timestamptz)
 ORDER BY id DESC
-LIMIT $4
+LIMIT $5
 `
 
 type ListWAFEventsParams struct {
-	BeforeID pgtype.Int8 `json:"before_id"`
-	ClientIp *netip.Addr `json:"client_ip"`
-	RuleID   pgtype.Int4 `json:"rule_id"`
-	RowLimit int32       `json:"row_limit"`
+	BeforeID pgtype.Int8        `json:"before_id"`
+	ClientIp *netip.Addr        `json:"client_ip"`
+	RuleID   pgtype.Int4        `json:"rule_id"`
+	Since    pgtype.Timestamptz `json:"since"`
+	RowLimit int32              `json:"row_limit"`
 }
 
 // Keyset pagination on id (newest first): an offset would re-scan the head of a
@@ -99,6 +104,7 @@ func (q *Queries) ListWAFEvents(ctx context.Context, arg ListWAFEventsParams) ([
 		arg.BeforeID,
 		arg.ClientIp,
 		arg.RuleID,
+		arg.Since,
 		arg.RowLimit,
 	)
 	if err != nil {
@@ -232,6 +238,96 @@ func (q *Queries) TrimWAFEvents(ctx context.Context, keep int32) (int64, error) 
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const wAFClientSummary = `-- name: WAFClientSummary :many
+SELECT e.client_ip,
+       count(*)::bigint                   AS events,
+       count(DISTINCT e.tx_id)::bigint    AS requests,
+       count(DISTINCT e.rule_id)::bigint  AS rules,
+       count(DISTINCT req.path)::bigint   AS urls,
+       max(e.recorded_at)::timestamptz    AS last_seen,
+       COALESCE(bool_or(e.rule_id = $1::int), false)::boolean AS would_block
+FROM waf_events e
+LEFT JOIN LATERAL (
+    SELECT r.path FROM request_logs r
+    WHERE r.request_uuid = e.tx_id
+    ORDER BY r.recorded_at DESC
+    LIMIT 1
+) req ON true
+WHERE e.recorded_at >= $2
+  AND ($3::inet IS NULL OR e.client_ip = $3::inet)
+  AND ($4::int IS NULL OR e.rule_id = $4::int)
+GROUP BY e.client_ip
+ORDER BY events DESC, last_seen DESC, e.client_ip
+LIMIT $5
+`
+
+type WAFClientSummaryParams struct {
+	AnomalyRule int32              `json:"anomaly_rule"`
+	Since       pgtype.Timestamptz `json:"since"`
+	ClientIp    *netip.Addr        `json:"client_ip"`
+	RuleID      pgtype.Int4        `json:"rule_id"`
+	RowLimit    int32              `json:"row_limit"`
+}
+
+type WAFClientSummaryRow struct {
+	ClientIp   netip.Addr         `json:"client_ip"`
+	Events     int64              `json:"events"`
+	Requests   int64              `json:"requests"`
+	Rules      int64              `json:"rules"`
+	Urls       int64              `json:"urls"`
+	LastSeen   pgtype.Timestamptz `json:"last_seen"`
+	WouldBlock bool               `json:"would_block"`
+}
+
+// One row per client that tripped a rule in the window: how many rules it
+// tripped, across how many requests and URLs, and whether any one of those
+// requests would have been refused. This is the shape the detections table is
+// read in — a thousand rows of one scanner are one line here.
+//
+// The URL count comes from the request log, through the uuid Caddy writes into
+// the access entry and the transaction id alike (000073), via LATERAL ... LIMIT 1
+// and NOT a plain join: nothing enforces one request_logs row per uuid, so a
+// second matching row would multiply count(*) and report twice the hits that
+// happened. Newest row wins, as in ListRequestDetailsByUUID.
+//
+// No outer-joined column is selected, only aggregated, so sqlc has no source
+// column here to infer the wrong nullability from.
+// Loudest first. Recency is the window's job, not the sort's: a one-hit scanner
+// from a minute ago must not push a sustained attack off a capped list.
+func (q *Queries) WAFClientSummary(ctx context.Context, arg WAFClientSummaryParams) ([]WAFClientSummaryRow, error) {
+	rows, err := q.db.Query(ctx, wAFClientSummary,
+		arg.AnomalyRule,
+		arg.Since,
+		arg.ClientIp,
+		arg.RuleID,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WAFClientSummaryRow{}
+	for rows.Next() {
+		var i WAFClientSummaryRow
+		if err := rows.Scan(
+			&i.ClientIp,
+			&i.Events,
+			&i.Requests,
+			&i.Rules,
+			&i.Urls,
+			&i.LastSeen,
+			&i.WouldBlock,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const wAFEventTotals = `-- name: WAFEventTotals :one

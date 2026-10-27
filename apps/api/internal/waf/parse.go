@@ -45,6 +45,11 @@ type Event struct {
 	Host string
 	// TxID groups the rules one request tripped.
 	TxID string
+	// MatchedTarget is the request variable the rule matched in — a NAME, such
+	// as "REQUEST_COOKIES:session" or "ARGS:q", never the value found in it.
+	// Empty when the line did not say, which is normal for rules that match on
+	// the request as a whole. See matchedTarget for what it is and is not.
+	MatchedTarget string
 }
 
 // Outcome says what ParseCaddyLine made of a line.
@@ -67,9 +72,19 @@ var (
 		"warning": {}, "notice": {}, "info": {}, "debug": {}, "unknown": {},
 	}
 	categoryRe = regexp.MustCompile(`^attack-[a-z0-9-]{1,40}$`)
-	uuidRe     = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
-	hostRe     = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,252}$`)
-	txRe       = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
+	// The head of Coraza's data field: "Matched Data: <match> found within
+	// <COLLECTION>[:<key>]: <value>". Both <match> and <value> are
+	// attacker-controlled, so the capture groups are the collection and the key
+	// and stop dead at the colon that introduces the value.
+	//
+	// The value is introduced by ": " in both forms — "REQUEST_URI: /x" and
+	// "ARGS:q: 1=1" — so requiring that literal separator is what tells a
+	// keyless target from a keyed one. The key group admits neither a space nor
+	// a colon, so it cannot run into the value.
+	targetRe = regexp.MustCompile(`found within ([A-Z_]{1,40})(?::([^\s:]{1,80}))?: `)
+	uuidRe   = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+	hostRe   = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,252}$`)
+	txRe     = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
 )
 
 // AnomalySummaryRule is the CRS rule that evaluates a request's accumulated
@@ -81,6 +96,10 @@ const AnomalySummaryRule = 949110
 
 // maxMessage bounds a stored rule message; CRS messages are far shorter.
 const maxMessage = 120
+
+// maxTarget bounds a stored variable name. A cookie or parameter name is
+// client-supplied, so it is bounded here as well as by the pattern.
+const maxTarget = 100
 
 // fixedFields is the order Coraza writes the block that follows the free-text
 // message, up to the tags.
@@ -202,14 +221,46 @@ func parseMatch(msg string) (Event, bool) {
 
 	host, tx := splitTxID(uniqueID)
 	return Event{
-		ClientIP: ip.WithZone("").Unmap(),
-		RuleID:   ruleID,
-		Severity: severity,
-		Category: category,
-		Message:  staticMessage(values["msg"]),
-		Host:     host,
-		TxID:     tx,
+		ClientIP:      ip.WithZone("").Unmap(),
+		RuleID:        ruleID,
+		Severity:      severity,
+		Category:      category,
+		Message:       staticMessage(values["msg"]),
+		Host:          host,
+		TxID:          tx,
+		MatchedTarget: matchedTarget(values["data"]),
 	}, true
+}
+
+// matchedTarget names the request variable a rule matched in, from the data
+// field the grammar above has already read and would otherwise discard.
+//
+// ⛔ The NAME only. Everything after the colon that introduces the value stays
+// out, because that is the matched payload — the thing 000070 exists to not
+// keep. A name is a different class of data: "REQUEST_COOKIES:session" says
+// where to look without saying what was in it, and that is the whole difference
+// between a detection an operator can judge and one they cannot. Belune's own
+// 920420 noise was diagnosed from exactly this field, read out of Caddy's
+// container log by hand because it was not stored.
+//
+// ⚠️ It is a HINT, not evidence. The data field's head is the rule's own match
+// output, which is attacker-controlled, so a payload containing the words this
+// pattern looks for can forge the name. The pattern and maxTarget bound the
+// damage to a wrong name of bounded length and charset; they cannot make it
+// trustworthy. Nothing may key a decision on it.
+func matchedTarget(data string) string {
+	m := targetRe.FindStringSubmatch(data)
+	if m == nil {
+		return ""
+	}
+	target := m[1]
+	if m[2] != "" {
+		target += ":" + m[2]
+	}
+	if len(target) > maxTarget {
+		target = target[:maxTarget]
+	}
+	return target
 }
 
 // splitTxID separates "<host>_<uuid>". Coraza falls back to a random id of its own

@@ -610,3 +610,31 @@ func TestWAFEvents_CanBeScopedToTheSummaryWindow(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	_ = resp.Body.Close()
 }
+
+// The field a rule matched in rides to the dashboard as a name. Belune's own
+// 920420-class noise was diagnosed from exactly this, read out of Caddy's
+// container log by hand because it was not stored.
+func TestWAFEvents_CarryTheFieldTheRuleMatchedIn(t *testing.T) {
+	token := wafFixture(t)
+	named := evt("203.0.113.9", 942290, "shop.example.com")
+	named.MatchedTarget = pgtype.Text{String: "REQUEST_COOKIES:ph_phc_abc_posthog", Valid: true}
+	// A rule that reports no variable: the anomaly summary judges the whole
+	// request, so a null here is a normal state and not a gap.
+	whole := evt("203.0.113.9", 949110, "shop.example.com")
+	seedWAFEvents(t, named, whole)
+
+	resp := env.DoRequest(t, "GET", "/api/maintenance/proxy/waf/events", nil, testutil.AuthHeader(token))
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	body := testutil.ReadJSON(t, resp)
+
+	targets := map[float64]any{}
+	for _, e := range body["events"].([]any) {
+		ev := e.(map[string]any)
+		targets[ev["rule_id"].(float64)] = ev["matched_target"]
+	}
+	require.Len(t, targets, 2)
+	assert.Equal(t, "REQUEST_COOKIES:ph_phc_abc_posthog", targets[942290])
+	// Null, not "": a rule that reports no variable has nothing to say, and an
+	// empty string would render as a field whose name happened to be blank.
+	assert.Nil(t, targets[949110])
+}

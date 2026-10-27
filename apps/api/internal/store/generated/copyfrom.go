@@ -85,6 +85,7 @@ func (r iteratorForBulkInsertWAFEvents) Values() ([]interface{}, error) {
 		r.rows[0].Host,
 		r.rows[0].ApplicationID,
 		r.rows[0].TxID,
+		r.rows[0].MatchedTarget,
 	}, nil
 }
 
@@ -96,5 +97,5 @@ func (r iteratorForBulkInsertWAFEvents) Err() error {
 // takes writes at the rate requests arrive, so one round trip per row is the
 // wrong shape (see BulkInsertContainerLogs, which had the same problem).
 func (q *Queries) BulkInsertWAFEvents(ctx context.Context, arg []BulkInsertWAFEventsParams) (int64, error) {
-	return q.db.CopyFrom(ctx, []string{"waf_events"}, []string{"recorded_at", "client_ip", "rule_id", "severity", "category", "message", "host", "application_id", "tx_id"}, &iteratorForBulkInsertWAFEvents{rows: arg})
+	return q.db.CopyFrom(ctx, []string{"waf_events"}, []string{"recorded_at", "client_ip", "rule_id", "severity", "category", "message", "host", "application_id", "tx_id", "matched_target"}, &iteratorForBulkInsertWAFEvents{rows: arg})
 }

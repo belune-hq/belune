@@ -138,6 +138,13 @@ type wafEventResponse struct {
 	ApplicationID *string `json:"application_id"`
 	// TxID is shared by the rules one request tripped.
 	TxID *string `json:"tx_id"`
+	// MatchedTarget is the request variable the rule matched in, as a name —
+	// "REQUEST_COOKIES:session", "ARGS:q" — and never the value found in it.
+	// Null for a rule that matches on the request as a whole, and for every
+	// detection recorded before Belune kept it (000074). ⚠️ A hint, not
+	// evidence: the text it is read from can be influenced by the request, so
+	// the name can be forged — see waf.matchedTarget.
+	MatchedTarget *string `json:"matched_target"`
 	// Request is what the request looked like, joined from the request log by
 	// TxID. Null is the normal case for an older detection: detections outlive
 	// request logs, and an event that never carried a tx_id has nothing to join.
@@ -525,6 +532,7 @@ func wafEventDTO(e generated.WafEvent) wafEventResponse {
 		Host:          textPtr(e.Host),
 		ApplicationID: uuidPtr(e.ApplicationID),
 		TxID:          textPtr(e.TxID),
+		MatchedTarget: textPtr(e.MatchedTarget),
 	}
 }
 

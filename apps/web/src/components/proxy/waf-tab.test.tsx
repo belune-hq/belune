@@ -89,6 +89,7 @@ const event = (over: Partial<WafEvent> = {}): WafEvent => ({
   // Absent by default: that is what most detections look like, since a request
   // log is swept on its own retention while the detection stays.
   request: null,
+  matched_target: null,
   ...over,
 });
 
@@ -400,6 +401,54 @@ describe("WafTab", () => {
     expect(within(sheet).getByText("shop.example.com")).toBeTruthy();
     expect(within(sheet).getByText("text/plain")).toBeTruthy();
     expect(within(sheet).getByText("curl/8.7.1")).toBeTruthy();
+  });
+
+  // The column exists because this question — is this my own cookie or someone
+  // else's payload — took a hand-read of Caddy's container log to answer.
+  it("names the field a rule matched in", async () => {
+    clients = [group()];
+    events = [
+      event({
+        rule_id: 942290,
+        message: "Finds basic MongoDB SQL injection attempts",
+        matched_target: "REQUEST_COOKIES:ph_phc_abc_posthog",
+      }),
+    ];
+    render(<WafTab />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show detections from 203.0.113.9" }),
+    );
+    await waitFor(() => expect(screen.getByText("Severity")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Detection details" }));
+
+    const sheet = await waitFor(() => screen.getByRole("dialog"));
+    expect(within(sheet).getByText("Matched in")).toBeTruthy();
+    expect(
+      within(sheet).getByText("REQUEST_COOKIES:ph_phc_abc_posthog"),
+    ).toBeTruthy();
+    // And says what it is, so a name is not mistaken for the matched text.
+    expect(
+      within(sheet).getByText(/Where the rule matched, not what/),
+    ).toBeTruthy();
+  });
+
+  it("says a rule matched on the whole request rather than leaving it blank", async () => {
+    clients = [group()];
+    events = [event({ rule_id: 949110, matched_target: null })];
+    render(<WafTab />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show detections from 203.0.113.9" }),
+    );
+    await waitFor(() => expect(screen.getByText("Severity")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Detection details" }));
+
+    const sheet = await waitFor(() => screen.getByRole("dialog"));
+    const cell = within(sheet).getByText("no single field");
+    expect(cell.getAttribute("title")).toContain("request as a whole");
+    // The pointer caveat belongs with a field; there is no field here.
+    expect(
+      within(sheet).queryByText(/Where the rule matched, not what/),
+    ).toBeNull();
   });
 
   // An operator who reads "Headers" and sees two assumes the request carried

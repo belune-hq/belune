@@ -6,14 +6,15 @@ import type {
   CrowdSecStatus,
 } from "@/lib/types";
 import {
-  autobanEnablePoints,
   BOUNCER_STALE_SECONDS,
+  autobanEnablePoints,
   bouncerNotice,
   crowdSecEnablePoints,
   describeAutoban,
   describeCrowdSec,
   describeYourAddress,
   isBanTarget,
+  isCrowdSecEnforcing,
   reasonText,
   sourceLabel,
   timeLeft,
@@ -364,5 +365,32 @@ describe("describeAutoban", () => {
       /Protocol and request-format rules never lead to a ban/,
     );
     expect(text).toMatch(/Every automatic ban expires/);
+  });
+});
+
+describe("isCrowdSecEnforcing", () => {
+  // The tab's glyph is read from across the page with no pill beside it, so a
+  // tick has to mean "covering something", not "the switch is on".
+  it("is false while the switch is on but nothing is covered", () => {
+    expect(
+      isCrowdSecEnforcing(
+        status({
+          enabled: true,
+          state: { active: false, hosts: 0, reason: "no_applications" },
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("is true once a hostname is covered", () => {
+    expect(
+      isCrowdSecEnforcing(
+        status({ enabled: true, state: { active: true, hosts: 2 } }),
+      ),
+    ).toBe(true);
+  });
+
+  it("is false before the status has loaded", () => {
+    expect(isCrowdSecEnforcing(undefined)).toBe(false);
   });
 });

@@ -1,6 +1,13 @@
 import { useState } from "react";
 import { useForm } from "@tanstack/react-form";
-import { ShieldBanIcon, ShieldCheckIcon, ShieldIcon } from "lucide-react";
+import {
+  BanIcon,
+  BrickWallFireIcon,
+  ListCheckIcon,
+  ShieldCheckIcon,
+  ShieldIcon,
+  ShieldXIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -46,14 +53,15 @@ import {
 } from "@/components/ui/table";
 import {
   ALLOW_DURATIONS,
-  autobanEnablePoints,
   BAN_DURATIONS,
+  autobanEnablePoints,
   bouncerNotice,
   crowdSecEnablePoints,
   describeAutoban,
   describeCrowdSec,
   describeYourAddress,
   isBanTarget,
+  isCrowdSecEnforcing,
   reasonText,
   sourceLabel,
   timeLeft,
@@ -133,7 +141,7 @@ function StatusCard({
   const rotate = useRotateCrowdSecKey();
   const [confirming, setConfirming] = useState(false);
   const d = status ? describeCrowdSec(status) : null;
-  const Icon = status?.state.active ? ShieldCheckIcon : ShieldIcon;
+  const Icon = isCrowdSecEnforcing(status) ? ShieldCheckIcon : ShieldIcon;
   const stale = status ? bouncerNotice(status.local_api, new Date()) : null;
   const yours = status
     ? describeYourAddress(
@@ -281,7 +289,7 @@ function BansCard({ status }: { status: CrowdSecStatus }) {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <ShieldBanIcon aria-hidden="true" className="size-4" />
+          <BanIcon aria-hidden="true" className="size-4" />
           Bans
         </CardTitle>
         <CardDescription>
@@ -482,7 +490,10 @@ function AllowlistCard({ status }: { status: CrowdSecStatus }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Never banned</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <ListCheckIcon aria-hidden="true" className="size-4" />
+          Never banned
+        </CardTitle>
         <CardDescription>
           Addresses CrowdSec will not ban, and a ban already on one is lifted
           the moment it is added. An admin's address is added each time they log
@@ -760,7 +771,10 @@ function AutobanForm({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Automatic bans</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <BrickWallFireIcon aria-hidden="true" className="size-4" />
+          Automatic bans
+        </CardTitle>
         <CardDescription>
           Ban an address that keeps tripping the WAF's attack rules. Off until
           you turn it on.
@@ -918,7 +932,10 @@ function LockoutCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>If a ban locks you out</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <ShieldXIcon aria-hidden="true" className="size-4" />
+          If a ban locks you out
+        </CardTitle>
         <CardDescription>
           This dashboard is never behind the bouncer, so you can lift any ban
           from the table above. Only read on if you cannot reach the dashboard

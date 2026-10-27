@@ -366,3 +366,18 @@ export function autobanEnablePoints(p: CrowdSecPolicy): string[] {
     "Addresses on the allowlist, private addresses, and addresses you lift a ban from are left alone. Every automatic ban expires, and each is in the audit log.",
   ];
 }
+
+/**
+ * Whether CrowdSec is actually enforcing — the test behind its shield icon.
+ *
+ * `state.active` rather than `enabled`, so the check mark appears only when a
+ * hostname is covered. A tick on the tab is read from across the page as "this
+ * is handled", and it would be the same false reassurance the pill avoids when
+ * it says "Nothing to protect" with the switch on. Shared with the route so the
+ * tab and the card cannot disagree about what the glyph means.
+ */
+export function isCrowdSecEnforcing(
+  s: Pick<CrowdSecStatus, "state"> | undefined,
+): boolean {
+  return s?.state.active ?? false;
+}

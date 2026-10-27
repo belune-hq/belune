@@ -1,4 +1,5 @@
 import { describeModuleTab } from "@/components/proxy/proxy-traffic";
+import { formatDateTime } from "@/lib/utils/format";
 import type {
   CrowdSecAutobanStatus,
   CrowdSecProtection,
@@ -104,7 +105,16 @@ export function describeCrowdSec(
         };
       case "no_applications":
         return {
-          pill: { label: "Waiting for an application", tone: "neutral" },
+          // Amber for the same reason the WAF tab is amber in this state: the
+          // operator asked for CrowdSec and is not getting it, and grey read as
+          // a resting state, which is how a gap between what was asked for and
+          // what is running goes unnoticed.
+          //
+          // The verb is CrowdSec's own, though, not the WAF's. This card bans
+          // addresses and its body says "a domain to protect"; the WAF reads
+          // requests and says "inspect". Matching the tone is what makes the two
+          // tabs one page — matching the verb would have made this one wrong.
+          pill: { label: "Nothing to protect", tone: "attention" },
           body: "CrowdSec is on. It starts as soon as an application has a domain to protect.",
           notice: null,
           canEnable: true,
@@ -281,6 +291,19 @@ export function reasonText(reason: string): string {
   return reason.replace(/^belune(-waf)?: /, "");
 }
 
+/** The absolute timestamp for an "Added at" cell, or null when CrowdSec gave
+ *  none. The Go side parses cscli's `created_at` with the error discarded, so a
+ *  missing or reshaped timestamp arrives as the zero time rather than as an
+ *  absent field — and printing that reads "0001-01-01 00:00:00", which looks
+ *  like a record from the year one instead of a gap in what we were told. */
+export function addedAt(createdAt: string | undefined): string | null {
+  if (!createdAt) return null;
+  const t = new Date(createdAt).getTime();
+  // NaN for a string that is not a date, far negative for Go's zero time.
+  if (!Number.isFinite(t) || t <= 0) return null;
+  return formatDateTime(createdAt);
+}
+
 /** "59 minutes", "23 hours", "6 days": time until an expiry. */
 export function timeLeft(expiresAt: string, now: Date = new Date()): string {
   const s = (new Date(expiresAt).getTime() - now.getTime()) / 1000;
@@ -356,4 +379,29 @@ export function autobanEnablePoints(p: CrowdSecPolicy): string[] {
     "Only attack categories count. Protocol and request-format rules never lead to a ban.",
     "Addresses on the allowlist, private addresses, and addresses you lift a ban from are left alone. Every automatic ban expires, and each is in the audit log.",
   ];
+}
+
+/** Which shield the tab and the card draw. */
+export type CrowdSecShield = "off" | "idle" | "enforcing";
+
+/**
+ * CrowdSec's state as one glyph, in three steps rather than two.
+ *
+ * Two was not enough, and the gap was visible: with the switch ON and no
+ * application running, "enforcing" is false — correctly, because no hostname is
+ * covered — so turning CrowdSec on changed nothing on screen but the pill, and
+ * the switch looked like it had not worked.
+ *
+ * ⛔ "enforcing" still means `state.active`, never `enabled`. A tick is read
+ * from across the page as "this is handled", with no pill beside it out on the
+ * tab strip, so it may only appear once something is actually covered — the
+ * same reason the pill says "Nothing to protect" instead of "On". What the
+ * third icon buys is that the switch has somewhere to show, without the tick
+ * having to lie.
+ */
+export function crowdSecShield(
+  s: Pick<CrowdSecStatus, "enabled" | "state"> | undefined,
+): CrowdSecShield {
+  if (!s?.enabled) return "off";
+  return s.state.active ? "enforcing" : "idle";
 }

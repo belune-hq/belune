@@ -1,7 +1,15 @@
 import { useState } from "react";
 import { useForm } from "@tanstack/react-form";
-import { ShieldBanIcon, ShieldCheckIcon, ShieldIcon } from "lucide-react";
+import {
+  BanIcon,
+  BrickWallFireIcon,
+  ListCheckIcon,
+  ShieldXIcon,
+  Trash2Icon,
+  Undo2Icon,
+} from "lucide-react";
 import { toast } from "sonner";
+import { CROWDSEC_SHIELD } from "@/components/proxy/crowdsec-shield";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,6 +32,7 @@ import {
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldError } from "@/components/ui/field";
+import { IconAction } from "@/components/ui/icon-action";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -33,6 +42,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill } from "@/components/ui/status-pill";
 import { Switch } from "@/components/ui/switch";
@@ -46,14 +56,16 @@ import {
 } from "@/components/ui/table";
 import {
   ALLOW_DURATIONS,
-  autobanEnablePoints,
   BAN_DURATIONS,
+  addedAt,
+  autobanEnablePoints,
   bouncerNotice,
   crowdSecEnablePoints,
   describeAutoban,
   describeCrowdSec,
   describeYourAddress,
   isBanTarget,
+  crowdSecShield,
   reasonText,
   sourceLabel,
   timeLeft,
@@ -133,7 +145,7 @@ function StatusCard({
   const rotate = useRotateCrowdSecKey();
   const [confirming, setConfirming] = useState(false);
   const d = status ? describeCrowdSec(status) : null;
-  const Icon = status?.state.active ? ShieldCheckIcon : ShieldIcon;
+  const Icon = CROWDSEC_SHIELD[crowdSecShield(status)];
   const stale = status ? bouncerNotice(status.local_api, new Date()) : null;
   const yours = status
     ? describeYourAddress(
@@ -168,7 +180,27 @@ function StatusCard({
           Ban addresses from your applications. Caddy turns each ban into a 403.
         </CardDescription>
         {status && d && (
-          <CardAction>
+          <CardAction className="flex items-center gap-2">
+            {/* Beside the switch rather than under the body text: it only shows
+                when the bouncer has already stopped pulling, and the notice
+                that says so is what sends the operator looking for it. */}
+            {status.enabled && stale && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={rotate.isPending}
+                onClick={() =>
+                  toast.promise(rotate.mutateAsync(), {
+                    loading: "Replacing the bouncer's key…",
+                    success: "Bouncer key replaced",
+                    error: (e: Error) =>
+                      e.message || "Could not replace the key",
+                  })
+                }
+              >
+                Rotate the bouncer key
+              </Button>
+            )}
             <Switch
               aria-label="Enforce bans with CrowdSec"
               checked={status.enabled}
@@ -192,23 +224,6 @@ function StatusCard({
               <p className={cn("text-sm", TEXT_TONE[d.notice.tone])}>
                 {d.notice.text}
               </p>
-            )}
-            {status.enabled && stale && (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={rotate.isPending}
-                onClick={() =>
-                  toast.promise(rotate.mutateAsync(), {
-                    loading: "Replacing the bouncer's key…",
-                    success: "Bouncer key replaced",
-                    error: (e: Error) =>
-                      e.message || "Could not replace the key",
-                  })
-                }
-              >
-                Rotate the bouncer key
-              </Button>
             )}
             <p
               className={cn(
@@ -281,7 +296,7 @@ function BansCard({ status }: { status: CrowdSecStatus }) {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <ShieldBanIcon aria-hidden="true" className="size-4" />
+          <BanIcon aria-hidden="true" className="size-4" />
           Bans
         </CardTitle>
         <CardDescription>
@@ -378,6 +393,11 @@ function BansCard({ status }: { status: CrowdSecStatus }) {
           </p>
         )}
 
+        {/* The form places a ban; everything below reports the ones in force.
+            Without a rule between them the first table row reads as part of
+            the form it sits under. */}
+        <Separator />
+
         {isLoading ? (
           <Skeleton className="h-16 w-full" />
         ) : error ? (
@@ -390,6 +410,7 @@ function BansCard({ status }: { status: CrowdSecStatus }) {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>Added at</TableHead>
                 <TableHead>Address</TableHead>
                 <TableHead>Source</TableHead>
                 <TableHead>Reason</TableHead>
@@ -413,6 +434,9 @@ function BanRow({ decision: d }: { decision: CrowdSecDecision }) {
   const lift = useLiftBan();
   return (
     <TableRow>
+      <TableCell className="text-muted-foreground whitespace-nowrap">
+        {addedAt(d.created_at) ?? "—"}
+      </TableCell>
       <TableCell className="font-mono text-sm">
         {d.value}
         {d.scope === "range" && (
@@ -435,11 +459,12 @@ function BanRow({ decision: d }: { decision: CrowdSecDecision }) {
       >
         {timeLeft(d.expires_at)}
       </TableCell>
-      <TableCell>
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label={`Lift the ban on ${d.value}`}
+      <TableCell className="text-right">
+        {/* Not destructive: lifting a ban restores access rather than removing
+            anything the operator would miss. The red one in this tab is the
+            allowlist's Remove, which takes protection away. */}
+        <IconAction
+          label={`Lift the ban on ${d.value}`}
           disabled={lift.isPending}
           onClick={() =>
             toast.promise(lift.mutateAsync(d.value), {
@@ -449,8 +474,8 @@ function BanRow({ decision: d }: { decision: CrowdSecDecision }) {
             })
           }
         >
-          Lift
-        </Button>
+          <Undo2Icon aria-hidden="true" className="size-4" />
+        </IconAction>
       </TableCell>
     </TableRow>
   );
@@ -482,7 +507,14 @@ function AllowlistCard({ status }: { status: CrowdSecStatus }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Never banned</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <ListCheckIcon aria-hidden="true" className="size-4" />
+          {/* The API's own word: the endpoint is /crowdsec/allowlist and the
+              published reference says "List CrowdSec Allowlist". "Never banned"
+              described it accurately but matched nothing an operator reading
+              the API would search for. */}
+          Allowlist
+        </CardTitle>
         <CardDescription>
           Addresses CrowdSec will not ban, and a ban already on one is lifted
           the moment it is added. An admin's address is added each time they log
@@ -560,10 +592,12 @@ function AllowlistCard({ status }: { status: CrowdSecStatus }) {
               </Field>
             )}
           />
-          <Button type="submit" variant="outline" disabled={allow.isPending}>
+          <Button type="submit" disabled={allow.isPending}>
             Add
           </Button>
         </form>
+
+        <Separator />
 
         {isLoading ? (
           <Skeleton className="h-16 w-full" />
@@ -580,6 +614,7 @@ function AllowlistCard({ status }: { status: CrowdSecStatus }) {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>Added at</TableHead>
                 <TableHead>Address</TableHead>
                 <TableHead>Note</TableHead>
                 <TableHead>Expires in</TableHead>
@@ -612,6 +647,9 @@ function AllowRow({
   const remove = useRemoveAllowed();
   return (
     <TableRow>
+      <TableCell className="text-muted-foreground whitespace-nowrap">
+        {addedAt(i.created_at) ?? "—"}
+      </TableCell>
       <TableCell className="font-mono text-sm">
         {i.value}
         {yours && (
@@ -626,11 +664,10 @@ function AllowRow({
       <TableCell className="text-muted-foreground whitespace-nowrap">
         {i.expires_at ? timeLeft(i.expires_at) : "never"}
       </TableCell>
-      <TableCell>
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label={`Remove ${i.value} from the allowlist`}
+      <TableCell className="text-right">
+        <IconAction
+          label={`Remove ${i.value} from the allowlist`}
+          destructive
           disabled={remove.isPending}
           onClick={() =>
             toast.promise(remove.mutateAsync(i.value), {
@@ -640,8 +677,8 @@ function AllowRow({
             })
           }
         >
-          Remove
-        </Button>
+          <Trash2Icon aria-hidden="true" className="size-4" />
+        </IconAction>
       </TableCell>
     </TableRow>
   );
@@ -760,7 +797,10 @@ function AutobanForm({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Automatic bans</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <BrickWallFireIcon aria-hidden="true" className="size-4" />
+          Automatic bans
+        </CardTitle>
         <CardDescription>
           Ban an address that keeps tripping the WAF's attack rules. Off until
           you turn it on.
@@ -918,7 +958,10 @@ function LockoutCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>If a ban locks you out</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <ShieldXIcon aria-hidden="true" className="size-4" />
+          If a ban locks you out
+        </CardTitle>
         <CardDescription>
           This dashboard is never behind the bouncer, so you can lift any ban
           from the table above. Only read on if you cannot reach the dashboard

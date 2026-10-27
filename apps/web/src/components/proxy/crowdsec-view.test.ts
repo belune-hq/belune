@@ -6,14 +6,16 @@ import type {
   CrowdSecStatus,
 } from "@/lib/types";
 import {
-  autobanEnablePoints,
   BOUNCER_STALE_SECONDS,
+  addedAt,
+  autobanEnablePoints,
   bouncerNotice,
   crowdSecEnablePoints,
   describeAutoban,
   describeCrowdSec,
   describeYourAddress,
   isBanTarget,
+  crowdSecShield,
   reasonText,
   sourceLabel,
   timeLeft,
@@ -156,7 +158,7 @@ describe("describeCrowdSec", () => {
     expect(d.notice).toEqual({ tone: "error", text: "HTTP 500: nope" });
   });
 
-  it("covers the waiting states without alarm", () => {
+  it("flags having nothing to inspect, and holds off on what it cannot confirm", () => {
     const wait = describeCrowdSec(
       status({
         enabled: true,
@@ -164,7 +166,12 @@ describe("describeCrowdSec", () => {
       }),
       NOW,
     );
-    expect(wait.pill.tone).toBe("neutral");
+    // Switched on and protecting nothing is a gap, not a resting state. Same
+    // amber as the WAF tab in the same state; its own verb, because this card
+    // bans addresses rather than reading requests.
+    expect(wait.pill.label).toBe("Nothing to protect");
+    expect(wait.pill.tone).toBe("attention");
+    expect(wait.pill.label).not.toMatch(/inspect/i);
     const unknown = describeCrowdSec(
       status({
         enabled: true,
@@ -359,5 +366,53 @@ describe("describeAutoban", () => {
       /Protocol and request-format rules never lead to a ban/,
     );
     expect(text).toMatch(/Every automatic ban expires/);
+  });
+});
+
+describe("crowdSecShield", () => {
+  // Two icons were not enough and the gap showed: with the switch on and no
+  // application running, turning CrowdSec on changed nothing on screen.
+  it("separates off from on-but-covering-nothing", () => {
+    expect(crowdSecShield(status({ enabled: false }))).toBe("off");
+    expect(
+      crowdSecShield(
+        status({
+          enabled: true,
+          state: { active: false, hosts: 0, reason: "no_applications" },
+        }),
+      ),
+    ).toBe("idle");
+  });
+
+  // ⛔ The tick is the one that may not be generous: out on the tab strip there
+  // is no pill beside it to say that nothing is covered.
+  it("keeps the tick for a hostname actually being covered", () => {
+    expect(
+      crowdSecShield(
+        status({ enabled: true, state: { active: true, hosts: 2 } }),
+      ),
+    ).toBe("enforcing");
+  });
+
+  it("is off before the status has loaded", () => {
+    expect(crowdSecShield(undefined)).toBe("off");
+  });
+});
+
+describe("addedAt", () => {
+  it("formats a timestamp CrowdSec gave", () => {
+    expect(addedAt("2026-10-27T09:05:00Z")).toMatch(
+      /^2026-10-2[67] \d\d:\d\d:\d\d$/,
+    );
+  });
+
+  // The Go side discards the parse error, so a timestamp cscli did not give
+  // arrives as the zero time, not as an absent field. Printed, it would read
+  // "0001-01-01 00:00:00" — a date, and therefore a claim.
+  it("says nothing rather than claiming the year one", () => {
+    expect(addedAt("0001-01-01T00:00:00Z")).toBeNull();
+    expect(addedAt("")).toBeNull();
+    expect(addedAt(undefined)).toBeNull();
+    expect(addedAt("not a date")).toBeNull();
   });
 });

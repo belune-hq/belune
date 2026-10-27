@@ -41,10 +41,16 @@ func (c *Client) ConfigureAccessLogs(ctx context.Context) error {
 		"logs": map[string]any{
 			loggerName: map[string]any{
 				"writer": map[string]any{
-					"output":         "file",
-					"filename":       caddyLogPath,
-					"roll_size_mb":   100,
-					"roll_keep":      5,
+					"output":       "file",
+					"filename":     caddyLogPath,
+					"roll_size_mb": 100,
+					"roll_keep":    5,
+					// ⚠️ roll_keep_days prunes ROLLED files. It does not bound the
+					// age of the ACTIVE one, which is only rolled at roll_size_mb
+					// — so on a quiet install access.log can hold entries for
+					// months while this says 7. Caddy's writer (lumberjack) has no
+					// time-based roll trigger, so this cannot be fixed by config;
+					// bounding it would mean Belune rotating the file itself.
 					"roll_keep_days": 7, // verified via `caddy adapt` against caddy:2-alpine
 					// Caddy defaults the log file to 0600 root-owned. Belune runs as
 					// a non-root user and tails this file from its own container, so
@@ -53,9 +59,12 @@ func (c *Client) ConfigureAccessLogs(ctx context.Context) error {
 					// Verified against caddy:2-alpine (2.11): the writer accepts
 					// `mode` as a string and the file lands as -rw-r--r--.
 					//
-					// This file is world-readable and kept for 7 days, so nothing
-					// secret may reach it — see the URI filter below, which exists
-					// precisely because 0644 makes a leak here cheap to exploit.
+					// This file is world-readable, and for how long is NOT bounded
+					// by the 7 above — see the note on roll_keep_days. So nothing
+					// secret may reach it, and the window to assume when something
+					// does is "until the file next rolls", not a week. The URI
+					// filter below exists precisely because 0644 makes a leak here
+					// cheap to exploit; #107 was one that sat in this file.
 					"mode": "0644",
 				},
 				// Two credentials reach an access entry in the clear, and an access

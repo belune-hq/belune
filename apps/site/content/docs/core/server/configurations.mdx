@@ -200,11 +200,12 @@ The HTTPS status badge reflects the live state: **HTTPS active**, **Waiting for 
 
 <Screenshot name="server-metrics-retention" alt="The Metrics Retention card: host metrics, application logs, and request log windows." />
 
-Three independent retention windows, each a dropdown of presets:
+Four independent retention windows, each a dropdown of presets:
 
 - **Host metrics** — CPU/memory/disk time-series for the Server page's own charts. Recorded at 1-second resolution, so presets are short (1 or 2 days) and the data is pruned hourly.
-- **Application logs** — stdout/stderr per container. Presets range from 3 days to a year, or forever.
+- **Application logs** — stdout/stderr per container. Presets range from 3 days to a year.
 - **Request logs** — per-application HTTP access logs. Same preset range as application logs.
+- **WAF detections** — the attacks the WAF recorded. Same presets, but a year is the ceiling for this one: values above 365 days are refused.
 
 <Callout type="info">
 Logs are pruned daily and host metrics are pruned hourly to whatever window is selected.

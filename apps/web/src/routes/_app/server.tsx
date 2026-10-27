@@ -18,6 +18,14 @@ import {
   Settings,
   WrenchIcon,
 } from "lucide-react";
+import {
+  HOST_METRICS_FIELD,
+  HOST_METRICS_PRESETS,
+  RETENTION_FIELDS,
+  RETENTION_PRESETS,
+  type RetentionField,
+  type RetentionPreset,
+} from "@/components/server/retention";
 import { RouteError } from "@/lib/components/route-error";
 import { UpdateSection } from "@/components/server/update-section";
 import { PageTabs, type PageTab } from "@/components/ui/page-tabs";
@@ -271,45 +279,6 @@ const SWAP_COLOR = "hsl(28, 90%, 55%)";
 // Live host-metrics window: the chart shows the most recent 10 minutes.
 const TEN_MIN_MS = 10 * 60 * 1000;
 
-// Day-based retention presets for the log rows. "0" = keep forever.
-const RETENTION_PRESETS = [
-  { label: "3 days", value: "3" },
-  { label: "7 days", value: "7" },
-  { label: "30 days", value: "30" },
-  { label: "90 days", value: "90" },
-  { label: "1 year", value: "365" },
-  { label: "Forever", value: "0" },
-];
-
-// Host metrics are 1-second data, so they use a short hours-based window.
-const HOST_METRICS_PRESETS = [
-  { label: "1 day", value: "24" },
-  { label: "2 days", value: "48" },
-];
-
-const RETENTION_FIELDS = [
-  {
-    key: "app_log_retention_days",
-    label: "Application logs",
-    desc: "stdout / stderr per container",
-    fallback: "7",
-  },
-  {
-    key: "request_log_retention_days",
-    label: "Request logs",
-    desc: "HTTP access logs per application",
-    // Matches the WAF detection window: a detection's request detail is joined
-    // from this table, so a shorter window here blanks the evidence first.
-    fallback: "7",
-  },
-  {
-    key: "waf_events_retention_days",
-    label: "WAF detections",
-    desc: "attacks the WAF would have blocked (1–365)",
-    fallback: "7",
-  },
-] as const;
-
 function ServerSettingsPage() {
   const { tab } = Route.useSearch();
   const navigate = useNavigate({ from: "/server" });
@@ -510,12 +479,7 @@ function ServerSettingsPage() {
               <CardContent className="space-y-4">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <RetentionRow
-                    field={{
-                      key: "host_metrics_retention_hours",
-                      label: "Host metrics (1-second)",
-                      desc: "CPU / memory / disk time-series",
-                      fallback: "24",
-                    }}
+                    field={HOST_METRICS_FIELD}
                     presets={HOST_METRICS_PRESETS}
                     settings={settings}
                     disabled={updateSettings.isPending}
@@ -1110,8 +1074,8 @@ function RetentionRow({
   disabled,
   onSave,
 }: {
-  field: { key: string; label: string; desc: string; fallback: string };
-  presets: { label: string; value: string }[];
+  field: RetentionField;
+  presets: RetentionPreset[];
   settings: SettingEntry[] | undefined;
   disabled: boolean;
   onSave: (key: string, value: string) => void;

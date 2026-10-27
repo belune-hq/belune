@@ -216,6 +216,20 @@ describe("the points shown before it is turned on", () => {
     expect(text).toMatch(/request log/);
     expect(text).toMatch(/false positives share/);
   });
+
+  // ⚠️ This dialog is where the operator consents, so it is the one place that
+  // may not understate what is retained. It did: it claimed no header beyond the
+  // content type was kept, for as long as the panel had been showing User-Agent
+  // beside it, and it never mentioned the matched field name at all. Both are
+  // named here so the sentence cannot quietly shrink back.
+  it("names every kind of request data a detection keeps", () => {
+    const text = WAF_ENABLE_POINTS.join(" ");
+    expect(text).toMatch(/Content-Type and User-Agent/);
+    expect(text).toMatch(/name of the field the rule matched in/);
+    expect(text).toMatch(/never what was in it/);
+    // The old sentence, which promised less than is kept.
+    expect(text).not.toMatch(/beyond its content type/);
+  });
 });
 
 describe("isIpAddress", () => {

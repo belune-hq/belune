@@ -153,8 +153,10 @@ type wafEventResponse struct {
 
 // wafRequestDetail is the request behind a detection, as far as Belune keeps it.
 // Not the matched payload and not the headers at large — the URI is already
-// redacted at Caddy's encoder and Content-Type is an allowlisted header, which is
-// the whole of what is stored (000073).
+// redacted at Caddy's encoder, and the headers are an allowlist of two:
+// Content-Type, added for this by 000073, and User-Agent, which request_logs has
+// carried since 000001. Both are what this struct hands to the panel, so a claim
+// that only the content type is kept is wrong wherever it is made.
 type wafRequestDetail struct {
 	Method string `json:"method"`
 	Path   string `json:"path"`

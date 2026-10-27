@@ -42,6 +42,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill } from "@/components/ui/status-pill";
 import { Switch } from "@/components/ui/switch";
@@ -392,6 +393,11 @@ function BansCard({ status }: { status: CrowdSecStatus }) {
           </p>
         )}
 
+        {/* The form places a ban; everything below reports the ones in force.
+            Without a rule between them the first table row reads as part of
+            the form it sits under. */}
+        <Separator />
+
         {isLoading ? (
           <Skeleton className="h-16 w-full" />
         ) : error ? (
@@ -586,10 +592,12 @@ function AllowlistCard({ status }: { status: CrowdSecStatus }) {
               </Field>
             )}
           />
-          <Button type="submit" variant="outline" disabled={allow.isPending}>
+          <Button type="submit" disabled={allow.isPending}>
             Add
           </Button>
         </form>
+
+        <Separator />
 
         {isLoading ? (
           <Skeleton className="h-16 w-full" />

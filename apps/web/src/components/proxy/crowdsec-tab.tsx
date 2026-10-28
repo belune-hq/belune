@@ -62,6 +62,7 @@ import {
   bouncerNotice,
   crowdSecEnablePoints,
   describeAutoban,
+  describeSkipped,
   describeCrowdSec,
   describeYourAddress,
   isBanTarget,
@@ -697,6 +698,7 @@ function AutobanCard({ status }: { status: CrowdSecStatus }) {
       summary={summary}
       lastRun={run.last_run}
       active={run.active}
+      skipped={run.skipped}
       crowdsecOn={status.enabled}
     />
   );
@@ -717,6 +719,7 @@ function AutobanForm({
   summary,
   lastRun,
   active,
+  skipped,
   crowdsecOn,
 }: {
   policy: CrowdSecPolicy;
@@ -724,6 +727,7 @@ function AutobanForm({
   summary: ReturnType<typeof describeAutoban>;
   lastRun: string | undefined;
   active: number;
+  skipped: number;
   crowdsecOn: boolean;
 }) {
   const save = useSetCrowdSecAutoban();
@@ -907,6 +911,11 @@ function AutobanForm({
             <p className="text-text-faint text-xs">
               {active} automatic {active === 1 ? "ban" : "bans"} in force
               {lastRun ? "." : "; not checked yet."}
+            </p>
+          )}
+          {policy.enabled && crowdsecOn && describeSkipped(skipped) && (
+            <p className="text-text-faint text-xs">
+              {describeSkipped(skipped)}
             </p>
           )}
         </div>

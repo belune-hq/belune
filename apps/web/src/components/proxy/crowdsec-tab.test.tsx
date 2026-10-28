@@ -433,6 +433,48 @@ describe("CrowdSecTab", () => {
       );
     });
 
+    it("shows that addresses were left alone, so a guard that fired is not mistaken for autoban noticing nothing", () => {
+      const s = on();
+      s.autoban.policy.enabled = true;
+      s.autoban.status = {
+        active: 0,
+        banned: 0,
+        skipped: 1,
+        capped: false,
+        last_run: new Date().toISOString(),
+      };
+      h.state.status = s;
+      render(<CrowdSecTab />);
+      expect(screen.getByText(/0 automatic bans in force/)).toBeTruthy();
+      expect(
+        screen.getByText(
+          /1 address over the threshold was left alone on the last check/,
+        ),
+      ).toBeTruthy();
+    });
+
+    it("says nothing about addresses left alone when there were none, or when autoban is off", () => {
+      const s = on();
+      s.autoban.policy.enabled = true;
+      s.autoban.status = {
+        active: 0,
+        banned: 0,
+        skipped: 0,
+        capped: false,
+        last_run: new Date().toISOString(),
+      };
+      h.state.status = s;
+      const { unmount } = render(<CrowdSecTab />);
+      expect(screen.queryByText(/left alone on the last check/)).toBeNull();
+      unmount();
+
+      const off = on();
+      off.autoban.status = { active: 0, banned: 0, skipped: 4, capped: false };
+      h.state.status = off;
+      render(<CrowdSecTab />);
+      expect(screen.queryByText(/left alone on the last check/)).toBeNull();
+    });
+
     it("cancelling the question saves nothing", async () => {
       h.state.status = on();
       render(<CrowdSecTab />);

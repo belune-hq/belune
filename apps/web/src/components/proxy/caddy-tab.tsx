@@ -28,6 +28,7 @@ import {
   type ModuleApp,
 } from "@/components/proxy/caddy-panel";
 import { describeTraffic } from "@/components/proxy/proxy-traffic";
+import { TrustedProxiesCard } from "@/components/proxy/trusted-proxies-card";
 import {
   useProxyConfig,
   useProxyMetrics,
@@ -57,6 +58,7 @@ export function CaddyTab() {
       />
       <RoutesCard status={status} />
       <TrafficCard />
+      <TrustedProxiesCard />
       <ConfigCard />
     </div>
   );

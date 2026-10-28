@@ -51,7 +51,21 @@ Every line separates "could not be determined" from "not there". If Belune canno
 
 The traffic figures come from Caddy's own metrics, so they cover requests that reached an app and not redirects or the dashboard itself. They need `servers { metrics }` in the Caddyfile, which Belune's stack already sets. A Caddy you run yourself needs the same.
 
-The page is read-only. Belune owns the route table and rewrites anything it does not recognise within thirty seconds, so Caddy's configuration cannot be edited here. The running configuration can be viewed, with private keys and password hashes removed on the server. Reconcile Routes stays on the Server page, beside the other maintenance actions.
+Apart from the Trusted Proxies card described below, the page is read-only. Belune owns the route table and rewrites anything it does not recognise within thirty seconds, so Caddy's configuration cannot be edited here. The running configuration can be viewed, with private keys and password hashes removed on the server. Reconcile Routes stays on the Server page, beside the other maintenance actions.
+
+## Behind a CDN or Load Balancer
+
+If a CDN or load balancer sits in front of Caddy, every request reaches Caddy from that service's address, so Belune would take your visitors for the CDN. The Trusted Proxies card on the Caddy tab tells Caddy which peers are proxies. For a request from one of them, Caddy reads the visitor's address from the `X-Forwarded-For` header the proxy sent. It is empty by default, and it should stay empty if visitors connect straight to your server.
+
+To set it, open **Proxy**, then the **Caddy** tab, paste the proxy's addresses or ranges (one per line), and **Save**. It applies within seconds, and saving an empty list stops trusting any proxy. **Add Cloudflare Ranges** fills in Cloudflare's published list, which is a snapshot: the card shows the date it was copied and links to the page to check it against. Belune does not keep it current. A new Cloudflare range missing from your list does not let anyone forge an address; visitors arriving through it are simply shown as that Cloudflare address until you add it.
+
+What to know before listing a proxy:
+
+- **A listed address can claim to be anyone.** Whatever a trusted proxy says the visitor's address is, Belune believes. Only list a CDN you use or a network you control.
+- **Never list a range your own apps run in.** Caddy shares a Docker network with every app, so a container on one can connect to it. If its network is listed, that container can claim any address, and with automatic bans on, have that address banned. The card names any listed range that overlaps a network Caddy is attached to. If it says it could not check, Belune could not list its Docker networks at that moment, and the answer is unknown, not "no overlap".
+- **A visitor cannot choose their own address.** Caddy reads `X-Forwarded-For` from the right, skipping the proxies you listed, so a header the visitor adds in front of the proxy's own entry is ignored. This is always on and has no setting.
+- **Some features still see the proxy.** A domain's rate limit and IP allowlist match the address that connects to Caddy, so behind a CDN they see the CDN, not the visitor. An allowlist of your office's address will not match.
+- **CrowdSec is unchanged.** The advice under CrowdSec about running behind a CDN still applies.
 
 ## The WAF
 

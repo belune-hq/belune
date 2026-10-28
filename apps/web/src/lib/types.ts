@@ -1020,6 +1020,33 @@ export interface WafExclusionInput {
   note?: string;
 }
 
+/** A trusted range that overlaps a Docker network Caddy is attached to. */
+export interface TrustedProxyOverlap {
+  cidr: string;
+  network: string;
+  subnet: string;
+}
+
+/** A published set of proxy ranges: a snapshot, never applied by default. */
+export interface TrustedProxyPreset {
+  id: string;
+  name: string;
+  cidrs: string[];
+  /** Where to re-check the list. */
+  source: string;
+  /** The date the list was copied (YYYY-MM-DD). */
+  checked_at: string;
+}
+
+export interface TrustedProxies {
+  cidrs: string[];
+  overlaps: TrustedProxyOverlap[];
+  /** False when Belune could not list its Docker networks: "no overlaps" is then
+   *  not an answer. */
+  overlaps_checked: boolean;
+  presets: TrustedProxyPreset[];
+}
+
 export interface WafStatus {
   capability: { module: string; state: FeatureAvailability };
   /** The operator's switch. */

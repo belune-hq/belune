@@ -85,6 +85,7 @@ Rotation is a procedure, not a setting — see
 | `CADDY_TLS_PROBE_ADDR` | `caddy:443` | *Internal* — where the TLS status probe dials |
 | `DASHBOARD_UPSTREAM` | `belune:8080` | *Internal* — set by Compose and the Caddyfile template |
 | `API_CONTAINER_NAME` | *self-detect* | *Internal* — overriding risks attaching to the wrong container |
+| `PROXY_PEER_CIDRS` | *empty* | Extra TCP peers to treat as the Caddy proxy, comma-separated addresses or CIDRs. Belune finds its own Caddy container; set this only when it cannot (the dev stack, where the API runs on the host, or a Caddy that is not a container). ⚠️ Every entry may claim any client IP, so never list a network you do not control |
 | `ACCESS_LOG_PATH` | `../../infra/caddy/logs/access.log` | *Internal* — Caddy access log the request-log tailer reads |
 
 ## Build and deploy

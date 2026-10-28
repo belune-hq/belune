@@ -146,12 +146,29 @@ func (a *adminStub) handler(w http.ResponseWriter, r *http.Request) {
 		case http.MethodDelete:
 			a.routes = append(a.routes[:idx], a.routes[idx+1:]...)
 		}
+	case r.URL.Path == "/config/apps/http/servers/srv0":
+		// The server object, as InitCatchAll reads and rewrites it: only its routes
+		// matter here.
+		switch r.Method {
+		case http.MethodGet:
+			_ = json.NewEncoder(w).Encode(map[string]any{"routes": a.routes})
+		case http.MethodPatch:
+			var srv struct {
+				Routes []json.RawMessage `json:"routes"`
+			}
+			_ = json.Unmarshal(body, &srv)
+			if srv.Routes != nil {
+				a.routes = srv.Routes
+			}
+		}
 	case r.URL.Path == "/config/apps/http/servers/srv0/routes/0" && r.Method == http.MethodPut:
 		a.routes = append([]json.RawMessage{body}, a.routes...)
 	case r.URL.Path == "/config/apps/http/servers/srv0/routes":
 		switch r.Method {
 		case http.MethodGet:
 			_ = json.NewEncoder(w).Encode(a.routes)
+		case http.MethodPost:
+			a.routes = append(a.routes, body)
 		case http.MethodPatch:
 			var next []json.RawMessage
 			_ = json.Unmarshal(body, &next)

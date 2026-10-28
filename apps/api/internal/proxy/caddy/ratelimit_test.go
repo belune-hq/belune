@@ -58,7 +58,8 @@ func TestRateLimitHandler_UsesTheModulesOwnShape(t *testing.T) {
 	for _, z := range zones {
 		zone := z.(map[string]any)
 		assert.ElementsMatch(t, []string{"key", "window", "max_events"}, keys(zone))
-		assert.Equal(t, "{http.request.remote.host}", zone["key"], "per client IP; omitted, the module uses one global bucket")
+		assert.Equal(t, "{http.vars.client_ip}", zone["key"], "per visitor; omitted, the module uses one global bucket")
+		assert.NotContains(t, zone["key"], "remote.host", "the peer is the CDN behind a CDN")
 		assert.Equal(t, "10s", zone["window"])
 		assert.Equal(t, 2, zone["max_events"])
 	}

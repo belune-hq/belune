@@ -64,6 +64,10 @@ func (p *failingProxy) SyncCertificates(_ context.Context, _ []proxy.HostCertifi
 }
 func (p *failingProxy) SetDashboardRoute(_ context.Context, _, _ string) error { return nil }
 func (p *failingProxy) SyncWAF(_ context.Context, _ proxy.WAFConfig) error     { return nil }
+func (p *failingProxy) SyncTrustedProxies(_ context.Context, _ proxy.TrustedProxiesConfig) error {
+	return nil
+}
+
 func (p *failingProxy) SyncCrowdSec(_ context.Context, _ proxy.CrowdSecConfig) error {
 	return nil
 }

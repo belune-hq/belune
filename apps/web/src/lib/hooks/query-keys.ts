@@ -284,6 +284,7 @@ export const queryKeys = {
   proxyReconciler: ["proxy", "reconciler"] as const,
   proxyMetrics: ["proxy", "metrics"] as const,
   proxyConfig: ["proxy", "config"] as const,
+  trustedProxies: ["proxy", "trusted-proxies"] as const,
   waf: {
     /** The prefix, so invalidating it refreshes whichever window is on screen. */
     status: ["proxy", "waf", "status"] as const,

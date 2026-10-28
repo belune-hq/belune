@@ -96,6 +96,34 @@ func newReverseProxyHandle(upstreams []caddyUpstream, healthCheckPath string) ca
 	return h
 }
 
+// clientIPPlaceholder is Caddy's own answer to "who is the client": the peer, or
+// the real visitor when the peer is a proxy listed in trusted_proxies.
+//
+// ⚠️ It is {http.vars.client_ip}, which is what the Caddyfile's {client_ip}
+// shorthand expands to. {http.request.client_ip} LOOKS right — the access log has
+// a client_ip field — but is not a placeholder: Caddy sends it to the upstream as
+// literal text. Measured against Caddy v2.11.7; the integration test pins it.
+const clientIPPlaceholder = "{http.vars.client_ip}"
+
+// newDashboardProxyHandle is the reverse proxy to the Belune API, for every route
+// that serves the dashboard. It SETs the client-address header — a set replaces
+// whatever the client sent, as waf.TxHeader does — so the API can learn the client
+// from Caddy and from nowhere a client can write.
+//
+// ⚠️ There are three places the dashboard is served from: route-dashboard, the
+// matcher-less catch-all (written in two places below), and the static :80 site in
+// infra/caddy/Caddyfile.template. One that skips this builds a path on which every
+// visitor is attributed to Caddy, so they all share one rate-limit bucket.
+func newDashboardProxyHandle(dial string) caddyHandle {
+	h := newReverseProxyHandle([]caddyUpstream{{Dial: dial}}, "")
+	h["headers"] = map[string]any{
+		"request": map[string]any{
+			"set": map[string][]string{proxy.ClientIPHeader: {clientIPPlaceholder}},
+		},
+	}
+	return h
+}
+
 // InitCatchAll must be called once at startup. It normalises the routes list so
 // that all domain-specific routes come first and the catch-all (dashboard proxy)
 // is last with a known @id. This makes every subsequent AddRoute call safe to
@@ -131,7 +159,7 @@ func (c *Client) InitCatchAll(ctx context.Context) {
 	// Re-append catch-all with known @id at the end.
 	catchAllJSON, _ := json.Marshal(caddyRoute{
 		ID:     catchAllRouteID,
-		Handle: []caddyHandle{newReverseProxyHandle([]caddyUpstream{{Dial: c.dashboardUpstream}}, "")},
+		Handle: []caddyHandle{newDashboardProxyHandle(c.dashboardUpstream)},
 	})
 	newRoutes := append(domainRoutes, catchAllJSON)
 
@@ -403,10 +431,18 @@ func buildFeatureHandlers(cfg proxy.RouteConfig) ([]caddyHandle, error) {
 			//    because zones with the same name share ONE counter across
 			//    domains — two hosts both set to "10/s" would eat each other's
 			//    budget;
-			//  - the key is the client IP. Omitted, the module uses a single
-			//    global bucket, which from one client looks identical to
-			//    per-IP working. (Behind another proxy, remote.host is that
-			//    proxy.)
+			//  - the key is the VISITOR's address, {http.vars.client_ip}: the peer
+			//    when no proxy is trusted, and the real visitor when a CDN is
+			//    listed in trusted_proxies. Keyed on {http.request.remote.host}
+			//    (the peer) it put every visitor behind one CDN edge into ONE
+			//    bucket: random 429s under load, blamed on anything but the
+			//    proxy. Omitted, the module uses a single global bucket, which
+			//    from one client looks identical to per-IP working.
+			//    ⚠️ Measured against Caddy v2.11.7: the module DOES resolve this
+			//    placeholder, and with no trusted proxies it equals the peer, so
+			//    it is a no-op until a CDN is listed. If it ever resolved to
+			//    empty, every client would share one bucket — pinned by
+			//    TestRealCaddy_RateLimitKeysOnTheVisitorBehindATrustedProxy.
 			// Caddy hands "window" back verbatim, not normalised to nanoseconds, so
 			// routeJSONEqual sees no drift and EnsureRoute does not re-POST. That
 			// matters: a re-POST resets every client's counter, so a re-POST per
@@ -418,7 +454,7 @@ func buildFeatureHandlers(cfg proxy.RouteConfig) ([]caddyHandle, error) {
 				"handler": "rate_limit",
 				"rate_limits": map[string]any{
 					routeIDFor(cfg.Hostname, cfg.Path): map[string]any{
-						"key":        "{http.request.remote.host}",
+						"key":        clientIPPlaceholder,
 						"window":     c.Window,
 						"max_events": c.MaxEvents,
 					},
@@ -429,7 +465,12 @@ func buildFeatureHandlers(cfg proxy.RouteConfig) ([]caddyHandle, error) {
 			handlers = append(handlers, caddyHandle{
 				"handler": "subroute",
 				"routes": []map[string]any{{
-					"match": []caddyMatcher{{"not": []caddyMatcher{{"remote_ip": map[string]any{"ranges": c.Ranges}}}}},
+					// client_ip, not remote_ip: the latter is the connecting peer, so
+					// behind a CDN an allowlist of an office range matched nobody. The
+					// former is the peer when no proxy is trusted, so a forged
+					// X-Forwarded-For cannot get past it (measured), and the visitor
+					// when one is.
+					"match": []caddyMatcher{{"not": []caddyMatcher{{"client_ip": map[string]any{"ranges": c.Ranges}}}}},
 					"handle": []caddyHandle{{
 						"handler":     "static_response",
 						"status_code": "403",
@@ -698,7 +739,7 @@ func (c *Client) reorderRoutes(ctx context.Context) error {
 	if len(catchAll) == 0 {
 		catchAll, err = json.Marshal(caddyRoute{
 			ID:     catchAllRouteID,
-			Handle: []caddyHandle{newReverseProxyHandle([]caddyUpstream{{Dial: c.dashboardUpstream}}, "")},
+			Handle: []caddyHandle{newDashboardProxyHandle(c.dashboardUpstream)},
 		})
 		if err != nil {
 			return fmt.Errorf("marshal catch-all: %w", err)

@@ -29,5 +29,6 @@ dist-ssr
 # for failures, and the browser binaries live outside the repo.
 /test-results
 /playwright-report
+/e2e/.auth
 /blob-report
 /.playwright

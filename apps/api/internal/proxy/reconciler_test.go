@@ -22,6 +22,9 @@ type mockProxy struct {
 	waf     []proxy.WAFConfig   // every WAF config pushed, in order
 	wafErr  error               // returned by SyncWAF when set
 
+	trusted    []proxy.TrustedProxiesConfig // every trusted-proxy config pushed, in order
+	trustedErr error                        // returned by SyncTrustedProxies when set
+
 	crowdsec    []proxy.CrowdSecConfig // every CrowdSec config pushed, in order
 	crowdsecErr error                  // returned by SyncCrowdSec when set
 }
@@ -60,6 +63,16 @@ func (m *mockProxy) SyncDNSPolicies(_ context.Context, p []proxy.DNSPolicy) erro
 	defer m.mu.Unlock()
 	m.dns = p
 	m.dnsPush++
+	return nil
+}
+
+func (m *mockProxy) SyncTrustedProxies(_ context.Context, cfg proxy.TrustedProxiesConfig) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.trustedErr != nil {
+		return m.trustedErr
+	}
+	m.trusted = append(m.trusted, cfg)
 	return nil
 }
 

@@ -317,6 +317,8 @@ type NetworkInfo struct {
 	Labels     map[string]string
 	CreatedAt  time.Time
 	Containers []NetworkContainer
+	// Subnets are the network's address ranges (IPAM), as CIDRs.
+	Subnets []string
 }
 
 // DockerSystemInfo is a trimmed view of `docker info` for the overview page.

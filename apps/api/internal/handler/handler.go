@@ -93,6 +93,8 @@ type Handler struct {
 	proxyMetrics *caddymetrics.Observer
 	// accessLog reports the request-log tailer's health; nil until wired.
 	accessLog AccessLogStatusProvider
+	// trustedProxies owns the list of CDNs/load balancers in front of Caddy.
+	trustedProxies *service.TrustedProxyService
 	// waf reports the WAF recorder's counters; nil until wired.
 	waf WAFStatsProvider
 	// crowdsec drives the CrowdSec local API; nil until wired.
@@ -181,6 +183,7 @@ func New(
 		asynq:             asynqClient,
 		inspector:         inspector,
 		runtimes:          rts,
+		trustedProxies:    service.NewTrustedProxyService(queries, rts),
 		proxy:             pm,
 		reconciler:        reconciler,
 		auth:              auth,

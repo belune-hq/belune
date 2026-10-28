@@ -87,6 +87,11 @@ func (c *Client) ListNetworks(ctx context.Context) (result []runtime.NetworkInfo
 			Labels:    n.Labels,
 			CreatedAt: n.Created,
 		}
+		for _, cfg := range n.IPAM.Config {
+			if cfg.Subnet != "" {
+				info.Subnets = append(info.Subnets, cfg.Subnet)
+			}
+		}
 		// Inspect to resolve attached containers; ignore per-network errors so
 		// one removed network mid-list doesn't fail the whole page.
 		if inspect, insErr := c.cli.NetworkInspect(ctx, n.ID, networktypes.InspectOptions{}); insErr == nil {

@@ -80,6 +80,26 @@ The three states of "does this Caddy have the module" stay separate here too. If
 
 The rule matches also appear in the proxy's log on the Server page. Because they carry the matched text, that view shows each one as a summary, the rule, the client and the host, with the payload and URL withheld. The unredacted lines stay in Docker's own log for the proxy container on the host.
 
+### Exclusions
+
+A rule that keeps firing on your own traffic can be told to stand down. Open a detection and choose **Create Exclusion**: the form starts from what the detection found, and nothing is excluded until you confirm it. **An exclusion lowers your protection.** The WAF stops recording the rule for what you choose, whether a request is harmless or an attack, so the dialog says so every time and the WAF card keeps a line counting the exclusions in force. Without it, an empty table would read as a broken WAF or a clean application.
+
+There are three things an exclusion can ignore, from narrowest to widest:
+
+- **A field.** One named request field for one rule, such as the cookie a framework sets that trips a SQL injection rule on every request. The name comes from the detection and is not typed, and it is offered only when it could be written safely into a rule (letters, digits, `.`, `_` and `-`). A rule that matched the request as a whole, such as a scanner asking for a restricted file, has no field name to exclude.
+- **A path.** One rule, for requests to one path. It is exact, or ends in `*` to mean "begins with".
+- **The whole rule.** The rule is off. It needs a reason, which is kept with the exclusion and in the audit log.
+
+Each applies to **one application**, which is the default when the detection belongs to one, or to **every application**. An exclusion for one application follows that application's domains as they are now: a domain you add is covered, one you remove is not, and an application with no domains is covered by nothing until it has one. Deleting the application deletes its exclusions, and they never become exclusions for every application.
+
+What cannot be excluded:
+
+- **The rules that add up the scores and decide what would be blocked.** They are the verdict, not a signature, and excluding one removes the verdict instead of quieting a false positive. Exclude the rule that scored.
+- **Rules the engine itself depends on.**
+- **A field name or path with other characters in it.** They cannot be written safely into a rule, so they are refused and not escaped. Use the path or whole-rule form instead.
+
+Up to 100 exclusions are kept. Creating and removing one are both in the audit log, with the reason. Removing one puts the rule back in force within seconds, and needs no confirmation because it only restores protection.
+
 ## CrowdSec
 
 The CrowdSec tab bans addresses from your applications. A ban is a decision held by a CrowdSec local API, and the `http.handlers.crowdsec` module in the Belune Caddy image asks it about every request's address and answers a banned one with a 403, on every application hostname, within about five seconds of the ban being placed or lifted. It is off until you turn it on, and the switch covers every application at once.

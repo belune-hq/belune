@@ -12,19 +12,6 @@ import { settled } from "./support/settled";
  *
  * Environment prepared by scripts/smoke-browser.sh.
  */
-function required(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(
-      `${name} is not set — run this drill through scripts/smoke-browser.sh`,
-    );
-  }
-  return value;
-}
-
-const EMAIL = required("BELUNE_E2E_EMAIL");
-const PASSWORD = required("BELUNE_E2E_PASSWORD");
-
 /** Same-origin API call carrying the session cookie and CSRF token the way the
  *  dashboard's own client does. */
 async function api<T>(
@@ -54,10 +41,8 @@ async function api<T>(
 test("the Schedule field describes, validates without nagging, and hides the raw cron in a tooltip", async ({
   page,
 }) => {
-  await page.goto("/login");
-  await page.locator("#email").fill(EMAIL);
-  await page.locator("#password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
+  // Already signed in: auth.setup.ts does it once for the whole run.
+  await page.goto("/projects");
   await expect(page).toHaveURL(/\/projects/);
 
   const stamp = Date.now();

@@ -55,6 +55,8 @@ type Reconciler struct {
 	waf WAFState
 	// wafSwitch replaces the database read of the operator's switch. Tests only.
 	wafSwitch func(ctx context.Context) (bool, error)
+	// trustedSetting replaces the database read of the trusted proxies. Tests only.
+	trustedSetting func(ctx context.Context) (string, error)
 
 	// crowdsecSrc supplies CrowdSec's wishes each pass; nil means the feature is
 	// not wired and the step does nothing. crowdsec is what the last pass did.
@@ -530,6 +532,13 @@ func (r *Reconciler) reconcile(ctx context.Context) {
 				removed++
 			}
 		}
+	}
+
+	// Server-level, not a route, so it does not depend on the passes above. It is
+	// what makes the address every later stage sees the visitor's and not the CDN's.
+	if err := r.syncTrustedProxies(ctx); err != nil {
+		slog.Warn("proxy reconciler: failed to sync the trusted proxies", "error", err)
+		recordErr(err)
 	}
 
 	// Last, so the host list the WAF route carries is the one the application

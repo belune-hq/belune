@@ -338,6 +338,8 @@ type MockProxyManager struct {
 	WAFSyncs []proxy.WAFConfig
 	// CrowdSecSyncs is every config SyncCrowdSec received, in order.
 	CrowdSecSyncs []proxy.CrowdSecConfig
+	// TrustedProxySyncs is every config SyncTrustedProxies received, in order.
+	TrustedProxySyncs []proxy.TrustedProxiesConfig
 }
 
 func (m *MockProxyManager) AddRoute(_ context.Context, cfg proxy.RouteConfig) error {
@@ -369,6 +371,13 @@ func (m *MockProxyManager) SyncWAF(_ context.Context, cfg proxy.WAFConfig) error
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.WAFSyncs = append(m.WAFSyncs, cfg)
+	return nil
+}
+
+func (m *MockProxyManager) SyncTrustedProxies(_ context.Context, cfg proxy.TrustedProxiesConfig) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.TrustedProxySyncs = append(m.TrustedProxySyncs, cfg)
 	return nil
 }
 

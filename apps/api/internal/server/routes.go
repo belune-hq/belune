@@ -678,6 +678,11 @@ func registerRoutes(r chi.Router, h *handler.Handler, auth *service.AuthService,
 					r.With(withTimeout(handlerTimeout)).Put("/api/maintenance/proxy/waf", h.UpdateWAF)
 					r.With(withTimeout(handlerTimeout)).Get("/api/maintenance/proxy/waf/events", h.ListWAFEvents)
 					r.With(withTimeout(handlerTimeout)).Get("/api/maintenance/proxy/waf/clients", h.ListWAFClients)
+					// The CDN or load balancer in front of Caddy, if any: whose word about
+					// who the visitor is Caddy takes. A property of the proxy, so it lives
+					// beside it.
+					r.With(withTimeout(handlerTimeout)).Get("/api/maintenance/proxy/trusted-proxies", h.GetTrustedProxies)
+					r.With(withTimeout(handlerTimeout)).Put("/api/maintenance/proxy/trusted-proxies", h.UpdateTrustedProxies)
 					// CrowdSec is a property of the proxy too. The noun for status and
 					// the switch; children for the bans, the allowlist and the policy
 					// that turns WAF detections into bans. Every reversal (lifting a

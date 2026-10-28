@@ -213,6 +213,11 @@ type ProxyManager interface {
 	// re-asserts it every pass.
 	SyncWAF(ctx context.Context, cfg WAFConfig) error
 
+	// SyncTrustedProxies makes the proxy's trusted proxies (the CDNs or load
+	// balancers in front of it) match cfg, and does nothing when they already do.
+	// Re-asserted every pass: Caddy's restart drops runtime config.
+	SyncTrustedProxies(ctx context.Context, cfg TrustedProxiesConfig) error
+
 	// SyncCrowdSec makes the proxy's CrowdSec app and route match cfg, and does
 	// nothing when they already do. Re-asserted every pass for the same reason as
 	// the WAF's route.

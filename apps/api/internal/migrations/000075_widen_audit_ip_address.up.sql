@@ -1,0 +1,11 @@
+-- audit_logs.ip_address was VARCHAR(45), the longest textual IPv6 address, on the
+-- assumption that whatever filled it was an address. For years it was not: it was
+-- the leftmost X-Forwarded-For entry, which a client could make any length. An
+-- over-long value fails the INSERT, and the audit writer only logs that, so the
+-- row for the action vanished silently.
+--
+-- middleware.ClientIP now returns a parsed address or nothing, so this cannot
+-- recur from that side. The column is widened anyway: the failure mode of a too
+-- narrow audit column is losing the record of what someone did, and widening a
+-- VARCHAR is a catalog-only change that rewrites no rows.
+ALTER TABLE audit_logs ALTER COLUMN ip_address TYPE VARCHAR(64);

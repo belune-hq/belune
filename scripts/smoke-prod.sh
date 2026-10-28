@@ -542,20 +542,36 @@ else
   fail "unban round-trip failed (HTTP $unban_code)" "$(cs_exec decisions list -o json | cut -c1-200)"
 fi
 
-# The safety the whole feature leans on: an admin's address stops being bannable
-# when they sign in. The login runs from a different address than the PUT above.
-curl -fsS -o /dev/null -X POST "$BELUNE_URL/api/auth/login" -H 'Content-Type: application/json' \
-  -H 'X-Forwarded-For: 198.51.100.88' \
-  -d "{\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PASSWORD\"}" || true
-allowed=""
-for _ in $(seq 1 10); do
-  allowed="$(cs_exec allowlists list -o json | grep -c '198.51.100.88' || true)"
-  [[ "${allowed:-0}" -gt 0 ]] && break
-  sleep 1
-done
-[[ "${allowed:-0}" -gt 0 ]] \
-  && pass "an admin login allowlists the address it came from" \
-  || fail "the login did not reach the allowlist" "$(cs_exec allowlists list -o json | cut -c1-300)"
+# A forged X-Forwarded-For on a connection that BYPASSES Caddy must not reach the
+# allowlist.
+#
+# This used to assert the opposite: that the forged address landed in the allowlist.
+# BELUNE_URL is the API's published port, not Caddy, so the request has no proxy in
+# front of it, and it passed only because Belune believed a header the client wrote.
+# That was the bug, recorded as expected behaviour: the sink is the allowlist, which
+# decides who cannot be banned. The fix made it stop being true, so the assertion is
+# inverted and is now a regression test for the fix on a real stack.
+#
+# What is NOT asserted here, deliberately: "an admin login allowlists the address it
+# came from". The runner's addresses are all private or loopback, which CheckBannable
+# refuses on purpose, so the property cannot honestly be tested here; it is drilled on
+# a public host, with the autoban drill. And the header is not "fixed" by sending
+# X-Belune-Client-IP: this request comes from the host and not from Caddy, so it would
+# not be believed, believing it would mean asserting that a client chooses its own
+# address, and it would train the only end-to-end drill on the forgeable path.
+login_code="$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BELUNE_URL/api/auth/login" \
+  -H 'Content-Type: application/json' -H 'X-Forwarded-For: 198.51.100.88' \
+  -d "{\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PASSWORD\"}" || true)"
+# Allowlisting happens after the response, so give it the time it would have needed
+# to appear; an absence checked at once would pass whatever the code did.
+sleep 5
+allowed="$(cs_exec allowlists list -o json | grep -c '198.51.100.88' || true)"
+if [[ "$login_code" == "200" && "${allowed:-0}" -eq 0 ]]; then
+  pass "a forged X-Forwarded-For on a connection that bypasses Caddy does not reach the CrowdSec allowlist"
+else
+  fail "the forged address reached the allowlist, or the login did not succeed (HTTP $login_code)" \
+    "$(cs_exec allowlists list -o json | cut -c1-300)"
+fi
 
 # --- result ------------------------------------------------------------------
 

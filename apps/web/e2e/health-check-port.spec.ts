@@ -11,19 +11,6 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
  *
  * Environment prepared by scripts/smoke-browser.sh.
  */
-function required(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(
-      `${name} is not set — run this drill through scripts/smoke-browser.sh`,
-    );
-  }
-  return value;
-}
-
-const EMAIL = required("BELUNE_E2E_EMAIL");
-const PASSWORD = required("BELUNE_E2E_PASSWORD");
-
 /** Effective opacity (the product down the ancestor chain) and box size, i.e.
  *  what jsdom cannot tell you. */
 async function rendered(locator: Locator) {
@@ -66,10 +53,8 @@ async function api<T>(
 test("the Container Port field is visible, saves with the health check, and survives a reload", async ({
   page,
 }) => {
-  await page.goto("/login");
-  await page.locator("#email").fill(EMAIL);
-  await page.locator("#password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
+  // Already signed in: auth.setup.ts does it once for the whole run.
+  await page.goto("/projects");
   await expect(page).toHaveURL(/\/projects/);
 
   const stamp = Date.now();

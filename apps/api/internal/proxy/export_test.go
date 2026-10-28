@@ -65,3 +65,10 @@ func (r *Reconciler) WithWAFExclusions(list func(context.Context) ([]WAFExclusio
 func (r *Reconciler) SyncCrowdSec(ctx context.Context, expected []RouteConfig, dashboardHost string) error {
 	return r.syncCrowdSec(ctx, expected, dashboardHost)
 }
+
+// SyncTrustedProxies exposes the trusted-proxies step of a pass, with the stored
+// setting supplied by the test, so it can be exercised without a database.
+func (r *Reconciler) SyncTrustedProxies(ctx context.Context, setting func(context.Context) (string, error)) error {
+	r.trustedSetting = setting
+	return r.syncTrustedProxies(ctx)
+}

@@ -1,10 +1,8 @@
 package handler
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
-	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -149,7 +147,7 @@ func (h *Handler) CreateWAFExclusion(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.audit(r, "create_waf_exclusion", "proxy", strconv.FormatInt(v.ID, 10), wafExclusionAudit(v))
-	h.reconcileNow(r, "WAF exclusion")
+	h.reconcileAfterChange(r.Context(), "WAF exclusion")
 	writeJSON(w, http.StatusCreated, wafExclusionBody(v))
 }
 
@@ -175,21 +173,6 @@ func (h *Handler) DeleteWAFExclusion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.audit(r, "delete_waf_exclusion", "proxy", strconv.FormatInt(id, 10), wafExclusionAudit(was))
-	h.reconcileNow(r, "WAF exclusion")
+	h.reconcileAfterChange(r.Context(), "WAF exclusion")
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// reconcileNow applies a saved change now rather than on the next 30-second pass,
-// so the answer is the state the proxy is actually in. A failed pass is not a
-// failed request: the change is saved and the next pass retries. Bounded below the
-// route's 15-second ceiling.
-func (h *Handler) reconcileNow(r *http.Request, what string) {
-	if h.reconciler == nil {
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-	if err := h.reconciler.ReconcileNow(ctx); err != nil {
-		slog.Warn("proxy reconcile after a change reported errors", "change", what, "error", err)
-	}
 }

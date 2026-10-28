@@ -39,12 +39,12 @@ func (c *Client) SetDashboardRoute(ctx context.Context, hostname, sslMode string
 	// out of the panel they just switched to HTTP on purpose.
 	forceHTTPS := sslMode != proxy.SSLModeOff
 
-	current, currentForce, currentUpstream, found, err := c.dashboardRouteState(ctx)
+	current, currentForce, currentUpstream, currentSetsIP, found, err := c.dashboardRouteState(ctx)
 	if err != nil {
 		return err
 	}
 	if found && current == hostname && currentForce == forceHTTPS &&
-		currentUpstream == c.dashboardUpstream {
+		currentUpstream == c.dashboardUpstream && currentSetsIP {
 		return nil // already correct
 	}
 
@@ -76,7 +76,7 @@ func (c *Client) SetDashboardRoute(ctx context.Context, hostname, sslMode string
 			}},
 		})
 	}
-	handles = append(handles, newReverseProxyHandle([]caddyUpstream{{Dial: c.dashboardUpstream}}, ""))
+	handles = append(handles, newDashboardProxyHandle(c.dashboardUpstream))
 
 	route := caddyRoute{
 		ID:     dashboardRouteID,
@@ -123,18 +123,23 @@ func (c *Client) SetDashboardRoute(ctx context.Context, hostname, sslMode string
 // dashboardRouteState reports what the dashboard route currently is: the hostname
 // it serves, whether it renders the HTTP→HTTPS redirect, and where it dials.
 //
-// All three are read back, not just the hostname. Switching the mode between off
+// All four are read back, not just the hostname. The fourth is whether the proxy
+// handler sets the client-address header: a route written before it existed is
+// otherwise "already correct" forever, and the upgrade would leave the dashboard
+// on a path that attributes every visitor to Caddy.
+//
+// (Of the first three:) Switching the mode between off
 // and automatic changes only the handlers, and changing DASHBOARD_UPSTREAM changes
 // only the dial address — comparing hostnames alone would call either "already
 // correct" and never rewrite the route, leaving the dashboard on plain HTTP or
 // pointed at an upstream that no longer exists.
-func (c *Client) dashboardRouteState(ctx context.Context) (hostname string, forceHTTPS bool, upstream string, found bool, err error) {
+func (c *Client) dashboardRouteState(ctx context.Context) (hostname string, forceHTTPS bool, upstream string, setsClientIP bool, found bool, err error) {
 	rawRoutes, err := c.fetchRawRoutes(ctx)
 	if err != nil {
 		if isTransportError(err) {
-			return "", false, "", false, fmt.Errorf("%w: %v", ErrCaddyUnreachable, err)
+			return "", false, "", false, false, fmt.Errorf("%w: %v", ErrCaddyUnreachable, err)
 		}
-		return "", false, "", false, fmt.Errorf("fetch routes: %w", err)
+		return "", false, "", false, false, fmt.Errorf("fetch routes: %w", err)
 	}
 
 	for _, r := range rawRoutes {
@@ -148,6 +153,11 @@ func (c *Client) dashboardRouteState(ctx context.Context) (hostname string, forc
 				Upstreams []struct {
 					Dial string `json:"dial"`
 				} `json:"upstreams"`
+				Headers struct {
+					Request struct {
+						Set map[string][]string `json:"set"`
+					} `json:"request"`
+				} `json:"headers"`
 			} `json:"handle"`
 		}
 		if err := json.Unmarshal(r, &probe); err != nil {
@@ -164,14 +174,17 @@ func (c *Client) dashboardRouteState(ctx context.Context) (hostname string, forc
 				if len(h.Upstreams) > 0 {
 					upstream = h.Upstreams[0].Dial
 				}
+				if v := h.Headers.Request.Set[proxy.ClientIPHeader]; len(v) == 1 && v[0] == clientIPPlaceholder {
+					setsClientIP = true
+				}
 			}
 		}
 		if len(probe.Match) > 0 && len(probe.Match[0].Host) > 0 {
-			return probe.Match[0].Host[0], forceHTTPS, upstream, true, nil
+			return probe.Match[0].Host[0], forceHTTPS, upstream, setsClientIP, true, nil
 		}
-		return "", forceHTTPS, upstream, true, nil
+		return "", forceHTTPS, upstream, setsClientIP, true, nil
 	}
-	return "", false, "", false, nil
+	return "", false, "", false, false, nil
 }
 
 // deleteRouteByID removes a route by its @id, treating "already gone" as success.

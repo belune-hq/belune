@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/belune-hq/belune/internal/pkg/metrics"
 	"github.com/belune-hq/belune/internal/pkg/redact"
 	"github.com/belune-hq/belune/internal/store/generated"
 )
@@ -118,6 +119,9 @@ func (s *AuditService) insert(ctx context.Context, entry auditEntry) {
 		TokenID:      tokenUUID,
 	})
 	if err != nil {
+		// Counted as well as logged: a log line is easy to miss, and a dropped row is
+		// an action with no record of it.
+		metrics.RecordAuditLogDropped()
 		slog.Warn("audit: failed to insert log", "action", entry.Action, "error", err)
 	}
 }

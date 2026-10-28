@@ -95,6 +95,8 @@ type Handler struct {
 	accessLog AccessLogStatusProvider
 	// wafExclusions owns the operator's carve-outs from the WAF rule set.
 	wafExclusions *service.WAFExclusionService
+	// trustedProxies owns the list of CDNs/load balancers in front of Caddy.
+	trustedProxies *service.TrustedProxyService
 	// waf reports the WAF recorder's counters; nil until wired.
 	waf WAFStatsProvider
 	// crowdsec drives the CrowdSec local API; nil until wired.
@@ -184,6 +186,7 @@ func New(
 		inspector:         inspector,
 		runtimes:          rts,
 		wafExclusions:     service.NewWAFExclusionService(queries),
+		trustedProxies:    service.NewTrustedProxyService(queries, rts),
 		proxy:             pm,
 		reconciler:        reconciler,
 		auth:              auth,

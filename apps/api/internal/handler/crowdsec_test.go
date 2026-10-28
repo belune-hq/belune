@@ -150,7 +150,7 @@ func (f *csFixture) do(method, path string, body any, extra ...map[string]string
 	for k, v := range testutil.AuthHeader(f.token) {
 		req.Header.Set(k, v)
 	}
-	req.Header.Set("X-Forwarded-For", "203.0.113.50")
+	req.Header.Set("X-Belune-Client-IP", "203.0.113.50")
 	for _, h := range extra {
 		for k, v := range h {
 			req.Header.Set(k, v)
@@ -291,7 +291,7 @@ func TestCrowdSecStatus_SaysHowYourAddressStands(t *testing.T) {
 	f := crowdsecFixture(t)
 	protection := func(forwardedFor string) string {
 		t.Helper()
-		resp, b := f.do("GET", "/api/maintenance/proxy/crowdsec", nil, map[string]string{"X-Forwarded-For": forwardedFor})
+		resp, b := f.do("GET", "/api/maintenance/proxy/crowdsec", nil, map[string]string{"X-Belune-Client-IP": forwardedFor})
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 		var st map[string]any
 		require.NoError(t, json.Unmarshal(b, &st))
@@ -611,7 +611,7 @@ func TestCrowdSecLogin_AllowlistsAnAdminAndNeverFailsTheLogin(t *testing.T) {
 		req, err := http.NewRequest("POST", f.url+"/api/auth/login", bytes.NewReader(raw))
 		require.NoError(t, err)
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("X-Forwarded-For", ip)
+		req.Header.Set("X-Belune-Client-IP", ip)
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
 		_ = resp.Body.Close()

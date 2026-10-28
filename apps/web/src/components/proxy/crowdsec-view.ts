@@ -365,6 +365,27 @@ export function describeAutoban(
   };
 }
 
+/**
+ * The addresses the last check left alone, or null when it left none.
+ *
+ * Without this line, "the allowlist protected an admin who went over the threshold"
+ * and "automatic bans never noticed anything" both read as "0 automatic bans in
+ * force", and the only way to tell them apart was the status JSON in DevTools.
+ *
+ * ⚠️ The count lumps together four different reasons, and Belune keeps only the count:
+ * the allowlist, an admin's unban, an address no ban can name (private or loopback),
+ * and the limit on bans in force. So the sentence lists them as possibilities and
+ * claims none. The limit already has its own warning (`capped`).
+ */
+export function describeSkipped(skipped: number): string | null {
+  if (skipped <= 0) return null;
+  const subject =
+    skipped === 1
+      ? "1 address over the threshold was"
+      : `${skipped} addresses over the threshold were`;
+  return `${subject} left alone on the last check: on the allowlist, lifted by an admin, an address that cannot be banned (private or loopback), or past the limit. Belune counts them but does not record which.`;
+}
+
 function spanMinutes(min: number): string {
   if (min < 120) return plural(min, "minute");
   if (min < 48 * 60) return plural(Math.round(min / 60), "hour");

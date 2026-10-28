@@ -24,7 +24,9 @@
     "delete-crowd-sec-ban",
     "list-crowd-sec-allowlist",
     "create-crowd-sec-allow",
+    "get-trusted-proxies",
     "delete-crowd-sec-allow",
+    "update-trusted-proxies",
     "update-crowd-sec-autoban",
     "rotate-crowd-sec-key"
   ]

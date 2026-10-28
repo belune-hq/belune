@@ -3456,6 +3456,102 @@
         ]
       }
     },
+    "/api/maintenance/proxy/trusted-proxies": {
+      "get": {
+        "operationId": "GetTrustedProxies",
+        "summary": "Get Trusted Proxies",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "Maintenance (Admin)"
+        ],
+        "x-belune-order": 20,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/trustedProxiesResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "read": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "UpdateTrustedProxies",
+        "summary": "Update Trusted Proxies",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "Maintenance (Admin)"
+        ],
+        "x-belune-order": 21,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/updateTrustedProxiesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/trustedProxiesResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "write": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/maintenance/proxy/waf": {
       "get": {
         "operationId": "GetWAFStatus",
@@ -20840,6 +20936,69 @@
         },
         "type": "object"
       },
+      "trustedProxiesResponse": {
+        "properties": {
+          "cidrs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "overlaps": {
+            "items": {
+              "$ref": "#/components/schemas/trustedProxyOverlapResponse"
+            },
+            "type": "array"
+          },
+          "overlaps_checked": {
+            "type": "boolean"
+          },
+          "presets": {
+            "items": {
+              "$ref": "#/components/schemas/trustedProxyPresetResponse"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "trustedProxyOverlapResponse": {
+        "properties": {
+          "cidr": {
+            "type": "string"
+          },
+          "network": {
+            "type": "string"
+          },
+          "subnet": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "trustedProxyPresetResponse": {
+        "properties": {
+          "checked_at": {
+            "type": "string"
+          },
+          "cidrs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "updateAlertPreferencesRequest": {
         "properties": {
           "build_failures": {
@@ -21112,6 +21271,17 @@
           },
           "readonly_rootfs": {
             "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "updateTrustedProxiesRequest": {
+        "properties": {
+          "cidrs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           }
         },
         "type": "object"

@@ -48,7 +48,7 @@ const (
 	proxyTTL = 30 * time.Second
 	// proxyRetry spaces lookups, so a peer that is not Caddy cannot make every
 	// request cost a Docker call.
-	proxyRetry   = 5 * time.Second
+	proxyRetry   = 2 * time.Second
 	proxyTimeout = 2 * time.Second
 )
 
@@ -82,13 +82,16 @@ type ProxyTrust struct {
 	gateway netip.Addr
 	now     func() time.Time
 
-	refreshMu sync.Mutex // held while asking; a loser serves from the cache
+	refreshMu sync.Mutex // held while asking; a concurrent caller waits for the answer
 	lastTry   time.Time  // under refreshMu
 
-	mu     sync.RWMutex
-	addrs  map[netip.Addr]struct{}
-	known  bool
-	lastOK time.Time
+	mu    sync.RWMutex
+	addrs map[netip.Addr]struct{}
+	known bool
+	// verified is whether the LAST lookup succeeded. A miss against a set that
+	// could not be refreshed proves nothing about the peer, so it is not a refusal.
+	verified bool
+	lastOK   time.Time
 }
 
 // NewProxyTrust builds the decision. extra are always-trusted peers from
@@ -132,10 +135,15 @@ func (p *ProxyTrust) Classify(ctx context.Context, peer netip.Addr) PeerClass {
 	return p.classifyMiss()
 }
 
+// classifyMiss decides what a peer that is not in the held set is. It is "other"
+// — refusable — only when the set rules it out on a recent, successful lookup.
+// A set that is missing, could not be refreshed, or has aged past twice its TTL
+// says nothing about this peer: Caddy may have moved while Docker was away, and
+// refusing then would 403 the dashboard for a lookup that never happened.
 func (p *ProxyTrust) classifyMiss() PeerClass {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	if !p.known {
+	if !p.known || !p.verified || p.now().Sub(p.lastOK) > 2*proxyTTL {
 		return PeerUnknown
 	}
 	return PeerOther
@@ -149,13 +157,19 @@ func (p *ProxyTrust) lookup(peer netip.Addr) (in bool, age time.Duration) {
 }
 
 // refresh asks for the proxy's addresses. At most one caller asks at a time and at
-// most once per proxyRetry; everyone else carries on with what is held. A failed
-// or empty answer replaces nothing it cannot replace: a transient error keeps the
-// last good set, and an answer of "no proxy" makes the state unknown, not empty.
+// most once per proxyRetry; a caller that arrives while another is asking WAITS
+// for that answer rather than carrying on with the set it had. Returning at once
+// with the stale set is how a burst of parallel requests after Caddy moves would
+// all miss and be refused, while the one that won the lookup got through.
+//
+// A failed or empty answer replaces nothing it cannot replace: a transient error
+// keeps the last good set (marked unverified), and an answer of "no proxy" makes
+// the state unknown, not empty.
 func (p *ProxyTrust) refresh(ctx context.Context) {
-	if p.list == nil || !p.refreshMu.TryLock() {
+	if p.list == nil {
 		return
 	}
+	p.refreshMu.Lock()
 	defer p.refreshMu.Unlock()
 	if p.now().Sub(p.lastTry) < proxyRetry {
 		return
@@ -165,13 +179,14 @@ func (p *ProxyTrust) refresh(ctx context.Context) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), proxyTimeout)
 	defer cancel()
 	found, err := p.list(ctx)
-	if err != nil {
-		slog.Warn("client ip: could not list the proxy's addresses", "error", err)
-		return
-	}
-
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if err != nil {
+		slog.Warn("client ip: could not list the proxy's addresses", "error", err)
+		p.verified = false
+		return
+	}
+	p.verified = true
 	if len(found) == 0 {
 		p.addrs, p.known = nil, false
 		return
@@ -220,7 +235,11 @@ func (p *ProxyTrust) Middleware(next http.Handler) http.Handler {
 				metrics.RecordClientIPDecision("rejected")
 				slog.Warn("client ip: refused a request that did not come through the proxy",
 					"peer", peer.String(), "path", r.URL.Path)
-				http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+				// Not http.Error: it would label this JSON body text/plain. The handler
+				// package's writeError is out of reach (it imports this package).
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = io.WriteString(w, `{"error":"forbidden"}`+"\n")
 				return
 			}
 			metrics.RecordClientIPDecision("direct")

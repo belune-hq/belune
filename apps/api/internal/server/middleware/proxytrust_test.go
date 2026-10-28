@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -27,10 +28,13 @@ type lister struct {
 	addrs []netip.Addr
 	err   error
 	calls atomic.Int32
+	// delay makes a lookup take long enough for concurrent callers to overlap it.
+	delay time.Duration
 }
 
 func (l *lister) list(context.Context) ([]netip.Addr, error) {
 	l.calls.Add(1)
+	time.Sleep(l.delay)
 	return l.addrs, l.err
 }
 
@@ -141,9 +145,90 @@ func TestProxyTrust_ATransientErrorKeepsTheLastGoodSet(t *testing.T) {
 	r.l.err = errors.New("docker: timeout")
 	r.do(caddyAddr.String(), "/", map[string]string{proxy.ClientIPHeader: "203.0.113.9"})
 	assert.Equal(t, "203.0.113.9", clientOf(r), "Caddy is still Caddy while Docker is down")
-	// …and a stranger is still not let in just because the lookup is failing: the
-	// set is known, so this is PeerOther, not Unknown.
+}
+
+// The failure the type comment promises cannot happen: Docker is unreachable AND
+// Caddy has moved. The set is stale, not wrong about this peer, so nobody is
+// refused on the strength of a lookup that did not happen.
+func TestProxyTrust_ADockerOutageNeverTurnsIntoA403(t *testing.T) {
+	r := newRig(t, caddyAddr)
+	require.Equal(t, http.StatusOK, r.do(caddyAddr.String(), "/", nil).Code)
+
+	moved := netip.MustParseAddr("172.20.0.77")
+	r.l.err = errors.New("docker: connection refused")
+	r.clock = r.clock.Add(proxyRetry + time.Second)
+	for i := 0; i < 5; i++ {
+		rec := r.do(moved.String(), "/api/x", map[string]string{proxy.ClientIPHeader: "203.0.113.9"})
+		assert.Equal(t, http.StatusOK, rec.Code, "request %d", i)
+		assert.Equal(t, moved.String(), clientOf(r), "served, and its header not believed")
+		r.clock = r.clock.Add(proxyRetry + time.Second)
+	}
+
+	// Docker comes back: the moved Caddy is found and trusted again.
+	r.l.err = nil
+	r.l.addrs = []netip.Addr{moved}
+	r.do(moved.String(), "/api/x", map[string]string{proxy.ClientIPHeader: "203.0.113.9"})
+	assert.Equal(t, "203.0.113.9", clientOf(r))
+}
+
+func TestProxyTrust_ASetThatHasAgedOutRefusesNobody(t *testing.T) {
+	r := newRig(t, caddyAddr)
+	require.Equal(t, http.StatusOK, r.do(caddyAddr.String(), "/", nil).Code)
+
+	// Lookups keep "succeeding" with an answer that is no longer current in time
+	// only if the clock runs past twice the TTL with no good answer in between.
+	r.l.err = errors.New("docker: timeout")
+	r.clock = r.clock.Add(3 * proxyTTL)
+	assert.Equal(t, http.StatusOK, r.do("172.30.0.9", "/api/x", nil).Code)
+}
+
+func TestProxyTrust_AStrangerIsRefusedOnlyOnAFreshAnswerThatRulesItOut(t *testing.T) {
+	r := newRig(t, caddyAddr)
 	assert.Equal(t, http.StatusForbidden, r.do("172.30.0.9", "/api/x", nil).Code)
+}
+
+// A dashboard load fires several API calls at once. When Caddy has just moved, one
+// of them wins the lookup; the rest must wait for it, not carry on with the old
+// set, miss, and be refused.
+func TestProxyTrust_ParallelRequestsAfterCaddyMovesAreAllServed(t *testing.T) {
+	r := newRig(t, caddyAddr)
+	require.Equal(t, http.StatusOK, r.do(caddyAddr.String(), "/", nil).Code)
+
+	moved := netip.MustParseAddr("172.20.0.77")
+	r.l.addrs = []netip.Addr{moved}
+	r.l.delay = 100 * time.Millisecond
+	r.clock = r.clock.Add(proxyRetry + time.Second)
+
+	const n = 16
+	codes := make(chan int, n)
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			h := r.trust.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
+			req := httptest.NewRequest(http.MethodGet, "/api/x", nil)
+			req.RemoteAddr = moved.String() + ":4444"
+			req.Header.Set(proxy.ClientIPHeader, "203.0.113.9")
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+			codes <- rec.Code
+		}()
+	}
+	wg.Wait()
+	close(codes)
+	for c := range codes {
+		assert.Equal(t, http.StatusOK, c)
+	}
+	assert.Equal(t, int32(2), r.l.calls.Load(), "one lookup at the start and one for the whole burst")
+}
+
+func TestProxyTrust_TheRefusalSaysItIsJSONAndIs(t *testing.T) {
+	r := newRig(t, caddyAddr)
+	rec := r.do("172.30.0.9", "/api/x", nil)
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+	assert.JSONEq(t, `{"error":"forbidden"}`, rec.Body.String())
 }
 
 func TestProxyTrust_ARestartedCaddyOnANewAddressIsFoundOnTheFirstMiss(t *testing.T) {

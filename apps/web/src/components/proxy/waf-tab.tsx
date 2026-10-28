@@ -51,6 +51,11 @@ import { LIST_PAGE_SIZES, ListPagination } from "@/components/ui/data-table";
 import { StatCard } from "@/lib/components/stats/stat-card";
 import { WafDetectionSheet } from "@/components/proxy/waf-detection-sheet";
 import {
+  WAF_EXCLUSIONS_ANCHOR,
+  WafExclusionsCard,
+} from "@/components/proxy/waf-exclusions-card";
+import { exclusionsNotice } from "@/components/proxy/waf-exclusion-view";
+import {
   BADGE_VARIANT,
   CATEGORY_COLUMN_HELP,
   CLIENT_WOULD_BLOCK,
@@ -118,6 +123,7 @@ export function WafTab() {
             onWindow={setWindowKey}
           />
           <EventsCard status={status} windowKey={windowKey} />
+          <WafExclusionsCard />
         </>
       )}
     </div>
@@ -191,6 +197,7 @@ function WafCard({
                 {w.text}
               </p>
             ))}
+            <ExclusionsNotice status={status} />
             <p className="text-text-faint text-xs">
               Events are kept for {status.retention_days} days, and at most{" "}
               {status.max_events.toLocaleString()} are kept.
@@ -221,6 +228,35 @@ function WafCard({
         </AlertDialogContent>
       </AlertDialog>
     </Card>
+  );
+}
+
+/**
+ * Silence needs a visible reason. An exclusion's whole purpose is to make
+ * detections stop appearing, so without this line the next reader of an empty
+ * table concludes the WAF is broken, or that the application is clean.
+ */
+function ExclusionsNotice({ status }: { status: WafStatus }) {
+  const text = exclusionsNotice(
+    status.exclusions.total,
+    status.exclusions.inert,
+  );
+  if (!text) return null;
+  return (
+    <p className="text-status-building text-sm">
+      {text}{" "}
+      <button
+        type="button"
+        className="text-brand-text hover:underline"
+        onClick={() =>
+          document
+            .getElementById(WAF_EXCLUSIONS_ANCHOR)
+            ?.scrollIntoView({ behavior: "smooth", block: "start" })
+        }
+      >
+        View them
+      </button>
+    </p>
   );
 }
 

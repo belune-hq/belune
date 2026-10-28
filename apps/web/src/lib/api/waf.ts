@@ -1,5 +1,8 @@
 import type {
   WafClientsPage,
+  WafExclusion,
+  WafExclusionInput,
+  WafExclusionsPage,
   WafEventsPage,
   WafStatus,
   WafWindow,
@@ -48,4 +51,16 @@ export function listWafClients(
   if (filters.clientIp) q.set("client_ip", filters.clientIp);
   if (filters.ruleId !== undefined) q.set("rule_id", String(filters.ruleId));
   return api.get<WafClientsPage>(`/maintenance/proxy/waf/clients?${q}`);
+}
+
+export function listWafExclusions() {
+  return api.get<WafExclusionsPage>("/maintenance/proxy/waf/exclusions");
+}
+
+export function createWafExclusion(input: WafExclusionInput) {
+  return api.post<WafExclusion>("/maintenance/proxy/waf/exclusions", input);
+}
+
+export function deleteWafExclusion(id: number) {
+  return api.delete<void>(`/maintenance/proxy/waf/exclusions/${id}`);
 }

@@ -23,6 +23,17 @@ const clientFilters: unknown[] = [];
 const windows: string[] = [];
 
 vi.mock("@/lib/hooks/use-waf", () => ({
+  useWafExclusions: () => ({
+    data: {
+      exclusions: [],
+      max: 100,
+      collections: ["ARGS", "REQUEST_COOKIES"],
+    },
+    isLoading: false,
+    error: null,
+  }),
+  useCreateWafExclusion: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDeleteWafExclusion: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useWafStatus: (window: string) => {
     windows.push(window);
     return { data: status, isLoading: status === undefined };
@@ -54,6 +65,7 @@ const base = (over: Partial<WafStatus> = {}): WafStatus => ({
   enabled: false,
   mode: "detection_only",
   state: { active: false, hosts: 0 },
+  exclusions: { total: 0, inert: 0 },
   recorder: {
     since: "2026-10-23T00:00:00Z",
     recorded: 0,
@@ -166,6 +178,26 @@ describe("WafTab", () => {
     fireEvent.click(screen.getByRole("switch"));
     await waitFor(() => expect(setEnabled).toHaveBeenCalledWith(false));
     expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("gives the silence a visible reason when exclusions are in force", () => {
+    status = base({
+      enabled: true,
+      state: { active: true, hosts: 2 },
+      exclusions: { total: 3, inert: 1 },
+    });
+    render(<WafTab />);
+    expect(
+      screen.getByText(/3 exclusions in place, 1 of them apply to nothing yet/),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "View them" })).toBeTruthy();
+  });
+
+  it("says nothing about exclusions when there are none", () => {
+    status = base({ enabled: true, state: { active: true, hosts: 2 } });
+    render(<WafTab />);
+    expect(screen.queryByText(/exclusion[s]? in/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "View them" })).toBeNull();
   });
 
   it("says out loud when detections were lost", () => {

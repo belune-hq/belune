@@ -977,6 +977,49 @@ export interface WafSummary {
   top_clients: WafTopClient[];
 }
 
+/** How an exclusion narrows what it ignores. */
+export type WafExclusionShape = "target" | "path" | "rule";
+
+/** A place the WAF rule set has been told to stand down: a security downgrade. */
+export interface WafExclusion {
+  id: number;
+  rule_id: number;
+  shape: WafExclusionShape;
+  /** Both set for a target, both empty otherwise. */
+  collection: string;
+  target_name: string;
+  /** Rooted; a trailing * means "begins with". */
+  path_pattern: string;
+  scope: "install" | "application";
+  application_id: string | null;
+  application_name: string;
+  /** The application's domains now. They are not stored with the exclusion. */
+  hosts: string[];
+  /** Scoped to an application with no domains: it applies to nothing. */
+  inert: boolean;
+  note: string;
+  created_at: string;
+}
+
+export interface WafExclusionsPage {
+  exclusions: WafExclusion[];
+  /** The most the proxy will render. */
+  max: number;
+  /** The request fields a target exclusion may name. */
+  collections: string[];
+}
+
+export interface WafExclusionInput {
+  rule_id: number;
+  collection?: string;
+  target_name?: string;
+  path_pattern?: string;
+  /** Absent or empty is install-wide. */
+  application_id?: string;
+  /** Required when the whole rule is turned off. */
+  note?: string;
+}
+
 /** A trusted range that overlaps a Docker network Caddy is attached to. */
 export interface TrustedProxyOverlap {
   cidr: string;
@@ -1014,6 +1057,9 @@ export interface WafStatus {
   retention_days: number;
   max_events: number;
   summary: WafSummary;
+  /** Detections silenced on purpose: without this, fewer of them read as a broken
+   *  WAF or a clean application. */
+  exclusions: { total: number; inert: number };
 }
 
 /** Coraza reports "unknown" for a rule that declares no severity, which includes

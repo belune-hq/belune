@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
   Sheet,
@@ -21,6 +22,7 @@ import {
   REQUEST_DETAIL_ABSENT,
   statusTone,
 } from "@/components/proxy/waf-view";
+import { WafExclusionDialog } from "@/components/proxy/waf-exclusion-dialog";
 import { formatDateTime, formatRelativeTime } from "@/lib/utils/format";
 import type { WafEvent } from "@/lib/types";
 
@@ -50,6 +52,7 @@ export function WafDetectionSheet({
       ? event.request.status
       : null;
   const relative = formatRelativeTime(event.recorded_at);
+  const [excluding, setExcluding] = useState(false);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -181,6 +184,36 @@ export function WafDetectionSheet({
             ? `${MATCHED_TARGET_NOTE} ${DETECTION_PAYLOAD_ABSENT}`
             : DETECTION_PAYLOAD_ABSENT}
         </p>
+
+        <Separator />
+
+        {/* A false positive is judged here, with the detection in front of the
+            operator, so this is where the exclusion starts. It opens a dialog that
+            says what it lowers; it never excludes anything by itself. */}
+        <section className="flex flex-col items-start gap-2">
+          <h3 className="text-sm font-medium">
+            Think this is a false positive?
+          </h3>
+          <p className="text-muted-foreground text-xs">
+            An exclusion tells the WAF to stop recording this rule for what you
+            choose. It lowers your protection, so it asks you to confirm.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setExcluding(true)}
+          >
+            Create Exclusion
+          </Button>
+        </section>
+        {excluding && (
+          <WafExclusionDialog
+            event={event}
+            open
+            onOpenChange={(open) => !open && setExcluding(false)}
+          />
+        )}
       </SheetContent>
     </Sheet>
   );

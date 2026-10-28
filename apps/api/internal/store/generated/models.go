@@ -655,3 +655,15 @@ type WafEvent struct {
 	TxID          pgtype.Text        `json:"tx_id"`
 	MatchedTarget pgtype.Text        `json:"matched_target"`
 }
+
+type WafExclusion struct {
+	ID            int64              `json:"id"`
+	RuleID        int32              `json:"rule_id"`
+	Collection    pgtype.Text        `json:"collection"`
+	TargetName    pgtype.Text        `json:"target_name"`
+	PathPattern   pgtype.Text        `json:"path_pattern"`
+	ApplicationID pgtype.UUID        `json:"application_id"`
+	Note          string             `json:"note"`
+	CreatedBy     pgtype.UUID        `json:"created_by"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+}

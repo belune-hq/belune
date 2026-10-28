@@ -49,7 +49,16 @@ func DegradationsChanged(prev, next []Degradation) bool {
 // the test, so it can be exercised without a database.
 func (r *Reconciler) SyncWAF(ctx context.Context, expected []RouteConfig, dashboardHost string, wanted func(context.Context) (bool, error)) error {
 	r.wafSwitch = wanted
+	if r.wafExclusionList == nil {
+		r.wafExclusionList = func(context.Context) ([]WAFExclusion, error) { return nil, nil }
+	}
 	return r.syncWAF(ctx, expected, dashboardHost)
+}
+
+// WithWAFExclusions supplies the exclusions a pass reads, so a test needs no database.
+func (r *Reconciler) WithWAFExclusions(list func(context.Context) ([]WAFExclusion, error)) *Reconciler {
+	r.wafExclusionList = list
+	return r
 }
 
 // SyncCrowdSec exposes the CrowdSec step of a pass.

@@ -3726,6 +3726,150 @@
         ]
       }
     },
+    "/api/maintenance/proxy/waf/exclusions": {
+      "get": {
+        "operationId": "ListWAFExclusions",
+        "summary": "List WAF Exclusions",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "Maintenance (Admin)"
+        ],
+        "x-belune-order": 13,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/wafExclusionsResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "read": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "CreateWAFExclusion",
+        "summary": "Create WAF Exclusion",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "Maintenance (Admin)"
+        ],
+        "x-belune-order": 14,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/createWAFExclusionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/wafExclusionResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "write": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/maintenance/proxy/waf/exclusions/{id}": {
+      "delete": {
+        "operationId": "DeleteWAFExclusion",
+        "summary": "Delete WAF Exclusion",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "Maintenance (Admin)"
+        ],
+        "x-belune-order": 15,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Not resolved by static extraction — see the handler for the exact response."
+          }
+        },
+        "security": [
+          {
+            "write": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/maintenance/queue": {
       "get": {
         "operationId": "GetQueueStatus",
@@ -18255,6 +18399,29 @@
         },
         "type": "object"
       },
+      "createWAFExclusionRequest": {
+        "properties": {
+          "application_id": {
+            "type": "string"
+          },
+          "collection": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "path_pattern": {
+            "type": "string"
+          },
+          "rule_id": {
+            "type": "integer"
+          },
+          "target_name": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "crowdsecAllowItemResponse": {
         "properties": {
           "created_at": {
@@ -21515,6 +21682,88 @@
         },
         "type": "object"
       },
+      "wafExclusionResponse": {
+        "properties": {
+          "application_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "application_name": {
+            "type": "string"
+          },
+          "collection": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "hosts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "inert": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": "string"
+          },
+          "path_pattern": {
+            "type": "string"
+          },
+          "rule_id": {
+            "type": "integer"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "shape": {
+            "type": "string"
+          },
+          "target_name": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "wafExclusionSummary": {
+        "properties": {
+          "inert": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "wafExclusionsResponse": {
+        "properties": {
+          "collections": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "exclusions": {
+            "items": {
+              "$ref": "#/components/schemas/wafExclusionResponse"
+            },
+            "type": "array"
+          },
+          "max": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
       "wafRequestDetail": {
         "properties": {
           "content_type": {
@@ -21548,6 +21797,9 @@
           },
           "enabled": {
             "type": "boolean"
+          },
+          "exclusions": {
+            "$ref": "#/components/schemas/wafExclusionSummary"
           },
           "max_events": {
             "type": "integer"

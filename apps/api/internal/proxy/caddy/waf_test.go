@@ -18,7 +18,7 @@ import (
 )
 
 func TestBuildWAFRoute_Shape(t *testing.T) {
-	r := buildWAFRoute([]string{"a.example.com", "b.example.com"})
+	r := buildWAFRoute([]string{"a.example.com", "b.example.com"}, nil)
 	b, err := json.Marshal(r)
 	require.NoError(t, err)
 
@@ -280,7 +280,7 @@ func TestWAFRoute_StaysFirstAndIsNotAnApplicationRoute(t *testing.T) {
 // no request detail and no error anywhere. So the placeholder is asserted here
 // rather than left to be noticed.
 func TestWAFRoute_CarriesTheRequestUUIDTheRequestLogJoinsOn(t *testing.T) {
-	b, err := json.Marshal(buildWAFRoute([]string{"a.example.com"}))
+	b, err := json.Marshal(buildWAFRoute([]string{"a.example.com"}, nil))
 	require.NoError(t, err)
 
 	var got struct {

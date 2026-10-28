@@ -93,6 +93,8 @@ type Handler struct {
 	proxyMetrics *caddymetrics.Observer
 	// accessLog reports the request-log tailer's health; nil until wired.
 	accessLog AccessLogStatusProvider
+	// wafExclusions owns the operator's carve-outs from the WAF rule set.
+	wafExclusions *service.WAFExclusionService
 	// waf reports the WAF recorder's counters; nil until wired.
 	waf WAFStatsProvider
 	// crowdsec drives the CrowdSec local API; nil until wired.
@@ -181,6 +183,7 @@ func New(
 		asynq:             asynqClient,
 		inspector:         inspector,
 		runtimes:          rts,
+		wafExclusions:     service.NewWAFExclusionService(queries),
 		proxy:             pm,
 		reconciler:        reconciler,
 		auth:              auth,

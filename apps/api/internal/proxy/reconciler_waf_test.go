@@ -143,3 +143,34 @@ func TestSyncWAF_ARefusalFromCaddyIsReportedAndTheOldStateKept(t *testing.T) {
 	assert.Contains(t, st.Error, "unknown module")
 	assert.True(t, st.Active, "the route that is up stays reported as up")
 }
+
+func TestSyncWAF_HandsTheExclusionsToTheProxy(t *testing.T) {
+	mp := &mockProxy{}
+	want := []proxy.WAFExclusion{{
+		ID: 7, WAFExclusionSpec: proxy.WAFExclusionSpec{RuleID: 942290, Collection: "REQUEST_COOKIES", TargetName: "ph_x"}, Global: true,
+	}}
+	r := wafReconciler(mp, caddyWithWAF).WithWAFExclusions(func(context.Context) ([]proxy.WAFExclusion, error) { return want, nil })
+
+	require.NoError(t, r.SyncWAF(context.Background(), routes("a.example.com"), "", switchOf(true)))
+	require.Len(t, mp.waf, 1)
+	assert.Equal(t, want, mp.waf[0].Exclusions)
+}
+
+// A route rendered without the exclusions would start detecting what the operator
+// had silenced, then flip back on the next good read. Better to push nothing.
+func TestSyncWAF_AnUnreadableExclusionListPushesNothing(t *testing.T) {
+	mp := &mockProxy{}
+	ok := true
+	r := wafReconciler(mp, caddyWithWAF).WithWAFExclusions(func(context.Context) ([]proxy.WAFExclusion, error) {
+		if ok {
+			return []proxy.WAFExclusion{{ID: 1, WAFExclusionSpec: proxy.WAFExclusionSpec{RuleID: 941100}, Global: true}}, nil
+		}
+		return nil, errors.New("connection refused")
+	})
+	require.NoError(t, r.SyncWAF(context.Background(), routes("a.example.com"), "", switchOf(true)))
+	require.Len(t, mp.waf, 1)
+
+	ok = false
+	require.Error(t, r.SyncWAF(context.Background(), routes("a.example.com"), "", switchOf(true)))
+	assert.Len(t, mp.waf, 1, "nothing was pushed, so the exclusions stay in force")
+}

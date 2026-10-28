@@ -678,6 +678,12 @@ func registerRoutes(r chi.Router, h *handler.Handler, auth *service.AuthService,
 					r.With(withTimeout(handlerTimeout)).Put("/api/maintenance/proxy/waf", h.UpdateWAF)
 					r.With(withTimeout(handlerTimeout)).Get("/api/maintenance/proxy/waf/events", h.ListWAFEvents)
 					r.With(withTimeout(handlerTimeout)).Get("/api/maintenance/proxy/waf/clients", h.ListWAFClients)
+					// Where the rule set has been told to stand down. Every create is a
+					// security downgrade and is audited; the delete that reverses one is
+					// never gated.
+					r.With(withTimeout(handlerTimeout)).Get("/api/maintenance/proxy/waf/exclusions", h.ListWAFExclusions)
+					r.With(withTimeout(handlerTimeout)).Post("/api/maintenance/proxy/waf/exclusions", h.CreateWAFExclusion)
+					r.With(withTimeout(handlerTimeout)).Delete("/api/maintenance/proxy/waf/exclusions/{id}", h.DeleteWAFExclusion)
 					// The CDN or load balancer in front of Caddy, if any: whose word about
 					// who the visitor is Caddy takes. A property of the proxy, so it lives
 					// beside it.

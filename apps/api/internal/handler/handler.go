@@ -93,6 +93,8 @@ type Handler struct {
 	proxyMetrics *caddymetrics.Observer
 	// accessLog reports the request-log tailer's health; nil until wired.
 	accessLog AccessLogStatusProvider
+	// wafExclusions owns the operator's carve-outs from the WAF rule set.
+	wafExclusions *service.WAFExclusionService
 	// trustedProxies owns the list of CDNs/load balancers in front of Caddy.
 	trustedProxies *service.TrustedProxyService
 	// waf reports the WAF recorder's counters; nil until wired.
@@ -183,6 +185,7 @@ func New(
 		asynq:             asynqClient,
 		inspector:         inspector,
 		runtimes:          rts,
+		wafExclusions:     service.NewWAFExclusionService(queries),
 		trustedProxies:    service.NewTrustedProxyService(queries, rts),
 		proxy:             pm,
 		reconciler:        reconciler,

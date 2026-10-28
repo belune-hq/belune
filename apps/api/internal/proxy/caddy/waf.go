@@ -52,9 +52,11 @@ const wafRouteID = "route-waf"
 //   - SecDebugLogLevel 1: at the default, the engine writes several WARN lines per
 //     request through the same logger the rule matches arrive on, for clean
 //     requests too. Rule matches are not affected by it.
-const wafDirectives = `Include @coraza.conf-recommended
+const wafDirectivesHead = `Include @coraza.conf-recommended
 Include @crs-setup.conf.example
-Include @owasp_crs/*.conf
+`
+
+const wafDirectivesTail = `Include @owasp_crs/*.conf
 SecResponseBodyAccess Off
 SecAuditEngine Off
 SecDebugLogLevel 1
@@ -67,6 +69,25 @@ SecRule REQUEST_HEADERS:Transfer-Encoding "@rx .+" "id:1000003,phase:1,pass,nolo
 SecRuleEngine DetectionOnly
 `
 
+// wafDirectives is the configuration with no exclusions: what an install that has
+// never made one runs, byte for byte, so adding the feature is not a route diff.
+var wafDirectives = renderWAFDirectives(nil)
+
+// renderWAFDirectives is the Coraza configuration for these exclusions.
+//
+// ⚠️ The exclusion block sits BETWEEN the setup include and the rule set, and that
+// is not a style choice: a ctl:ruleRemove* only affects rules that have not run
+// yet, and a rule defined earlier runs earlier. Placed after the rule set it
+// removed a phase-2 rule but left a phase-1 one firing (measured against Caddy
+// v2.11.7 with coraza-caddy v2.6.2).
+//
+// SecRuleEngine DetectionOnly stays last, so nothing the includes say can switch
+// the engine on. The exclusion rules below can only REMOVE rules and targets from
+// the transaction; none of them touches the engine.
+func renderWAFDirectives(exclusions []proxy.WAFExclusion) string {
+	return wafDirectivesHead + renderWAFExclusions(exclusions) + wafDirectivesTail
+}
+
 // buildWAFRoute renders the WAF route for these hosts.
 //
 // It has no `terminal`, so Caddy carries on to the application's own route once
@@ -78,7 +99,7 @@ SecRuleEngine DetectionOnly
 // pipeline has to be joined to learn it. The header is SET, not appended, so a
 // client cannot supply its own, and the last handler removes it so the application
 // never sees it.
-func buildWAFRoute(hosts []string) caddyRoute {
+func buildWAFRoute(hosts []string, exclusions []proxy.WAFExclusion) caddyRoute {
 	return caddyRoute{
 		ID:    wafRouteID,
 		Match: []caddyMatch{{Host: hosts}},
@@ -92,7 +113,7 @@ func buildWAFRoute(hosts []string) caddyRoute {
 			{
 				"handler":          "waf",
 				"load_owasp_crs":   true,
-				"directives":       wafDirectives,
+				"directives":       renderWAFDirectives(exclusions),
 				"tx_id_req_header": waf.TxHeader,
 			},
 			{
@@ -126,7 +147,7 @@ func (c *Client) SyncWAF(ctx context.Context, cfg proxy.WAFConfig) (err error) {
 		return nil
 	}
 
-	desired := buildWAFRoute(hosts)
+	desired := buildWAFRoute(hosts, cfg.Exclusions)
 	if found {
 		same, err := routeJSONEqual(current, desired)
 		if err != nil {

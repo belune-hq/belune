@@ -67,6 +67,9 @@ type WAFConfig struct {
 	// which a generic rule set reads as attacks, and an admin panel is not what the
 	// WAF is here to watch. No hosts means no route.
 	Hosts []string
+	// Exclusions are the operator's carve-outs from the rule set. Sorted by id, and
+	// rendered in that order, so the same rows are the same bytes.
+	Exclusions []WAFExclusion
 }
 
 // CrowdSecConfig is the desired state of the CrowdSec bouncer: a `crowdsec` app in

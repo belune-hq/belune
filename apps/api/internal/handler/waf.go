@@ -93,6 +93,18 @@ type wafStatusResponse struct {
 	RetentionDays int        `json:"retention_days"`
 	MaxEvents     int        `json:"max_events"`
 	Summary       wafSummary `json:"summary"`
+	// Exclusions says that detections are being silenced on purpose. Without it, an
+	// exclusion's whole effect — fewer detections — reads as a WAF that is broken or
+	// an application that is clean.
+	Exclusions wafExclusionSummary `json:"exclusions"`
+}
+
+type wafExclusionSummary struct {
+	// Total is every exclusion on record.
+	Total int `json:"total"`
+	// Inert are application-scoped ones whose application has no domains: they
+	// apply to nothing right now.
+	Inert int `json:"inert"`
 }
 
 type wafSummary struct {
@@ -583,6 +595,16 @@ func (h *Handler) wafStatus(r *http.Request, window string) (wafStatusResponse, 
 	}
 	if h.waf != nil {
 		resp.Recorder = h.waf.Stats()
+	}
+	exclusions, err := h.wafExclusions.List(ctx)
+	if err != nil {
+		return resp, err
+	}
+	resp.Exclusions.Total = len(exclusions)
+	for _, e := range exclusions {
+		if e.Inert {
+			resp.Exclusions.Inert++
+		}
 	}
 
 	since := pgtype.Timestamptz{Time: wafSummarySince(window, time.Now()), Valid: true}

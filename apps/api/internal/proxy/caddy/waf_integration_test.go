@@ -301,3 +301,47 @@ func (zeroReader) Read(p []byte) (int, error) {
 	}
 	return len(p), nil
 }
+
+// Caddy parses the directives when it provisions the module, so a successful
+// SyncWAF IS the proof that every shape an exclusion can take parses: a line it
+// refused would come back as an error and leave the previous route in place.
+// Needs only the admin API (CADDY_ADMIN_URL), not a reachable upstream.
+//
+//	BELUNE_CADDY_INTEGRATION=1 CADDY_ADMIN_URL=http://127.0.0.1:12020 \
+//	  go test ./internal/proxy/caddy/ -run RealCaddy_WAF_AcceptsEveryExclusion -v
+func TestRealCaddy_WAF_AcceptsEveryExclusionShape(t *testing.T) {
+	c := liveClient(t)
+	ctx := context.Background()
+	c.InitCatchAll(ctx)
+	t.Cleanup(func() { _ = c.SyncWAF(ctx, proxy.WAFConfig{}) })
+
+	exclusions := []proxy.WAFExclusion{
+		withTarget(ex(1, 942290, true), "REQUEST_COOKIES", "ph_phc_x_posthog"),
+		withTarget(ex(2, 941100, false, "a.example.com", "B.example.com"), "ARGS", "q"),
+		withTarget(ex(3, 941100, true), "ARGS_NAMES", "q"),
+		withTarget(ex(4, 920270, true), "REQUEST_HEADERS", "X-Custom-Thing"),
+		withPath(ex(5, 930130, true), "/.env.local"),
+		withPath(ex(6, 930130, false, "a.example.com"), "/api/*"),
+		ex(7, 941110, true),
+		ex(8, 941110, false, "*.example.com"),
+	}
+	cfg := proxy.WAFConfig{Enabled: true, Hosts: []string{"a.example.com", "b.example.com"}, Exclusions: exclusions}
+
+	require.NoError(t, c.SyncWAF(ctx, cfg), "Caddy refused the rendered exclusions")
+	route, found, err := c.fetchRouteByID(ctx, wafRouteID)
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Contains(t, string(route), "ruleRemoveTargetById=942290;REQUEST_COOKIES:ph_phc_x_posthog")
+
+	// The same set again is a read: a write is a reload.
+	same, err := routeJSONEqual(route, buildWAFRoute(wafHosts(cfg.Hosts), exclusions))
+	require.NoError(t, err)
+	assert.True(t, same, "the route Caddy holds differs from what would be written again, so every pass would reload")
+
+	// Removing them all goes back to what shipped before exclusions existed.
+	cfg.Exclusions = nil
+	require.NoError(t, c.SyncWAF(ctx, cfg))
+	route, _, err = c.fetchRouteByID(ctx, wafRouteID)
+	require.NoError(t, err)
+	assert.NotContains(t, string(route), "ruleRemoveTargetById")
+}

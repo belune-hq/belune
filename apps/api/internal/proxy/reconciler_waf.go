@@ -56,6 +56,37 @@ func (r *Reconciler) wafWanted(ctx context.Context) (bool, error) {
 	return strings.TrimSpace(s.Value) == "true", nil
 }
 
+// wafExclusions reads the operator's carve-outs with the hosts they apply to now.
+// An error is returned and nothing is pushed: a route rendered without the
+// exclusions would quietly start detecting what the operator had silenced, and
+// then flip back on the next good read.
+func (r *Reconciler) wafExclusions(ctx context.Context) ([]WAFExclusion, error) {
+	if r.wafExclusionList != nil {
+		return r.wafExclusionList(ctx)
+	}
+	rows, err := r.queries.ListWAFExclusions(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("reading the WAF exclusions: %w", err)
+	}
+	out := make([]WAFExclusion, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, WAFExclusion{
+			ID: row.ID,
+			WAFExclusionSpec: WAFExclusionSpec{
+				RuleID:      int(row.RuleID),
+				Collection:  row.Collection.String,
+				TargetName:  row.TargetName.String,
+				PathPattern: row.PathPattern.String,
+			},
+			// Install-wide ONLY when no application is named. An application whose
+			// domains are gone has Valid set and no hostnames, and must stay inert.
+			Global: !row.ApplicationID.Valid,
+			Hosts:  row.Hostnames,
+		})
+	}
+	return out, nil
+}
+
 // syncWAF brings the WAF route in line with the switch, the module and the
 // applications that exist. Called last in a pass, once the application routes are
 // in place, so the host list it carries is the one they have.
@@ -69,6 +100,10 @@ func (r *Reconciler) wafWanted(ctx context.Context) (bool, error) {
 //     remove a working WAF and put it back on the next pass.
 func (r *Reconciler) syncWAF(ctx context.Context, expected []RouteConfig, dashboardHost string) error {
 	wanted, err := r.wafWanted(ctx)
+	if err != nil {
+		return err
+	}
+	exclusions, err := r.wafExclusions(ctx)
 	if err != nil {
 		return err
 	}
@@ -102,7 +137,7 @@ func (r *Reconciler) syncWAF(ctx context.Context, expected []RouteConfig, dashbo
 		}
 	}
 
-	if err := r.proxy.SyncWAF(ctx, WAFConfig{Enabled: wanted, Hosts: sorted}); err != nil {
+	if err := r.proxy.SyncWAF(ctx, WAFConfig{Enabled: wanted, Hosts: sorted, Exclusions: exclusions}); err != nil {
 		state.Active, state.Error = prev.Active, err.Error()
 		r.setWAF(state)
 		return fmt.Errorf("syncing the WAF route: %w", err)

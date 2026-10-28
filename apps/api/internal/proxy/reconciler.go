@@ -55,6 +55,8 @@ type Reconciler struct {
 	waf WAFState
 	// wafSwitch replaces the database read of the operator's switch. Tests only.
 	wafSwitch func(ctx context.Context) (bool, error)
+	// wafExclusionList replaces the database read of the exclusions. Tests only.
+	wafExclusionList func(ctx context.Context) ([]WAFExclusion, error)
 	// trustedSetting replaces the database read of the trusted proxies. Tests only.
 	trustedSetting func(ctx context.Context) (string, error)
 

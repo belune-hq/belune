@@ -25,6 +25,7 @@ const status = (over: Partial<WafStatus> = {}): WafStatus => ({
   enabled: false,
   mode: "detection_only",
   state: { active: false, hosts: 0 },
+  exclusions: { total: 0, inert: 0 },
   recorder: {
     since: "2026-10-23T00:00:00Z",
     recorded: 0,

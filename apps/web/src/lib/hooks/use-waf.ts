@@ -74,3 +74,37 @@ export function useSetWafEnabled() {
     },
   });
 }
+
+export function useWafExclusions() {
+  return useQuery({
+    queryKey: queryKeys.waf.exclusions,
+    queryFn: wafApi.listWafExclusions,
+  });
+}
+
+/**
+ * An exclusion changes what the WAF reports from here on, so it refreshes the
+ * status (whose exclusion count is the visible reason detections went quiet) and
+ * the proxy's own state, and the detection lists.
+ */
+function useExclusionChange<TArg, TResult>(
+  fn: (arg: TArg) => Promise<TResult>,
+) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.waf.exclusions });
+      qc.invalidateQueries({ queryKey: queryKeys.waf.status });
+      qc.invalidateQueries({ queryKey: queryKeys.proxyReconciler });
+    },
+  });
+}
+
+export function useCreateWafExclusion() {
+  return useExclusionChange(wafApi.createWafExclusion);
+}
+
+export function useDeleteWafExclusion() {
+  return useExclusionChange(wafApi.deleteWafExclusion);
+}

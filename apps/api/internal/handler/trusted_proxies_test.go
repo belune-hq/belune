@@ -191,3 +191,43 @@ func TestTrustedProxies_AreAuditedWithBeforeAndAfter(t *testing.T) {
 	assert.Equal(t, []string{"10.0.0.0/8"}, d.Before)
 	assert.Equal(t, []string{"192.168.0.0/16"}, d.After)
 }
+
+// The form can only warn about a range BEFORE it is saved if it knows what the
+// range must not cover, and that has to be true with nothing saved yet: the only
+// other way to see the warning is to create the condition it warns about.
+func TestTrustedProxies_OffersTheNetworksARangeMustNotCover(t *testing.T) {
+	token := trustedProxiesFixture(t)
+	env.Runtime.ListSystemContainers_ = []runtime.ContainerInfo{{
+		ID: "caddy-id", Name: "infra-caddy-1", Labels: map[string]string{"belune-system": "caddy"},
+	}}
+	env.Runtime.ListNetworks_ = []runtime.NetworkInfo{
+		{Name: "belune-proj-a", Subnets: []string{"172.18.0.0/16"}, Containers: []runtime.NetworkContainer{{ID: "caddy-id"}, {ID: "app"}}},
+		{Name: "unrelated", Subnets: []string{"10.50.0.0/16"}, Containers: []runtime.NetworkContainer{{ID: "other"}}},
+	}
+
+	resp := env.DoRequest(t, "GET", trustedProxiesPath, nil, testutil.AuthHeader(token))
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	body := testutil.ReadJSON(t, resp)
+
+	assert.Empty(t, body["cidrs"], "nothing is saved")
+	assert.Equal(t, true, body["overlaps_checked"])
+	assert.Equal(t, []any{map[string]any{"name": "belune-proj-a", "subnet": "172.18.0.0/16"}}, body["networks"],
+		"only the networks Caddy is attached to, which is where a container can reach it")
+
+	// The same list comes back from a save, so the card never has two sources.
+	resp = putTrusted(t, token, map[string]any{"cidrs": []string{"10.0.0.0/8"}})
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Len(t, testutil.ReadJSON(t, resp)["networks"], 1)
+}
+
+func TestTrustedProxies_CouldNotLookIsSaidEvenWithNothingSaved(t *testing.T) {
+	token := trustedProxiesFixture(t)
+	env.Runtime.ListContainersErr = assert.AnError
+	t.Cleanup(func() { env.Runtime.ListContainersErr = nil })
+
+	resp := env.DoRequest(t, "GET", trustedProxiesPath, nil, testutil.AuthHeader(token))
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	body := testutil.ReadJSON(t, resp)
+	assert.Equal(t, false, body["overlaps_checked"], "a form with no networks must not read as 'nothing to overlap'")
+	assert.Empty(t, body["networks"])
+}

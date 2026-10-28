@@ -29,6 +29,7 @@ function stored(over: Partial<TrustedProxies> = {}): TrustedProxies {
   return {
     cidrs: [],
     overlaps: [],
+    networks: [],
     overlaps_checked: true,
     presets: [cloudflare],
     ...over,
@@ -170,5 +171,132 @@ describe("TrustedProxiesCard", () => {
       screen.getByText(/could not read the trusted proxies: boom/i),
     ).toBeTruthy();
     expect(screen.queryByLabelText(/addresses or ranges/i)).toBeNull();
+  });
+  describe("saying what state a warning is in", () => {
+    const proj = { name: "belune-proj-a", subnet: "172.18.0.0/16" };
+    const type = (v: string) =>
+      fireEvent.change(box(), { target: { value: v } });
+
+    it("warns BEFORE saving, in the yellow 'not saved' form, as the range is typed", () => {
+      data = stored({ networks: [proj] });
+      render(<TrustedProxiesCard />);
+      type("172.16.0.0/12");
+      const alert = screen
+        .getAllByRole("alert")
+        .find((a) => /Not saved yet/.test(a.textContent ?? ""));
+      expect(alert).toBeDefined();
+      expect(alert!.textContent).toMatch(
+        /172\.16\.0\.0\/12 covers belune-proj-a \(172\.18\.0\.0\/16\)/,
+      );
+      expect(alert!.textContent).toMatch(/Saving applies it at once/);
+      expect(save).not.toHaveBeenCalled();
+      // Nothing is saved, so nothing may claim it is.
+      expect(screen.queryByText(/^Saved, but/)).toBeNull();
+    });
+
+    it("warns about nothing for a range that touches no network, and the warning goes when the range does", () => {
+      data = stored({ networks: [proj] });
+      render(<TrustedProxiesCard />);
+      type("10.0.0.0/8");
+      expect(screen.queryByText(/Not saved yet/)).toBeNull();
+      type("172.18.0.0/16");
+      expect(
+        screen.getByText(/Not saved yet: this range covers a network/),
+      ).toBeTruthy();
+      type("");
+      expect(screen.queryByText(/Not saved yet/)).toBeNull();
+    });
+
+    it("opens with 'Saved' once an overlapping list is saved, so it cannot be read as a refusal", async () => {
+      data = stored({ networks: [proj] });
+      save.mockImplementation((cidrs: string[]) => {
+        data = stored({
+          cidrs,
+          networks: [proj],
+          overlaps: [
+            { cidr: "172.16.0.0/12", network: proj.name, subnet: proj.subnet },
+          ],
+        });
+        return Promise.resolve(data);
+      });
+      render(<TrustedProxiesCard />);
+      type("172.16.0.0/12");
+      fireEvent.click(saveButton());
+      expect(
+        await screen.findByText(
+          "Saved, but a trusted range covers a network your apps run on",
+        ),
+      ).toBeTruthy();
+      expect(screen.getByText(/This is saved and in force now/)).toBeTruthy();
+      expect(screen.queryByText(/Not saved yet/)).toBeNull();
+      // The disabled Save button is explained, not left to read as "nothing happened".
+      expect(screen.getByText(/Saved and applied to Caddy/)).toBeTruthy();
+    });
+
+    it("shows the list the server stored, sorted, and says that it will be", async () => {
+      data = stored();
+      save.mockImplementation((cidrs: string[]) => {
+        data = stored({ cidrs: [...cidrs].sort() });
+        return Promise.resolve(data);
+      });
+      render(<TrustedProxiesCard />);
+      expect(
+        screen.getByText(
+          /Saved lists are sorted and de-duplicated, so a range you add may move/,
+        ),
+      ).toBeTruthy();
+      type("192.168.0.0/16\n10.0.0.0/8\n10.0.0.0/8");
+      fireEvent.click(saveButton());
+      await waitFor(() =>
+        expect(box().value).toBe("10.0.0.0/8\n192.168.0.0/16"),
+      );
+      expect(
+        screen.getByText(
+          /The list above is the saved one, sorted and de-duplicated/,
+        ),
+      ).toBeTruthy();
+    });
+
+    it("confirms a plain save too, with no warning to go with it", async () => {
+      data = stored({ networks: [proj] });
+      save.mockImplementation((cidrs: string[]) => {
+        data = stored({ cidrs, networks: [proj] });
+        return Promise.resolve(data);
+      });
+      render(<TrustedProxiesCard />);
+      type("203.0.113.0/24");
+      fireEvent.click(saveButton());
+      expect(
+        await screen.findByText(/Saved and applied to Caddy/),
+      ).toBeTruthy();
+      expect(screen.getAllByRole("alert")).toHaveLength(1);
+    });
+
+    it("tells a saved overlap met on a later visit from one just made, without claiming it was just saved", () => {
+      data = stored({
+        cidrs: ["172.16.0.0/12"],
+        networks: [proj],
+        overlaps: [
+          { cidr: "172.16.0.0/12", network: proj.name, subnet: proj.subnet },
+        ],
+      });
+      render(<TrustedProxiesCard />);
+      expect(
+        screen.getByText(
+          "A saved trusted range covers a network your apps run on",
+        ),
+      ).toBeTruthy();
+      expect(screen.queryByText(/^Saved, but/)).toBeNull();
+    });
+
+    it("cannot preview without the networks, and says so instead of staying silent", () => {
+      data = stored({ overlaps_checked: false });
+      render(<TrustedProxiesCard />);
+      type("172.16.0.0/12");
+      expect(
+        screen.getByText(/could not check whether a range here overlaps/),
+      ).toBeTruthy();
+      expect(screen.queryByText(/Not saved yet/)).toBeNull();
+    });
   });
 });

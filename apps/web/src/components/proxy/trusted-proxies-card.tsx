@@ -19,6 +19,7 @@ import {
   addRanges,
   describeTrusted,
   formatRanges,
+  overlapsOf,
   parseRanges,
   sameRanges,
   validateRanges,
@@ -40,6 +41,9 @@ import type { TrustedProxies, TrustedProxyOverlap } from "@/lib/types";
  */
 export function TrustedProxiesCard() {
   const { data, isLoading, error } = useTrustedProxies();
+  // Held here, not in the form: a save changes the stored list, which remounts the
+  // form (so the box shows the canonical list), and anything it kept would be lost.
+  const [justSaved, setJustSaved] = useState(false);
 
   return (
     <Card>
@@ -79,14 +83,27 @@ export function TrustedProxiesCard() {
         ) : (
           // Keyed on the stored list so the box follows the server after a save
           // (the canonical, sorted form) instead of keeping what was typed.
-          <TrustedProxiesForm key={data.cidrs.join(",")} data={data} />
+          <TrustedProxiesForm
+            key={data.cidrs.join(",")}
+            data={data}
+            justSaved={justSaved}
+            onSaved={() => setJustSaved(true)}
+          />
         )}
       </CardContent>
     </Card>
   );
 }
 
-function TrustedProxiesForm({ data }: { data: TrustedProxies }) {
+function TrustedProxiesForm({
+  data,
+  justSaved,
+  onSaved,
+}: {
+  data: TrustedProxies;
+  justSaved: boolean;
+  onSaved: () => void;
+}) {
   const save = useSetTrustedProxies();
   const [added, setAdded] = useState<string | null>(null);
 
@@ -102,7 +119,7 @@ function TrustedProxiesForm({ data }: { data: TrustedProxies }) {
             : `Trusting ${s.cidrs.length} ${s.cidrs.length === 1 ? "range" : "ranges"}`,
         error: (e: Error) => e.message || "Could not save the trusted proxies",
       });
-      await saved.catch(() => undefined);
+      await saved.then(onSaved).catch(() => undefined);
     },
   });
 
@@ -120,8 +137,6 @@ function TrustedProxiesForm({ data }: { data: TrustedProxies }) {
       <p className="text-muted-foreground text-sm">
         {describeTrusted(data.cidrs.length)}
       </p>
-
-      <Overlaps overlaps={data.overlaps} checked={data.overlaps_checked} />
 
       <form.Field
         name="ranges"
@@ -157,9 +172,20 @@ function TrustedProxiesForm({ data }: { data: TrustedProxies }) {
                 }}
               />
               {message && <FieldError>{message}</FieldError>}
+              <p className="text-muted-foreground text-xs">
+                Saved lists are sorted and de-duplicated, so a range you add may
+                move.
+              </p>
             </Field>
           );
         }}
+      />
+
+      <form.Subscribe
+        selector={(s) => s.values.ranges}
+        children={(ranges) => (
+          <OverlapFeedback ranges={ranges} data={data} justSaved={justSaved} />
+        )}
       />
 
       {preset && (
@@ -207,9 +233,12 @@ function TrustedProxiesForm({ data }: { data: TrustedProxies }) {
               <Button type="submit" disabled={!dirty || save.isPending}>
                 Save
               </Button>
+              {/* A disabled Save after a save reads as "nothing happened", so the
+                  state it is in is said out loud. */}
               <p className="text-muted-foreground text-xs">
-                Applied to Caddy within seconds of saving. Saving an empty list
-                stops trusting any proxy.
+                {!dirty && justSaved
+                  ? "Saved and applied to Caddy. The list above is the saved one, sorted and de-duplicated."
+                  : "Applied to Caddy within seconds of saving. Saving an empty list stops trusting any proxy."}
               </p>
             </div>
           );
@@ -219,14 +248,30 @@ function TrustedProxiesForm({ data }: { data: TrustedProxies }) {
   );
 }
 
-function Overlaps({
-  overlaps,
-  checked,
+/**
+ * Says whether a range covers a network the proxy is attached to, in the state it is
+ * actually in. The same red alert used to mean two different things, and an operator
+ * read "saved, with a warning" as "rejected, and my edit was thrown away", which left
+ * them exposed and believing they were not.
+ *
+ *   - typed, not saved: the preview, computed from the networks as the box is edited,
+ *     so the warning comes BEFORE the save instead of being learned by creating the
+ *     condition it warns about. Yellow, because nothing is exposed yet.
+ *   - saved: the server's own answer, red, and it opens with the word Saved.
+ */
+function OverlapFeedback({
+  ranges,
+  data,
+  justSaved,
 }: {
-  overlaps: TrustedProxyOverlap[];
-  checked: boolean;
+  ranges: string;
+  data: TrustedProxies;
+  justSaved: boolean;
 }) {
-  if (!checked) {
+  const draft = parseRanges(ranges);
+  const dirty = !sameRanges(draft, data.cidrs);
+
+  if (!data.overlaps_checked) {
     return (
       <p className="text-muted-foreground text-xs">
         Belune could not list its Docker networks just now, so it could not
@@ -234,19 +279,62 @@ function Overlaps({
       </p>
     );
   }
-  if (overlaps.length === 0) return null;
+
+  if (dirty) {
+    const preview = overlapsOf(draft, data.networks);
+    if (preview.length === 0) return null;
+    return (
+      <OverlapAlert
+        variant="warning"
+        title={
+          preview.length === 1
+            ? "Not saved yet: this range covers a network your apps run on"
+            : "Not saved yet: these ranges cover networks your apps run on"
+        }
+        lead="Saving applies it at once, so narrow it first."
+        overlaps={preview}
+      />
+    );
+  }
+
+  if (data.overlaps.length === 0) return null;
   return (
-    <Alert variant="destructive">
+    <OverlapAlert
+      variant="destructive"
+      title={
+        justSaved
+          ? data.overlaps.length === 1
+            ? "Saved, but a trusted range covers a network your apps run on"
+            : "Saved, but trusted ranges cover networks your apps run on"
+          : data.overlaps.length === 1
+            ? "A saved trusted range covers a network your apps run on"
+            : "Saved trusted ranges cover networks your apps run on"
+      }
+      lead="This is saved and in force now."
+      overlaps={data.overlaps}
+    />
+  );
+}
+
+function OverlapAlert({
+  variant,
+  title,
+  lead,
+  overlaps,
+}: {
+  variant: "warning" | "destructive";
+  title: string;
+  lead: string;
+  overlaps: TrustedProxyOverlap[];
+}) {
+  return (
+    <Alert variant={variant}>
       <TriangleAlertIcon aria-hidden="true" />
-      <AlertTitle>
-        {overlaps.length === 1
-          ? "A trusted range covers a network your apps run on"
-          : "Trusted ranges cover networks your apps run on"}
-      </AlertTitle>
+      <AlertTitle>{title}</AlertTitle>
       <AlertDescription>
         <p>
-          Caddy is attached to these Docker networks, so any container on them
-          can connect to it. Because their addresses are trusted, such a
+          {lead} Caddy is attached to these Docker networks, so any container on
+          them can connect to it. Because their addresses are trusted, such a
           container can claim to be any visitor, and with automatic bans on,
           have that address banned. Narrow the range so it does not include
           them.

@@ -1038,9 +1038,17 @@ export interface TrustedProxyPreset {
   checked_at: string;
 }
 
+/** An address range of a Docker network Caddy is attached to: what a trusted range must not cover. */
+export interface TrustedProxyNetwork {
+  name: string;
+  subnet: string;
+}
+
 export interface TrustedProxies {
   cidrs: string[];
   overlaps: TrustedProxyOverlap[];
+  /** What the overlap is judged against, so a form can warn before it saves. */
+  networks: TrustedProxyNetwork[];
   /** False when Belune could not list its Docker networks: "no overlaps" is then
    *  not an answer. */
   overlaps_checked: boolean;

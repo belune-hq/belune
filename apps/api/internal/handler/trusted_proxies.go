@@ -18,6 +18,11 @@ type trustedProxyOverlapResponse struct {
 	Subnet  string `json:"subnet"`
 }
 
+type trustedProxyNetworkResponse struct {
+	Name   string `json:"name"`
+	Subnet string `json:"subnet"`
+}
+
 type trustedProxyPresetResponse struct {
 	ID        string   `json:"id"`
 	Name      string   `json:"name"`
@@ -32,6 +37,10 @@ type trustedProxiesResponse struct {
 	// Overlaps are trusted ranges that overlap a Docker network Caddy is attached
 	// to, which makes every container there a proxy that can claim any address.
 	Overlaps []trustedProxyOverlapResponse `json:"overlaps"`
+	// Networks are the address ranges of the Docker networks Caddy is attached to:
+	// what a trusted range must not cover. They let a form say whether a range being
+	// typed would overlap one before it is saved.
+	Networks []trustedProxyNetworkResponse `json:"networks"`
 	// OverlapsChecked is false when the networks could not be listed.
 	OverlapsChecked bool `json:"overlaps_checked"`
 	// Presets are published ranges to adopt; none is ever applied by default.
@@ -46,11 +55,15 @@ func trustedProxiesBody(tp service.TrustedProxies) trustedProxiesResponse {
 	out := trustedProxiesResponse{
 		CIDRs:           tp.CIDRs,
 		Overlaps:        make([]trustedProxyOverlapResponse, 0, len(tp.Overlaps)),
+		Networks:        make([]trustedProxyNetworkResponse, 0, len(tp.Networks)),
 		OverlapsChecked: tp.OverlapsChecked,
 		Presets:         []trustedProxyPresetResponse{},
 	}
 	for _, o := range tp.Overlaps {
 		out.Overlaps = append(out.Overlaps, trustedProxyOverlapResponse(o))
+	}
+	for _, n := range tp.Networks {
+		out.Networks = append(out.Networks, trustedProxyNetworkResponse(n))
 	}
 	for _, p := range proxy.TrustedProxyPresets() {
 		out.Presets = append(out.Presets, trustedProxyPresetResponse(p))

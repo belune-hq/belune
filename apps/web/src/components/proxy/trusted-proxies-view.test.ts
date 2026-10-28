@@ -4,6 +4,7 @@ import {
   addRanges,
   describeTrusted,
   formatRanges,
+  overlapsOf,
   parseRanges,
   sameRanges,
   validateRanges,
@@ -84,5 +85,83 @@ describe("describeTrusted / formatRanges", () => {
     expect(describeTrusted(1)).toBe("1 range trusted.");
     expect(describeTrusted(3)).toBe("3 ranges trusted.");
     expect(formatRanges(["a", "b"])).toBe("a\nb");
+  });
+});
+
+describe("overlapsOf", () => {
+  const nets = [
+    { name: "belune-proj-a", subnet: "172.18.0.0/16" },
+    { name: "belune-default", subnet: "192.168.215.0/24" },
+    { name: "belune-v6", subnet: "fd00:dead:beef::/48" },
+  ];
+  const names = (r: string[]) =>
+    overlapsOf(r, nets).map((o) => `${o.cidr}>${o.network}`);
+
+  it("finds a range that contains a network, equals it, or sits inside it", () => {
+    expect(names(["172.16.0.0/12"])).toEqual(["172.16.0.0/12>belune-proj-a"]);
+    expect(names(["172.18.0.0/16"])).toEqual(["172.18.0.0/16>belune-proj-a"]);
+    expect(names(["172.18.5.0/24"])).toEqual(["172.18.5.0/24>belune-proj-a"]);
+    expect(names(["192.168.215.7"])).toEqual(["192.168.215.7>belune-default"]);
+  });
+
+  it("does not warn about a range that touches nothing, including one next door", () => {
+    expect(
+      names([
+        "10.0.0.0/8",
+        "203.0.113.0/24",
+        "172.19.0.0/16",
+        "192.168.216.0/24",
+      ]),
+    ).toEqual([]);
+  });
+
+  it("works for IPv6, and never mixes the families", () => {
+    expect(names(["fd00::/8"])).toEqual(["fd00::/8>belune-v6"]);
+    expect(names(["fd00:dead:beef:1::/64"])).toEqual([
+      "fd00:dead:beef:1::/64>belune-v6",
+    ]);
+    expect(names(["2606:4700::/32"])).toEqual([]);
+    // 0.0.0.0/8 and ::/8 are different families, whatever their bits say.
+    expect(overlapsOf(["::/16"], [{ name: "x", subnet: "0.0.0.0/8" }])).toEqual(
+      [],
+    );
+  });
+
+  it("reads an IPv4-mapped range as the IPv4 range, as the server does", () => {
+    expect(names(["::ffff:172.18.0.0/112"])).toEqual([
+      "::ffff:172.18.0.0/112>belune-proj-a",
+    ]);
+    expect(names(["::ffff:10.0.0.0/104"])).toEqual([]);
+  });
+
+  it("claims nothing about what it cannot parse, rather than guessing", () => {
+    for (const bad of [
+      "cloudflare",
+      "172.18.0.0/99",
+      "172.18.0",
+      "172.18.0.256",
+      "fe80::1%eth0",
+      "1:2:3:4:5:6:7:8:9",
+      "::/abc",
+      "",
+    ]) {
+      expect(names([bad]), bad).toEqual([]);
+    }
+    expect(
+      overlapsOf(["172.18.0.0/16"], [{ name: "x", subnet: "not-a-cidr" }]),
+    ).toEqual([]);
+  });
+
+  it("agrees with the server's own answer for the cases the handler test pins", () => {
+    // TestTrustedProxies_SaysWhenARangeOverlapsANetworkCaddyIsOn
+    const server = [{ name: "belune-proj-a", subnet: "172.18.0.0/16" }];
+    expect(overlapsOf(["172.16.0.0/12"], server)).toEqual([
+      {
+        cidr: "172.16.0.0/12",
+        network: "belune-proj-a",
+        subnet: "172.18.0.0/16",
+      },
+    ]);
+    expect(overlapsOf(["10.0.0.0/8"], server)).toEqual([]);
   });
 });

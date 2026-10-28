@@ -21111,6 +21111,12 @@
             },
             "type": "array"
           },
+          "networks": {
+            "items": {
+              "$ref": "#/components/schemas/trustedProxyNetworkResponse"
+            },
+            "type": "array"
+          },
           "overlaps": {
             "items": {
               "$ref": "#/components/schemas/trustedProxyOverlapResponse"
@@ -21125,6 +21131,17 @@
               "$ref": "#/components/schemas/trustedProxyPresetResponse"
             },
             "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "trustedProxyNetworkResponse": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "subnet": {
+            "type": "string"
           }
         },
         "type": "object"

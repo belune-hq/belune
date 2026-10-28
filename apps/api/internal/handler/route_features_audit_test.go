@@ -29,7 +29,7 @@ func (g gateEnv) auditedRequest(t *testing.T, base, method, path string, body an
 	req, err := http.NewRequest(method, base+path, rdr)
 	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Forwarded-For", "203.0.113.9")
+	req.Header.Set("X-Belune-Client-IP", "203.0.113.9")
 	for k, v := range testutil.AuthHeader(g.token) {
 		req.Header.Set(k, v)
 	}

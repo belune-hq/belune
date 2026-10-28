@@ -4,7 +4,7 @@ import (
 	"context"
 	"net"
 	"net/http"
-	"strings"
+	"net/netip"
 )
 
 type clientIPKey struct{}
@@ -22,19 +22,34 @@ func ClientIPFromContext(ctx context.Context) string {
 	return v
 }
 
-// ClientIP extracts the real client IP from a request. It reads the leftmost
-// value from X-Forwarded-For (populated by Caddy, which is the trusted proxy)
-// and falls back to r.RemoteAddr when the header is absent.
+// ClientIP is the address of the client that made this request, as a canonical
+// IP string, or "" when there is none to give.
+//
+// It reads r.RemoteAddr and nothing else — never a header. ProxyTrust.Middleware
+// is what puts the real visitor there when, and only when, the request came from
+// the Caddy container; on every other path RemoteAddr is the TCP peer, which can
+// be wrong about who the visitor was but cannot be chosen by them. Empty rather
+// than a raw string for an unparseable value: a caller stores it in a column, and
+// a value the column cannot hold costs the whole row.
 func ClientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		// XFF is comma-separated; the leftmost entry is the originating client.
-		if ip := strings.TrimSpace(strings.SplitN(xff, ",", 2)[0]); ip != "" {
-			return ip
-		}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
 	}
-	// Strip the port component from RemoteAddr (format is "host:port" or "[host]:port").
-	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-		return host
+	ip, ok := ParseClientIP(host)
+	if !ok {
+		return ""
 	}
-	return r.RemoteAddr
+	return ip.String()
+}
+
+// ParseClientIP accepts a plain IPv4 or IPv6 address and nothing else: no port,
+// no zone, no list, no whitespace. The result is unmapped, so ::ffff:1.2.3.4 and
+// 1.2.3.4 are one client, and it never exceeds 39 bytes.
+func ParseClientIP(s string) (netip.Addr, bool) {
+	ip, err := netip.ParseAddr(s)
+	if err != nil || ip.Zone() != "" || ip.IsUnspecified() {
+		return netip.Addr{}, false
+	}
+	return ip.Unmap(), true
 }

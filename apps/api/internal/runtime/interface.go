@@ -67,6 +67,9 @@ type ContainerInfo struct {
 	Ports     map[string]string
 	Labels    map[string]string
 	CreatedAt time.Time
+	// Addrs are the container's IP addresses, one per network it is attached to.
+	// Empty for a container that is not running.
+	Addrs []string
 }
 
 // LabelHelper marks the throwaway containers RunHelper starts to do work inside

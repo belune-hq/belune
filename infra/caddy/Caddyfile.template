@@ -35,7 +35,15 @@
 	# localhost, which from in here is Caddy itself. The API re-asserts this at
 	# startup (DASHBOARD_UPSTREAM); the default keeps a freshly-started Caddy
 	# working before it connects.
-	reverse_proxy {$BELUNE_DASHBOARD_UPSTREAM:belune:8080}
+	#
+	# header_up SETs the client address, replacing anything the client sent, and it
+	# is the only thing the API believes about who is calling: it takes it from this
+	# header when, and only when, the connection comes from this container. This is
+	# one of three places the dashboard is served from (see
+	# newDashboardProxyHandle); leaving it out attributes every visitor to Caddy.
+	reverse_proxy {$BELUNE_DASHBOARD_UPSTREAM:belune:8080} {
+		header_up X-Belune-Client-IP {client_ip}
+	}
 }
 
 # Per-app configs are managed dynamically via the Caddy Admin API.

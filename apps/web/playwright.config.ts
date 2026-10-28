@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { AUTH_FILE } from "./e2e/support/auth";
 
 /**
  * Playwright drives the REAL production stack, not a dev server.
@@ -51,9 +52,15 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   projects: [
+    // Signs in once; see auth.setup.ts for why the specs do not each do it.
+    { name: "setup", testMatch: /auth\.setup\.ts/ },
     // Chromium alone, on purpose. These drills assert on application behaviour
     // and on computed style, not on cross-browser rendering, so a second engine
     // would triple the install and the runtime to re-answer the same question.
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    {
+      name: "chromium",
+      dependencies: ["setup"],
+      use: { ...devices["Desktop Chrome"], storageState: AUTH_FILE },
+    },
   ],
 });

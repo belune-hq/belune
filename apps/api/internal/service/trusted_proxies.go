@@ -33,10 +33,21 @@ type TrustedProxyOverlap struct {
 	Subnet  string `json:"subnet"`
 }
 
+// TrustedProxyNetwork is an address range of a Docker network the proxy is attached
+// to: the ranges a trusted proxy must not cover.
+type TrustedProxyNetwork struct {
+	Name   string `json:"name"`
+	Subnet string `json:"subnet"`
+}
+
 // TrustedProxies is the setting, with what is wrong with it that Belune can see.
 type TrustedProxies struct {
 	CIDRs    []string              `json:"cidrs"`
 	Overlaps []TrustedProxyOverlap `json:"overlaps"`
+	// Networks are the ranges the overlap is judged against, returned so the form
+	// can say whether a range being typed would overlap one BEFORE it is saved. The
+	// only other way to see the warning was to create the condition it warns about.
+	Networks []TrustedProxyNetwork `json:"networks"`
 	// OverlapsChecked is false when Belune could not list its networks. "No
 	// overlaps" and "could not look" are different answers.
 	OverlapsChecked bool `json:"overlaps_checked"`
@@ -102,29 +113,29 @@ func (s *TrustedProxyService) stored(ctx context.Context) ([]string, error) {
 }
 
 func (s *TrustedProxyService) describe(ctx context.Context, cidrs []string) TrustedProxies {
-	out := TrustedProxies{CIDRs: cidrs, Overlaps: []TrustedProxyOverlap{}}
+	out := TrustedProxies{CIDRs: cidrs, Overlaps: []TrustedProxyOverlap{}, Networks: []TrustedProxyNetwork{}}
 	if out.CIDRs == nil {
 		out.CIDRs = []string{}
 	}
-	if len(cidrs) == 0 {
-		out.OverlapsChecked = true
-		return out
-	}
-	overlaps, ok := s.overlaps(ctx, cidrs)
-	out.Overlaps, out.OverlapsChecked = overlaps, ok
+	// Looked up even for an empty list: the networks are what lets the form warn
+	// about a range before it is saved.
+	nets, ok := s.proxyNetworks(ctx)
+	out.Networks, out.OverlapsChecked = nets, ok
+	out.Overlaps = overlapsOf(cidrs, nets)
 	return out
 }
 
-// overlaps finds trusted ranges that overlap a network the proxy is attached to.
-// The second result is false when the networks could not be listed.
-func (s *TrustedProxyService) overlaps(ctx context.Context, cidrs []string) ([]TrustedProxyOverlap, bool) {
+// proxyNetworks lists the address ranges of the Docker networks the proxy is
+// attached to. The second result is false when they could not be listed.
+func (s *TrustedProxyService) proxyNetworks(ctx context.Context) ([]TrustedProxyNetwork, bool) {
+	none := []TrustedProxyNetwork{}
 	rt, err := s.rts.Local(ctx)
 	if err != nil {
-		return []TrustedProxyOverlap{}, false
+		return none, false
 	}
 	system, err := rt.ListSystemContainers(ctx)
 	if err != nil {
-		return []TrustedProxyOverlap{}, false
+		return none, false
 	}
 	caddy := map[string]struct{}{}
 	for _, c := range system {
@@ -135,18 +146,16 @@ func (s *TrustedProxyService) overlaps(ctx context.Context, cidrs []string) ([]T
 	}
 	nets, err := rt.ListNetworks(ctx)
 	if err != nil {
-		return []TrustedProxyOverlap{}, false
+		return none, false
 	}
 
-	out := []TrustedProxyOverlap{}
+	out := []TrustedProxyNetwork{}
 	for _, n := range nets {
 		attached := false
 		for _, c := range n.Containers {
-			if _, ok := caddy[c.ID]; ok {
-				attached = true
-				break
-			}
-			if _, ok := caddy[c.Name]; ok {
+			_, byID := caddy[c.ID]
+			_, byName := caddy[c.Name]
+			if byID || byName {
 				attached = true
 				break
 			}
@@ -155,16 +164,27 @@ func (s *TrustedProxyService) overlaps(ctx context.Context, cidrs []string) ([]T
 			continue
 		}
 		for _, sn := range n.Subnets {
-			subnet, err := netip.ParsePrefix(sn)
-			if err != nil {
-				continue
-			}
-			for _, c := range cidrs {
-				if p, err := netip.ParsePrefix(c); err == nil && p.Overlaps(subnet) {
-					out = append(out, TrustedProxyOverlap{CIDR: c, Network: n.Name, Subnet: sn})
-				}
+			if _, err := netip.ParsePrefix(sn); err == nil {
+				out = append(out, TrustedProxyNetwork{Name: n.Name, Subnet: sn})
 			}
 		}
 	}
 	return out, true
+}
+
+// overlapsOf finds trusted ranges that overlap a network the proxy is attached to.
+func overlapsOf(cidrs []string, nets []TrustedProxyNetwork) []TrustedProxyOverlap {
+	out := []TrustedProxyOverlap{}
+	for _, n := range nets {
+		subnet, err := netip.ParsePrefix(n.Subnet)
+		if err != nil {
+			continue
+		}
+		for _, c := range cidrs {
+			if p, err := netip.ParsePrefix(c); err == nil && p.Overlaps(subnet) {
+				out = append(out, TrustedProxyOverlap{CIDR: c, Network: n.Name, Subnet: n.Subnet})
+			}
+		}
+	}
+	return out
 }

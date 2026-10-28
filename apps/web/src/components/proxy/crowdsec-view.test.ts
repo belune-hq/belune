@@ -12,6 +12,7 @@ import {
   bouncerNotice,
   crowdSecEnablePoints,
   describeAutoban,
+  describeSkipped,
   describeCrowdSec,
   describeYourAddress,
   isBanTarget,
@@ -322,6 +323,37 @@ describe("sources and reasons", () => {
       "attack-sqli: 14 requests in 10m",
     );
     expect(reasonText("by hand")).toBe("by hand");
+  });
+});
+
+describe("describeSkipped", () => {
+  it("says nothing when nothing was left alone", () => {
+    expect(describeSkipped(0)).toBeNull();
+    expect(describeSkipped(-1)).toBeNull();
+  });
+
+  it("counts, in the right number", () => {
+    expect(describeSkipped(1)).toMatch(
+      /^1 address over the threshold was left alone/,
+    );
+    expect(describeSkipped(3)).toMatch(
+      /^3 addresses over the threshold were left alone/,
+    );
+  });
+
+  it("lists the possible reasons and claims none, because only a count is kept", () => {
+    const s = describeSkipped(2)!;
+    for (const reason of [
+      /allowlist/,
+      /lifted by an admin/,
+      /cannot be banned/,
+      /past the limit/,
+    ]) {
+      expect(s).toMatch(reason);
+    }
+    expect(s).toMatch(/does not record which/);
+    // The cause is not asserted: "because", "protected" and "your admin" would each be a claim.
+    expect(s).not.toMatch(/because|protected|your /i);
   });
 });
 

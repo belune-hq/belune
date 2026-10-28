@@ -431,10 +431,18 @@ func buildFeatureHandlers(cfg proxy.RouteConfig) ([]caddyHandle, error) {
 			//    because zones with the same name share ONE counter across
 			//    domains — two hosts both set to "10/s" would eat each other's
 			//    budget;
-			//  - the key is the client IP. Omitted, the module uses a single
-			//    global bucket, which from one client looks identical to
-			//    per-IP working. (Behind another proxy, remote.host is that
-			//    proxy.)
+			//  - the key is the VISITOR's address, {http.vars.client_ip}: the peer
+			//    when no proxy is trusted, and the real visitor when a CDN is
+			//    listed in trusted_proxies. Keyed on {http.request.remote.host}
+			//    (the peer) it put every visitor behind one CDN edge into ONE
+			//    bucket: random 429s under load, blamed on anything but the
+			//    proxy. Omitted, the module uses a single global bucket, which
+			//    from one client looks identical to per-IP working.
+			//    ⚠️ Measured against Caddy v2.11.7: the module DOES resolve this
+			//    placeholder, and with no trusted proxies it equals the peer, so
+			//    it is a no-op until a CDN is listed. If it ever resolved to
+			//    empty, every client would share one bucket — pinned by
+			//    TestRealCaddy_RateLimitKeysOnTheVisitorBehindATrustedProxy.
 			// Caddy hands "window" back verbatim, not normalised to nanoseconds, so
 			// routeJSONEqual sees no drift and EnsureRoute does not re-POST. That
 			// matters: a re-POST resets every client's counter, so a re-POST per
@@ -446,7 +454,7 @@ func buildFeatureHandlers(cfg proxy.RouteConfig) ([]caddyHandle, error) {
 				"handler": "rate_limit",
 				"rate_limits": map[string]any{
 					routeIDFor(cfg.Hostname, cfg.Path): map[string]any{
-						"key":        "{http.request.remote.host}",
+						"key":        clientIPPlaceholder,
 						"window":     c.Window,
 						"max_events": c.MaxEvents,
 					},
@@ -457,7 +465,12 @@ func buildFeatureHandlers(cfg proxy.RouteConfig) ([]caddyHandle, error) {
 			handlers = append(handlers, caddyHandle{
 				"handler": "subroute",
 				"routes": []map[string]any{{
-					"match": []caddyMatcher{{"not": []caddyMatcher{{"remote_ip": map[string]any{"ranges": c.Ranges}}}}},
+					// client_ip, not remote_ip: the latter is the connecting peer, so
+					// behind a CDN an allowlist of an office range matched nobody. The
+					// former is the peer when no proxy is trusted, so a forged
+					// X-Forwarded-For cannot get past it (measured), and the visitor
+					// when one is.
+					"match": []caddyMatcher{{"not": []caddyMatcher{{"client_ip": map[string]any{"ranges": c.Ranges}}}}},
 					"handle": []caddyHandle{{
 						"handler":     "static_response",
 						"status_code": "403",

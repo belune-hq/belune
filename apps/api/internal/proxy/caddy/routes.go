@@ -96,6 +96,34 @@ func newReverseProxyHandle(upstreams []caddyUpstream, healthCheckPath string) ca
 	return h
 }
 
+// clientIPPlaceholder is Caddy's own answer to "who is the client": the peer, or
+// the real visitor when the peer is a proxy listed in trusted_proxies.
+//
+// ⚠️ It is {http.vars.client_ip}, which is what the Caddyfile's {client_ip}
+// shorthand expands to. {http.request.client_ip} LOOKS right — the access log has
+// a client_ip field — but is not a placeholder: Caddy sends it to the upstream as
+// literal text. Measured against Caddy v2.11.7; the integration test pins it.
+const clientIPPlaceholder = "{http.vars.client_ip}"
+
+// newDashboardProxyHandle is the reverse proxy to the Belune API, for every route
+// that serves the dashboard. It SETs the client-address header — a set replaces
+// whatever the client sent, as waf.TxHeader does — so the API can learn the client
+// from Caddy and from nowhere a client can write.
+//
+// ⚠️ There are three places the dashboard is served from: route-dashboard, the
+// matcher-less catch-all (written in two places below), and the static :80 site in
+// infra/caddy/Caddyfile.template. One that skips this builds a path on which every
+// visitor is attributed to Caddy, so they all share one rate-limit bucket.
+func newDashboardProxyHandle(dial string) caddyHandle {
+	h := newReverseProxyHandle([]caddyUpstream{{Dial: dial}}, "")
+	h["headers"] = map[string]any{
+		"request": map[string]any{
+			"set": map[string][]string{proxy.ClientIPHeader: {clientIPPlaceholder}},
+		},
+	}
+	return h
+}
+
 // InitCatchAll must be called once at startup. It normalises the routes list so
 // that all domain-specific routes come first and the catch-all (dashboard proxy)
 // is last with a known @id. This makes every subsequent AddRoute call safe to
@@ -131,7 +159,7 @@ func (c *Client) InitCatchAll(ctx context.Context) {
 	// Re-append catch-all with known @id at the end.
 	catchAllJSON, _ := json.Marshal(caddyRoute{
 		ID:     catchAllRouteID,
-		Handle: []caddyHandle{newReverseProxyHandle([]caddyUpstream{{Dial: c.dashboardUpstream}}, "")},
+		Handle: []caddyHandle{newDashboardProxyHandle(c.dashboardUpstream)},
 	})
 	newRoutes := append(domainRoutes, catchAllJSON)
 
@@ -698,7 +726,7 @@ func (c *Client) reorderRoutes(ctx context.Context) error {
 	if len(catchAll) == 0 {
 		catchAll, err = json.Marshal(caddyRoute{
 			ID:     catchAllRouteID,
-			Handle: []caddyHandle{newReverseProxyHandle([]caddyUpstream{{Dial: c.dashboardUpstream}}, "")},
+			Handle: []caddyHandle{newDashboardProxyHandle(c.dashboardUpstream)},
 		})
 		if err != nil {
 			return fmt.Errorf("marshal catch-all: %w", err)

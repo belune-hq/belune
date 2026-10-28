@@ -59,7 +59,6 @@ function required(name: string): string {
   return value;
 }
 
-const EMAIL = required("BELUNE_E2E_EMAIL");
 const PASSWORD = required("BELUNE_E2E_PASSWORD");
 
 /** The release the stack has been told is available. It must not exist in the
@@ -78,10 +77,8 @@ test("a self-update that cannot pull its image says so, visibly", async ({
 }) => {
   await installToastProbe(page);
 
-  await page.goto("/login");
-  await page.locator("#email").fill(EMAIL);
-  await page.locator("#password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
+  // Already signed in: auth.setup.ts does it once for the whole run.
+  await page.goto("/projects");
   await expect(page).toHaveURL(/\/projects/);
 
   // Straight to the tab the button lives on. Server → Configuration is also one

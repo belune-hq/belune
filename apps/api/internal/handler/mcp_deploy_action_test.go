@@ -119,7 +119,7 @@ func callToolAt(t *testing.T, baseURL, token, name string, args map[string]any) 
 	req, err := http.NewRequest("POST", baseURL+"/mcp", bytes.NewReader(body))
 	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Forwarded-For", "203.0.113.9")
+	req.Header.Set("X-Belune-Client-IP", "203.0.113.9")
 	for k, v := range mcpHeaders(token) {
 		req.Header.Set(k, v)
 	}

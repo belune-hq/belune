@@ -38,6 +38,8 @@ type Server struct {
 	handler *handler.Handler
 	auth    *service.AuthService
 	tokens  *service.TokenService
+	// proxyTrust resolves who the client is and refuses a peer that skipped Caddy.
+	proxyTrust *middleware.ProxyTrust
 }
 
 func New(cfg *config.Config, db *pgxpool.Pool, queries *generated.Queries, asynqClient handler.TaskEnqueuer, inspector handler.QueueInspector, rts runtime.Runtimes, pm proxy.ProxyManager, reconciler handler.ReconcilerStatusProvider, rdb *redis.Client, hub *ws.Hub, auditSvc *service.AuditService, notifySvc *service.NotificationService, termMgr *terminal.Manager, emailSvc *email.Service) *Server {
@@ -60,11 +62,12 @@ func New(cfg *config.Config, db *pgxpool.Pool, queries *generated.Queries, asynq
 	auth.SetSecondFactorVerifier(service.NewTOTPService(db, queries, cfg.Keyring))
 
 	s := &Server{
-		cfg:     cfg,
-		db:      db,
-		auth:    auth,
-		tokens:  tokens,
-		handler: handler.New(cfg, db, queries, asynqClient, inspector, rts, pm, reconciler, auth, rdb, appSvc, projSvc, dbSvc, gitProviderSvc, gitIntegrationSvc, backupDestSvc, hub, auditSvc, notifySvc, termMgr, quotaSvc, emailSvc, tokens),
+		cfg:        cfg,
+		db:         db,
+		auth:       auth,
+		tokens:     tokens,
+		proxyTrust: newProxyTrust(cfg, rts),
+		handler:    handler.New(cfg, db, queries, asynqClient, inspector, rts, pm, reconciler, auth, rdb, appSvc, projSvc, dbSvc, gitProviderSvc, gitIntegrationSvc, backupDestSvc, hub, auditSvc, notifySvc, termMgr, quotaSvc, emailSvc, tokens),
 	}
 
 	s.router = s.setupRouter()
@@ -109,7 +112,9 @@ func (s *Server) setupRouter() chi.Router {
 
 	// Global middleware
 	r.Use(chiMiddleware.RequestID)
-	r.Use(chiMiddleware.RealIP)
+	// Not chi's RealIP: that believes True-Client-IP, X-Real-IP and X-Forwarded-For
+	// from anyone. This believes one header, from one peer — the Caddy container.
+	r.Use(s.proxyTrust.Middleware)
 	// OTel HTTP server middleware: one span per request plus W3C traceparent
 	// extraction. No-ops when the tracer provider is the default no-op.
 	r.Use(func(next http.Handler) http.Handler {

@@ -327,6 +327,18 @@ func mapContainerSummaries(containers []container.Summary) []runtime.ContainerIn
 			}
 		}
 
+		var addrs []string
+		if ctr.NetworkSettings != nil {
+			for _, n := range ctr.NetworkSettings.Networks {
+				if n != nil && n.IPAddress != "" {
+					addrs = append(addrs, n.IPAddress)
+				}
+				if n != nil && n.GlobalIPv6Address != "" {
+					addrs = append(addrs, n.GlobalIPv6Address)
+				}
+			}
+		}
+
 		result = append(result, runtime.ContainerInfo{
 			ID:        ctr.ID,
 			Name:      name,
@@ -335,6 +347,7 @@ func mapContainerSummaries(containers []container.Summary) []runtime.ContainerIn
 			Ports:     ports,
 			Labels:    ctr.Labels,
 			CreatedAt: time.Unix(ctr.Created, 0),
+			Addrs:     addrs,
 		})
 	}
 	return result

@@ -67,6 +67,12 @@ type Config struct {
 	// probe can reach app containers directly (app-to-app isolation is unaffected;
 	// only the trusted control plane bridges in). Empty disables self-attach.
 	APIContainerName string
+	// ProxyPeerCIDRs are extra TCP peers to treat as the Caddy proxy, on top of the
+	// addresses Belune finds for the Caddy container itself. It exists for the dev
+	// stack, where the API runs on the host and Caddy's connections arrive from the
+	// Docker bridge, and for a Caddy that is not a container. Empty in production:
+	// every entry is an address allowed to claim any client IP.
+	ProxyPeerCIDRs []string
 	// CaddyTLSProbeAddr is where the TLS status probe dials to see what Caddy
 	// actually serves. It is the proxy's own HTTPS listener, reached over the
 	// internal network — never the public hostname, which would leave the check
@@ -254,6 +260,7 @@ func Load() (*Config, error) {
 		CaddyAdminURL:      getEnv("CADDY_ADMIN_URL", "http://localhost:2019"),
 		CaddyContainerName: getEnv("CADDY_CONTAINER_NAME", "infra-caddy-1"),
 		APIContainerName:   getEnv("API_CONTAINER_NAME", selfContainerRef()),
+		ProxyPeerCIDRs:     getEnvList("PROXY_PEER_CIDRS", nil),
 		CaddyTLSProbeAddr:  getEnv("CADDY_TLS_PROBE_ADDR", "caddy:443"),
 		DashboardUpstream:  getEnv("DASHBOARD_UPSTREAM", "belune:8080"),
 		PublicIP:           getEnv("BELUNE_PUBLIC_IP", ""),

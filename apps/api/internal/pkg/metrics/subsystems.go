@@ -7,6 +7,16 @@ import (
 )
 
 var (
+	clientIPDecisions = factory.NewCounterVec(prometheus.CounterOpts{
+		Name: "belune_client_ip_requests_total",
+		Help: "Requests by how the client address was resolved: proxy (trusted header from Caddy), proxy_no_header, proxy_bad_header, host, direct (peer unknown), rejected.",
+	}, []string{"result"})
+
+	auditLogsDropped = factory.NewCounter(prometheus.CounterOpts{
+		Name: "belune_audit_logs_dropped_total",
+		Help: "Audit rows that could not be written. Each one is an action with no record of it.",
+	})
+
 	smtpSendDuration = factory.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "belune_smtp_send_duration_seconds",
 		Help:    "Duration of outbound SMTP sends by template and result.",
@@ -124,3 +134,9 @@ func RecordTerminalSessionClosed(d time.Duration) {
 func RecordBackupRotate(err error) {
 	backupRotateTotal.WithLabelValues(resultLabel(err)).Inc()
 }
+
+// RecordClientIPDecision counts how a request's client address was resolved.
+func RecordClientIPDecision(result string) { clientIPDecisions.WithLabelValues(result).Inc() }
+
+// RecordAuditLogDropped counts an audit row that failed to insert.
+func RecordAuditLogDropped() { auditLogsDropped.Inc() }

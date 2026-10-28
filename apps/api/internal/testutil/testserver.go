@@ -54,6 +54,9 @@ func SetupTestServer(pool *pgxpool.Pool, queries *generated.Queries) *TestEnv {
 		Keyring:             keyring,
 		CaddyAdminURL:       "http://localhost:2019",
 		DisableRateLimiting: true,
+		// The test client stands in for Caddy: its X-Belune-Client-IP is believed, as
+		// a real Caddy's is. httptest peers are loopback or 192.0.2.1.
+		ProxyPeerCIDRs: []string{"127.0.0.0/8", "::1/128", "192.0.2.0/24"},
 	}
 
 	mockRuntime := &MockContainerRuntime{}

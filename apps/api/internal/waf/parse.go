@@ -261,6 +261,27 @@ var dispositionLiterals = []struct{ prefix, disposition string }{
 	{"Access denied (phase 3).", DispositionBlocked},
 	{"Access denied (phase 4).", DispositionBlocked},
 	{"Access denied (phase 5).", DispositionBlocked},
+	// The other disruptive openings Coraza's formatter can write. Each means the
+	// request was disrupted and never reached the application, which is the
+	// question this column answers. CRS 4.25 only denies, so these are latent.
+	{"Access dropped (phase 1).", DispositionBlocked},
+	{"Access dropped (phase 2).", DispositionBlocked},
+	{"Access dropped (phase 3).", DispositionBlocked},
+	{"Access dropped (phase 4).", DispositionBlocked},
+	{"Access dropped (phase 5).", DispositionBlocked},
+	{"Access redirected (phase 1).", DispositionBlocked},
+	{"Access redirected (phase 2).", DispositionBlocked},
+	{"Access redirected (phase 3).", DispositionBlocked},
+	{"Access redirected (phase 4).", DispositionBlocked},
+	{"Access redirected (phase 5).", DispositionBlocked},
+	{"Custom disruptive action triggered (phase 1).", DispositionBlocked},
+	{"Custom disruptive action triggered (phase 2).", DispositionBlocked},
+	{"Custom disruptive action triggered (phase 3).", DispositionBlocked},
+	{"Custom disruptive action triggered (phase 4).", DispositionBlocked},
+	{"Custom disruptive action triggered (phase 5).", DispositionBlocked},
+	// ⛔ "Access allowed (phase N)." is deliberately NOT here. It is the one
+	// disruptive opening that is not a refusal; "completing the set" with it
+	// would label an explicit allow as blocked.
 	{"Warning.", DispositionDetected},
 }
 
@@ -292,7 +313,10 @@ func parseDisposition(head string) string {
 // scoreRules are the CRS rules whose message carries the request's total score.
 var scoreRules = map[int]*regexp.Regexp{
 	949110: regexp.MustCompile(`^Inbound Anomaly Score Exceeded \(Total Score: (\d{1,6})\)$`),
+	// The early-blocking variants (off by default in crs-setup.conf.example).
+	949111: regexp.MustCompile(`^Inbound Anomaly Score Exceeded in phase 1 \(Total Score: (\d{1,6})\)$`),
 	959100: regexp.MustCompile(`^Outbound Anomaly Score Exceeded \(Total Score: (\d{1,6})\)$`),
+	959101: regexp.MustCompile(`^Outbound Anomaly Score Exceeded in phase 3 \(Total Score: (\d{1,6})\)$`),
 }
 
 // anomalyScore reads the total out of the scoring rule's message, or returns 0.

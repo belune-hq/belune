@@ -384,6 +384,18 @@ func TestParseCaddyLine_Disposition(t *testing.T) {
 		require.Equal(t, Matched, out)
 		assert.Equal(t, DispositionBlocked, ev.Disposition)
 	})
+	t.Run("every disrupting opening is blocked and an explicit allow is not", func(t *testing.T) {
+		for _, kind := range []string{"Access denied", "Access dropped", "Access redirected", "Custom disruptive action triggered"} {
+			for phase := 1; phase <= 5; phase++ {
+				ev, out := ParseCaddyLine(denyLine(fmt.Sprintf("%s (phase %d).", kind, phase), score, goodID))
+				require.Equal(t, Matched, out)
+				assert.Equal(t, DispositionBlocked, ev.Disposition, "%s phase %d", kind, phase)
+			}
+		}
+		ev, out := ParseCaddyLine(denyLine("Access allowed (phase 1).", score, goodID))
+		require.Equal(t, Matched, out)
+		assert.Empty(t, ev.Disposition, "an allow is not a refusal")
+	})
 	t.Run("a reporting rule is detected", func(t *testing.T) {
 		ev, out := ParseCaddyLine(realLine("XSS Attack Detected via libinjection", "d", "/", goodID))
 		require.Equal(t, Matched, out)
@@ -414,6 +426,9 @@ func TestParseCaddyLine_Disposition(t *testing.T) {
 func TestAnomalyScore(t *testing.T) {
 	assert.Equal(t, 15, anomalyScore(949110, "Inbound Anomaly Score Exceeded (Total Score: 15)"))
 	assert.Equal(t, 8, anomalyScore(959100, "Outbound Anomaly Score Exceeded (Total Score: 8)"))
+	assert.Equal(t, 7, anomalyScore(949111, "Inbound Anomaly Score Exceeded in phase 1 (Total Score: 7)"))
+	assert.Equal(t, 9, anomalyScore(959101, "Outbound Anomaly Score Exceeded in phase 3 (Total Score: 9)"))
+	assert.Zero(t, anomalyScore(949110, "Inbound Anomaly Score Exceeded in phase 1 (Total Score: 7)"), "each rule keeps its own shape")
 	assert.Equal(t, 999999, anomalyScore(949110, "Inbound Anomaly Score Exceeded (Total Score: 999999)"))
 
 	for name, c := range map[string]struct {

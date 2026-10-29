@@ -44,9 +44,9 @@ func withPath(e proxy.WAFExclusion, p string) proxy.WAFExclusion {
 }
 
 func TestRenderWAFDirectives_NoExclusionsIsByteForByteWhatShippedBefore(t *testing.T) {
-	assert.Equal(t, wafDirectivesBeforeExclusions, renderWAFDirectives(nil))
+	assert.Equal(t, wafDirectivesBeforeExclusions, renderWAFDirectives(nil, nil))
 	assert.Equal(t, wafDirectivesBeforeExclusions, wafDirectives)
-	assert.Equal(t, wafDirectivesBeforeExclusions, renderWAFDirectives([]proxy.WAFExclusion{}))
+	assert.Equal(t, wafDirectivesBeforeExclusions, renderWAFDirectives([]proxy.WAFExclusion{}, []string{}))
 }
 
 func TestRenderWAFExclusions_EveryShapeAndScope(t *testing.T) {
@@ -168,7 +168,7 @@ func TestRenderWAFExclusions_NeverReusesAnIdTheRuleSetOrTheBodyRulesUse(t *testi
 }
 
 func TestRenderWAFDirectives_ExclusionsGoBeforeTheRuleSetAndTheEngineStaysLast(t *testing.T) {
-	out := renderWAFDirectives([]proxy.WAFExclusion{ex(1, 941100, true)})
+	out := renderWAFDirectives([]proxy.WAFExclusion{ex(1, 941100, true)}, nil)
 	setup := strings.Index(out, "Include @crs-setup.conf.example")
 	exclusion := strings.Index(out, "id:1100001")
 	rules := strings.Index(out, "Include @owasp_crs/*.conf")

@@ -52,7 +52,21 @@ func (r *Reconciler) SyncWAF(ctx context.Context, expected []RouteConfig, dashbo
 	if r.wafExclusionList == nil {
 		r.wafExclusionList = func(context.Context) ([]WAFExclusion, error) { return nil, nil }
 	}
+	if r.wafBlockingList == nil {
+		r.wafBlockingList = func(context.Context) ([]string, error) { return nil, nil }
+	}
 	return r.syncWAF(ctx, expected, dashboardHost)
+}
+
+// WithWAFBlockingHosts supplies the opted-in hostnames a pass reads.
+func (r *Reconciler) WithWAFBlockingHosts(list func(context.Context) ([]string, error)) *Reconciler {
+	r.wafBlockingList = list
+	return r
+}
+
+// BlockingHosts exposes the narrowing of opted-in hostnames to enforceable ones.
+func BlockingHosts(hosts, candidates []string, dashboardHost string) []string {
+	return blockingHosts(hosts, candidates, dashboardHost)
 }
 
 // WithWAFExclusions supplies the exclusions a pass reads, so a test needs no database.

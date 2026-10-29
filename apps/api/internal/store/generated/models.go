@@ -86,6 +86,7 @@ type Application struct {
 	HealthCheckRetries            pgtype.Int4        `json:"health_check_retries"`
 	HealthCheckStartPeriodSeconds pgtype.Int4        `json:"health_check_start_period_seconds"`
 	RootDirectory                 pgtype.Text        `json:"root_directory"`
+	WafBlocking                   bool               `json:"waf_blocking"`
 }
 
 type ApplicationFileMount struct {

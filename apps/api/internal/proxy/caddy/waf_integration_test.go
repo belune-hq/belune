@@ -334,7 +334,7 @@ func TestRealCaddy_WAF_AcceptsEveryExclusionShape(t *testing.T) {
 	assert.Contains(t, string(route), "ruleRemoveTargetById=942290;REQUEST_COOKIES:ph_phc_x_posthog")
 
 	// The same set again is a read: a write is a reload.
-	same, err := routeJSONEqual(route, buildWAFRoute(wafHosts(cfg.Hosts), exclusions))
+	same, err := routeJSONEqual(route, buildWAFRoute(wafHosts(cfg.Hosts), exclusions, wafBlockingHosts(wafHosts(cfg.Hosts), cfg.BlockingHosts)))
 	require.NoError(t, err)
 	assert.True(t, same, "the route Caddy holds differs from what would be written again, so every pass would reload")
 

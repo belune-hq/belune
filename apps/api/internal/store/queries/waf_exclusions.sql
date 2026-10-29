@@ -31,3 +31,17 @@ DELETE FROM waf_exclusions WHERE id = $1 RETURNING *;
 
 -- name: GetWAFExclusion :one
 SELECT * FROM waf_exclusions WHERE id = $1;
+
+-- name: ListWAFBlockingHostnames :many
+-- The hostnames whose WAF engine is promoted to blocking. A hostname can be
+-- split across applications by path (migration 000039) and the WAF sees the
+-- whole host, not the path, so a host blocks only when EVERY application serving
+-- it has opted in: bool_and, not bool_or. An ambiguous host stays detection-only,
+-- which is the direction a mistake costs a missed block rather than a refused
+-- visitor.
+SELECT d.hostname::text AS hostname
+FROM domains d
+JOIN applications a ON a.id = d.application_id
+GROUP BY d.hostname
+HAVING bool_and(a.waf_blocking)
+ORDER BY d.hostname;

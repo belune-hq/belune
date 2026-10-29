@@ -54,10 +54,10 @@ func ValidSSLMode(mode string) bool {
 // application route rather than a feature of each.
 //
 // Global, deliberately: a per-route WAF would put it into the route-feature model,
-// its normalisation and the reconciler's determinism, for a first phase that only
-// observes. The cost is that one noisy application's false positives share the one
-// detection log, which is tolerable while nothing is blocked and is exactly why
-// enforcement will need to be per application.
+// its normalisation and the reconciler's determinism. The route inspects every
+// application's host and detects; ENFORCEMENT is per application, expressed as
+// BlockingHosts below. The one detection log is still shared, so one noisy
+// application's false positives sit beside everyone else's.
 type WAFConfig struct {
 	// Enabled is the operator's switch AND the module being present; the caller has
 	// already decided both. False removes the route.
@@ -67,6 +67,12 @@ type WAFConfig struct {
 	// which a generic rule set reads as attacks, and an admin panel is not what the
 	// WAF is here to watch. No hosts means no route.
 	Hosts []string
+	// BlockingHosts are the hosts, a subset of Hosts, whose engine is promoted
+	// from detection-only to blocking. ⛔ Fail safe: the engine is DetectionOnly
+	// unless a generated rule says otherwise for a host, so an empty, missing or
+	// unrenderable list leaves everything detecting. There is deliberately no
+	// install-wide form.
+	BlockingHosts []string
 	// Exclusions are the operator's carve-outs from the rule set. Sorted by id, and
 	// rendered in that order, so the same rows are the same bytes.
 	Exclusions []WAFExclusion

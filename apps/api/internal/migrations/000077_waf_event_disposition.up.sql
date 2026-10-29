@@ -33,3 +33,15 @@ ALTER TABLE waf_events
 -- table had no index on it. Partial: a row without a transaction id has nothing
 -- to look up.
 CREATE INDEX idx_waf_events_tx ON waf_events (tx_id) WHERE tx_id IS NOT NULL;
+
+-- ⚠️ A blocked request logs its deny-ing rule TWICE (measured against the real
+-- image): a "Warning." line for the match, then an "Access denied" line for the
+-- denial, same message and score. Both are stored, so `events` counts both,
+-- because it counts lines Coraza logged; `requests`, `rules` and the autoban
+-- count transactions and are unaffected. Readers that list rows de-duplicate at
+-- read time.
+--
+-- ⛔ There is deliberately NO unique index on (tx_id, rule_id). Rows are inserted
+-- with COPY, which fails whole: one unique violation would discard the entire
+-- batch of detections (#122 with a different trigger). Folding the pair in the
+-- recorder is unsound too, since a batch boundary can fall between the two lines.

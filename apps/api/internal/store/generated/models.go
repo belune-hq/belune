@@ -655,6 +655,8 @@ type WafEvent struct {
 	ApplicationID pgtype.UUID        `json:"application_id"`
 	TxID          pgtype.Text        `json:"tx_id"`
 	MatchedTarget pgtype.Text        `json:"matched_target"`
+	Disposition   pgtype.Text        `json:"disposition"`
+	AnomalyScore  pgtype.Int4        `json:"anomaly_score"`
 }
 
 type WafExclusion struct {

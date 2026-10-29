@@ -4,6 +4,7 @@ import {
   ANOMALY_SUMMARY_RULE,
   categoryLabel,
   describeCategory,
+  describeClientFlag,
   describeEventVerdict,
   describeRecorder,
   describeClientList,
@@ -251,43 +252,104 @@ describe("isIpAddress", () => {
   });
 });
 
+const verdictInput = (
+  over: Partial<Parameters<typeof describeEventVerdict>[0]> = {},
+): Parameters<typeof describeEventVerdict>[0] => ({
+  rule_id: 920420,
+  severity: "critical",
+  disposition: null,
+  request_blocked: false,
+  ...over,
+});
+
 describe("describeEventVerdict", () => {
   // The whole point. Coraza reports no severity for the anomaly-score rule, so
   // showing severity verbatim put the one row that states a verdict in the
   // faintest badge on the page, under the word "unknown", while a benign
   // content-type match beside it shouted "critical" in red.
   it("names the anomaly-score rule as the verdict it is", () => {
-    const v = describeEventVerdict({
-      rule_id: ANOMALY_SUMMARY_RULE,
-      severity: "unknown",
-    });
+    const v = describeEventVerdict(
+      verdictInput({
+        rule_id: ANOMALY_SUMMARY_RULE,
+        severity: "unknown",
+        disposition: "detected",
+      }),
+    );
     expect(v.label).toBe("Would block");
     expect(v.tone).toBe("error");
     expect(v.title).toMatch(/Nothing was blocked/);
     // The error tone alone is not enough: "critical" carries it too, so the
     // verdict would render identically to the noise it is a verdict about.
     expect(v.strong).toBe(true);
-    expect(
-      describeEventVerdict({ rule_id: 920420, severity: "critical" }).tone,
-    ).toBe(v.tone);
+    expect(describeEventVerdict(verdictInput()).tone).toBe(v.tone);
   });
 
-  it("says nothing was blocked, because nothing was", () => {
-    const v = describeEventVerdict({
-      rule_id: ANOMALY_SUMMARY_RULE,
-      severity: "unknown",
-    });
-    expect(v.title).not.toMatch(/blocked it|was refused/);
+  it("says Blocked, not Would block, for a request that was refused", () => {
+    for (const over of [
+      { disposition: "blocked" as const },
+      // The deny-ing row is not always the one listed: a rule filter can leave
+      // only a row that reads "detected" in a request that was refused.
+      { disposition: "detected" as const, request_blocked: true },
+    ]) {
+      const v = describeEventVerdict(
+        verdictInput({
+          rule_id: ANOMALY_SUMMARY_RULE,
+          severity: "unknown",
+          ...over,
+        }),
+      );
+      expect(v.label).toBe("Blocked");
+      expect(v.title).toMatch(/refused/);
+      expect(v.strong).toBe(true);
+    }
+  });
+
+  it("never claims a refusal, or that nothing was refused, for an unrecorded outcome", () => {
+    const v = describeEventVerdict(
+      verdictInput({
+        rule_id: ANOMALY_SUMMARY_RULE,
+        severity: "unknown",
+        disposition: null,
+      }),
+    );
+    expect(v.label).toBe("Would block");
+    expect(v.title).not.toMatch(/Nothing was blocked/);
+    expect(v.title).toMatch(/did not record/);
   });
 
   it("passes every other rule's severity through untouched", () => {
     for (const severity of ["critical", "warning", "notice"] as const) {
-      const v = describeEventVerdict({ rule_id: 920420, severity });
+      const v = describeEventVerdict(verdictInput({ severity }));
       expect(v.label).toBe(severity);
-      expect(v.tone).toBe(severityTone(severity));
-      expect(v.title).toBeNull();
       expect(v.strong).toBe(false);
     }
+    // Even inside a refused request: the signature row is a signature.
+    expect(
+      describeEventVerdict(verdictInput({ request_blocked: true })).label,
+    ).toBe("critical");
+  });
+});
+
+describe("describeClientFlag", () => {
+  it("is nothing for a quiet client", () => {
+    expect(
+      describeClientFlag({ would_block: false, blocked_requests: 0 }),
+    ).toBeNull();
+  });
+
+  it("is Would block when only the counterfactual holds", () => {
+    expect(
+      describeClientFlag({ would_block: true, blocked_requests: 0 })?.label,
+    ).toBe("Would block");
+  });
+
+  it("is Blocked when any request was refused, and counts them", () => {
+    const f = describeClientFlag({ would_block: true, blocked_requests: 2 });
+    expect(f?.label).toBe("Blocked");
+    expect(f?.title).toMatch(/2 requests .* were refused/);
+    expect(
+      describeClientFlag({ would_block: true, blocked_requests: 1 })?.title,
+    ).toMatch(/1 request .* was refused/);
   });
 });
 

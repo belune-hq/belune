@@ -58,10 +58,10 @@ import { exclusionsNotice } from "@/components/proxy/waf-exclusion-view";
 import {
   BADGE_VARIANT,
   CATEGORY_COLUMN_HELP,
-  CLIENT_WOULD_BLOCK,
   describeCategory,
   describeClientList,
   describeDetectionRequest,
+  describeClientFlag,
   describeEventVerdict,
   describeRecorder,
   describeUrlCount,
@@ -561,6 +561,7 @@ function ClientRow({
   const panelId = `waf-client-${g.client_ip.replace(/[^a-zA-Z0-9]/g, "-")}`;
   const toggle = () => setOpen((o) => !o);
   const urls = describeUrlCount(g.urls, g.requests);
+  const flag = describeClientFlag(g);
   const Chevron = open ? ChevronDownIcon : ChevronRightIcon;
   const label = `${open ? "Hide" : "Show"} detections from ${g.client_ip}`;
 
@@ -591,9 +592,9 @@ function ClientRow({
             >
               {g.client_ip}
             </button>
-            {g.would_block && (
-              <Badge variant="destructive-solid" title={CLIENT_WOULD_BLOCK}>
-                Would block
+            {flag && (
+              <Badge variant="destructive-solid" title={flag.title}>
+                {flag.label}
               </Badge>
             )}
           </div>

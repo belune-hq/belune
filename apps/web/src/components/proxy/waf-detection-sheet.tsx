@@ -93,6 +93,21 @@ export function WafDetectionSheet({
               {relative === "now" ? "just now" : `${relative} ago`}
             </span>
           </DetailRow>
+          {/* Only said when true. The row's own badge can read "detected" in a
+              request that was refused, because the denial is logged by a
+              different rule of the same transaction. */}
+          {event.request_blocked && (
+            <DetailRow label="Outcome">
+              <span className="text-xs">Refused with a 403</span>
+            </DetailRow>
+          )}
+          {event.anomaly_score !== null && (
+            <DetailRow label="Score">
+              <span className="font-mono text-xs tabular-nums">
+                {event.anomaly_score}
+              </span>
+            </DetailRow>
+          )}
           <DetailRow label="Client">
             <span className="font-mono text-xs">{event.client_ip}</span>
           </DetailRow>

@@ -110,12 +110,21 @@ func (r *Reconciler) wafBlockingCandidates(ctx context.Context) ([]string, error
 // on. The result is always a subset of hosts, so the dashboard (which never
 // reaches hosts) can never be enforced on, and a host with no route is not named.
 //
+// ⛔ Two locks keep the dashboard out, and neither is redundant. The first is
+// that the dashboard never reaches hosts, so it cannot be named. That does not
+// stop a WILDCARD from covering it: "*.example.com" is a valid application
+// domain, Caddy's host matcher glob-matches it, and the WAF route (first in the
+// table, not terminal) then sees "panel.example.com" and the scoping pattern
+// matches it too. The dashboard takes commands and credentials as ordinary input,
+// which a rule set reads as attacks, and its recovery path is the dashboard, so
+// the second lock drops any candidate whose pattern covers dashboardHost.
+//
 // A wildcard is dropped when it overlaps a host that did NOT opt in: the rule
 // that scopes it is a pattern over the request's host, and "*.example.com" would
 // also cover a sibling application's "shop.example.com" and start refusing its
 // visitors unasked. Dropping it costs the wildcard's own hosts their enforcement,
 // which is the cheaper way to be wrong.
-func blockingHosts(hosts, candidates []string) []string {
+func blockingHosts(hosts, candidates []string, dashboardHost string) []string {
 	inScope := make(map[string]struct{}, len(hosts))
 	for _, h := range hosts {
 		inScope[h] = struct{}{}
@@ -131,6 +140,10 @@ func blockingHosts(hosts, candidates []string) []string {
 	out := make([]string, 0, len(want))
 	for _, h := range hosts {
 		if _, ok := want[h]; !ok {
+			continue
+		}
+		if dashboardHost != "" && hostPatternsOverlap(h, strings.ToLower(dashboardHost)) {
+			slog.Warn("WAF blocking: leaving a host detection-only because it would cover the dashboard", "host", h, "dashboard", dashboardHost)
 			continue
 		}
 		if strings.Contains(h, "*") {
@@ -220,7 +233,7 @@ func (r *Reconciler) syncWAF(ctx context.Context, expected []RouteConfig, dashbo
 		}
 	}
 
-	blocking := blockingHosts(sorted, candidates)
+	blocking := blockingHosts(sorted, candidates, dashboardHost)
 	if err := r.proxy.SyncWAF(ctx, WAFConfig{Enabled: wanted, Hosts: sorted, BlockingHosts: blocking, Exclusions: exclusions}); err != nil {
 		state.Active, state.Error = prev.Active, err.Error()
 		r.setWAF(state)

@@ -217,16 +217,41 @@ func TestSyncWAF_AnUnreadableBlockingListPushesNothing(t *testing.T) {
 func TestBlockingHosts_Narrowing(t *testing.T) {
 	hosts := []string{"*.example.com", "a.example.com", "b.test", "shop.example.com"}
 
-	assert.Equal(t, []string{"a.example.com"}, proxy.BlockingHosts(hosts, []string{"a.example.com", "gone.test"}),
+	assert.Equal(t, []string{"a.example.com"}, proxy.BlockingHosts(hosts, []string{"a.example.com", "gone.test"}, ""),
 		"only hosts the WAF inspects")
-	assert.Empty(t, proxy.BlockingHosts(hosts, nil))
+	assert.Empty(t, proxy.BlockingHosts(hosts, nil, ""))
 
 	// A wildcard that opted in would also refuse a sibling application's visitors.
-	assert.Equal(t, []string{"a.example.com"}, proxy.BlockingHosts(hosts, []string{"*.example.com", "a.example.com"}),
+	assert.Equal(t, []string{"a.example.com"}, proxy.BlockingHosts(hosts, []string{"*.example.com", "a.example.com"}, ""),
 		"the wildcard overlaps shop.example.com, which did not opt in")
 	// Dropping the sibling's non-opt-in is not needed when it opted in too.
 	assert.Equal(t, []string{"*.example.com", "a.example.com", "shop.example.com"},
-		proxy.BlockingHosts(hosts, []string{"*.example.com", "a.example.com", "shop.example.com"}))
+		proxy.BlockingHosts(hosts, []string{"*.example.com", "a.example.com", "shop.example.com"}, ""))
 	// Different depth never overlaps.
-	assert.Equal(t, []string{"*.example.com"}, proxy.BlockingHosts([]string{"*.example.com", "x.y.example.com"}, []string{"*.example.com"}))
+	assert.Equal(t, []string{"*.example.com"}, proxy.BlockingHosts([]string{"*.example.com", "x.y.example.com"}, []string{"*.example.com"}, ""))
+}
+
+// ⛔ The dashboard is never named in Hosts, but a wildcard application domain
+// covers it anyway: the WAF route matches by glob, so a pattern that is allowed to
+// enforce would enforce on the one host whose recovery path is itself.
+func TestBlockingHosts_NeverCoverTheDashboard(t *testing.T) {
+	hosts := []string{"*.example.com", "a.example.com", "b.test"}
+	cands := []string{"*.example.com", "a.example.com", "b.test"}
+
+	got := proxy.BlockingHosts(hosts, cands, "panel.example.com")
+	assert.Equal(t, []string{"a.example.com", "b.test"}, got, "the wildcard that would cover panel.example.com is left detecting")
+
+	// Case does not hide it.
+	assert.Equal(t, got, proxy.BlockingHosts(hosts, cands, "Panel.Example.COM"))
+	// A dashboard elsewhere leaves the wildcard alone.
+	assert.Contains(t, proxy.BlockingHosts(hosts, cands, "dash.other.test"), "*.example.com")
+}
+
+func TestSyncWAF_AWildcardCannotPromoteTheDashboard(t *testing.T) {
+	mp := &mockProxy{}
+	r := wafReconciler(mp, caddyWithWAF).WithWAFBlockingHosts(blockingOf("*.example.com"))
+	require.NoError(t, r.SyncWAF(context.Background(), routes("*.example.com"), "panel.example.com", switchOf(true)))
+	require.Len(t, mp.waf, 1)
+	assert.Equal(t, []string{"*.example.com"}, mp.waf[0].Hosts, "it is inspected, which is detection only")
+	assert.Empty(t, mp.waf[0].BlockingHosts)
 }

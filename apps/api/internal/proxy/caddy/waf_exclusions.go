@@ -20,6 +20,12 @@ import (
 // set changes, which already changes the bytes.
 const wafExclusionRuleBase = 1100000
 
+// wafBlockingRuleID is the one rule that promotes the engine. Clear of the Core
+// Rule Set (900000-999999), the three body rules (1000001-3) and the exclusions
+// (1100000 upward, bounded by MaxWAFExclusions). A duplicate id would likely make
+// Caddy reject the whole write and take the WAF route down, not one rule.
+const wafBlockingRuleID = 1200001
+
 var (
 	// A hostname is placed in a regular expression, so it is held to what a
 	// hostname is: lower-case letters, digits, '-', '_' and '.', with a '*' label
@@ -136,4 +142,26 @@ func renderWAFExclusions(exclusions []proxy.WAFExclusion) string {
 		}
 	}
 	return b.String()
+}
+
+// renderWAFBlocking promotes the engine to On for these hosts, and only these.
+//
+// ⛔ Fail safe, by construction. The engine is DetectionOnly unless this rule
+// matches, so everything that can go wrong here goes wrong toward detecting:
+//   - no hosts, or none that can be scoped, renders NOTHING;
+//   - a host that is not a plain hostname is left out, never guessed at;
+//   - there is NO global form. An exclusion falls back to a SecAction when it is
+//     install-wide; a blocking rule that lost its host scope and did the same
+//     would switch the engine on for every application. It cannot: the only
+//     output shape is the host-scoped SecRule.
+//
+// The condition matches the transaction header Belune sets from
+// {http.request.host}, which the client cannot supply, so a visitor cannot aim
+// enforcement at a host by sending its name.
+func renderWAFBlocking(hosts []string) string {
+	condition, ok := hostScopeCondition(hosts)
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf("SecRule %s \"id:%d,phase:1,pass,nolog,ctl:ruleEngine=On\"\n", condition, wafBlockingRuleID)
 }

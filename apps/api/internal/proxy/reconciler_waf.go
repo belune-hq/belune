@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -87,6 +88,81 @@ func (r *Reconciler) wafExclusions(ctx context.Context) ([]WAFExclusion, error) 
 	return out, nil
 }
 
+// wafBlockingCandidates reads the hostnames of applications that opted in to
+// blocking. Like the exclusions, an error is returned and nothing is pushed: a
+// pass that read the list as empty would quietly demote every blocking host to
+// detection-only and then promote it again on the next good read.
+func (r *Reconciler) wafBlockingCandidates(ctx context.Context) ([]string, error) {
+	if r.wafBlockingList != nil {
+		return r.wafBlockingList(ctx)
+	}
+	hosts, err := r.queries.ListWAFBlockingHostnames(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("reading the WAF blocking hosts: %w", err)
+	}
+	return hosts, nil
+}
+
+// blockingHosts narrows the opted-in hostnames to the ones the WAF may enforce
+// on. The result is always a subset of hosts, so the dashboard (which never
+// reaches hosts) can never be enforced on, and a host with no route is not named.
+//
+// A wildcard is dropped when it overlaps a host that did NOT opt in: the rule
+// that scopes it is a pattern over the request's host, and "*.example.com" would
+// also cover a sibling application's "shop.example.com" and start refusing its
+// visitors unasked. Dropping it costs the wildcard's own hosts their enforcement,
+// which is the cheaper way to be wrong.
+func blockingHosts(hosts, candidates []string) []string {
+	inScope := make(map[string]struct{}, len(hosts))
+	for _, h := range hosts {
+		inScope[h] = struct{}{}
+	}
+	want := make(map[string]struct{}, len(candidates))
+	for _, c := range candidates {
+		c = strings.ToLower(strings.TrimSpace(c))
+		if _, ok := inScope[c]; ok {
+			want[c] = struct{}{}
+		}
+	}
+
+	out := make([]string, 0, len(want))
+	for _, h := range hosts {
+		if _, ok := want[h]; !ok {
+			continue
+		}
+		if strings.Contains(h, "*") {
+			overlaps := ""
+			for _, other := range hosts {
+				if _, optedIn := want[other]; !optedIn && hostPatternsOverlap(h, other) {
+					overlaps = other
+					break
+				}
+			}
+			if overlaps != "" {
+				slog.Warn("WAF blocking: leaving a wildcard host detection-only because it overlaps a host that has not opted in", "host", h, "overlaps", overlaps)
+				continue
+			}
+		}
+		out = append(out, h)
+	}
+	return out
+}
+
+// hostPatternsOverlap reports whether some hostname could match both patterns,
+// reading "*" as any one label, as Caddy's host matcher does.
+func hostPatternsOverlap(a, b string) bool {
+	al, bl := strings.Split(a, "."), strings.Split(b, ".")
+	if len(al) != len(bl) {
+		return false
+	}
+	for i := range al {
+		if al[i] != bl[i] && al[i] != "*" && bl[i] != "*" {
+			return false
+		}
+	}
+	return true
+}
+
 // syncWAF brings the WAF route in line with the switch, the module and the
 // applications that exist. Called last in a pass, once the application routes are
 // in place, so the host list it carries is the one they have.
@@ -104,6 +180,10 @@ func (r *Reconciler) syncWAF(ctx context.Context, expected []RouteConfig, dashbo
 		return err
 	}
 	exclusions, err := r.wafExclusions(ctx)
+	if err != nil {
+		return err
+	}
+	candidates, err := r.wafBlockingCandidates(ctx)
 	if err != nil {
 		return err
 	}
@@ -137,7 +217,7 @@ func (r *Reconciler) syncWAF(ctx context.Context, expected []RouteConfig, dashbo
 		}
 	}
 
-	if err := r.proxy.SyncWAF(ctx, WAFConfig{Enabled: wanted, Hosts: sorted, Exclusions: exclusions}); err != nil {
+	if err := r.proxy.SyncWAF(ctx, WAFConfig{Enabled: wanted, Hosts: sorted, BlockingHosts: blockingHosts(sorted, candidates), Exclusions: exclusions}); err != nil {
 		state.Active, state.Error = prev.Active, err.Error()
 		r.setWAF(state)
 		return fmt.Errorf("syncing the WAF route: %w", err)

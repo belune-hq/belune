@@ -25,8 +25,14 @@ const wafRouteID = "route-waf"
 // the module's own defaults were measured to break traffic or leak. Measured
 // against Caddy v2.11.7 with coraza-caddy v2.6.2, the build in belune-caddy:2:
 //
-//   - SecRuleEngine DetectionOnly is the whole point of this phase. It is stated
-//     last, after the includes, so nothing they say can switch the engine on.
+//   - SecRuleEngine DetectionOnly is the static default, stated last, after the
+//     includes, so nothing they say can change it at load time. It can be
+//     promoted per transaction by exactly one thing: the host-scoped
+//     ctl:ruleEngine=On rules renderWAFBlocking generates from the applications
+//     that opted in. That is why the default is DetectionOnly and the promotion
+//     is per host, never the inverse: with the engine On and a per-host demotion,
+//     a rule that is missing, skipped or malformed would start refusing visitors
+//     nobody asked to refuse, where here it leaves them detected.
 //
 //   - Request bodies are inspected only when they are small and of known size. Left
 //     to the module's own defaults, a request body over about 1 MiB stalls and
@@ -71,9 +77,10 @@ SecRuleEngine DetectionOnly
 
 // wafDirectives is the configuration with no exclusions: what an install that has
 // never made one runs, byte for byte, so adding the feature is not a route diff.
-var wafDirectives = renderWAFDirectives(nil)
+var wafDirectives = renderWAFDirectives(nil, nil)
 
-// renderWAFDirectives is the Coraza configuration for these exclusions.
+// renderWAFDirectives is the Coraza configuration for these exclusions and
+// blocking hosts.
 //
 // ⚠️ The exclusion block sits BETWEEN the setup include and the rule set, and that
 // is not a style choice: a ctl:ruleRemove* only affects rules that have not run
@@ -82,10 +89,21 @@ var wafDirectives = renderWAFDirectives(nil)
 // v2.11.7 with coraza-caddy v2.6.2).
 //
 // SecRuleEngine DetectionOnly stays last, so nothing the includes say can switch
-// the engine on. The exclusion rules below can only REMOVE rules and targets from
-// the transaction; none of them touches the engine.
-func renderWAFDirectives(exclusions []proxy.WAFExclusion) string {
-	return wafDirectivesHead + renderWAFExclusions(exclusions) + wafDirectivesTail
+// the engine on at load. The exclusion rules can only REMOVE rules and targets
+// from a transaction. The blocking rules are the one thing that promotes the
+// engine, only for the hosts that opted in, and they sit in the same place as the
+// exclusions for the same reason: the switch must be made before the phase-1
+// rules it governs have run (measured: before or after the static directive, the
+// per-host rule still wins at request time).
+//
+// ⚠️ That measurement does NOT license moving the block. Placed after the
+// includes and the static directive, a ctl:ruleEngine=On rule also won for the
+// anomaly verdict, because the switch only has to land before phase 2. That is a
+// different question from the one the exclusions answered: a ctl placed after the
+// includes left a PHASE-1 CRS rule (920350) firing. The position is not arbitrary
+// and a control that also passes is not a reason to simplify it.
+func renderWAFDirectives(exclusions []proxy.WAFExclusion, blockingHosts []string) string {
+	return wafDirectivesHead + renderWAFExclusions(exclusions) + renderWAFBlocking(blockingHosts) + wafDirectivesTail
 }
 
 // buildWAFRoute renders the WAF route for these hosts.
@@ -99,7 +117,7 @@ func renderWAFDirectives(exclusions []proxy.WAFExclusion) string {
 // pipeline has to be joined to learn it. The header is SET, not appended, so a
 // client cannot supply its own, and the last handler removes it so the application
 // never sees it.
-func buildWAFRoute(hosts []string, exclusions []proxy.WAFExclusion) caddyRoute {
+func buildWAFRoute(hosts []string, exclusions []proxy.WAFExclusion, blockingHosts []string) caddyRoute {
 	return caddyRoute{
 		ID:    wafRouteID,
 		Match: []caddyMatch{{Host: hosts}},
@@ -113,7 +131,7 @@ func buildWAFRoute(hosts []string, exclusions []proxy.WAFExclusion) caddyRoute {
 			{
 				"handler":          "waf",
 				"load_owasp_crs":   true,
-				"directives":       renderWAFDirectives(exclusions),
+				"directives":       renderWAFDirectives(exclusions, blockingHosts),
 				"tx_id_req_header": waf.TxHeader,
 			},
 			{
@@ -147,7 +165,7 @@ func (c *Client) SyncWAF(ctx context.Context, cfg proxy.WAFConfig) (err error) {
 		return nil
 	}
 
-	desired := buildWAFRoute(hosts, cfg.Exclusions)
+	desired := buildWAFRoute(hosts, cfg.Exclusions, wafBlockingHosts(hosts, cfg.BlockingHosts))
 	if found {
 		same, err := routeJSONEqual(current, desired)
 		if err != nil {
@@ -179,6 +197,23 @@ func (c *Client) SyncWAF(ctx context.Context, cfg proxy.WAFConfig) (err error) {
 	}
 	slog.Info("caddy: WAF route added", "hosts", len(hosts))
 	return nil
+}
+
+// wafBlockingHosts keeps only the blocking hosts the route also inspects, in the
+// route's own form. Belt and braces over the reconciler's narrowing: a host the
+// WAF does not match can never be enforced on, whoever built the config.
+func wafBlockingHosts(hosts, blocking []string) []string {
+	inRoute := make(map[string]struct{}, len(hosts))
+	for _, h := range hosts {
+		inRoute[h] = struct{}{}
+	}
+	out := make([]string, 0, len(blocking))
+	for _, h := range wafHosts(blocking) {
+		if _, ok := inRoute[h]; ok {
+			out = append(out, h)
+		}
+	}
+	return out
 }
 
 // wafHosts is the host list as the route carries it: deduplicated, lower-cased and

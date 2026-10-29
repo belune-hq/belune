@@ -110,6 +110,41 @@ func (q *Queries) GetWAFExclusion(ctx context.Context, id int64) (WafExclusion, 
 	return i, err
 }
 
+const listWAFBlockingHostnames = `-- name: ListWAFBlockingHostnames :many
+SELECT d.hostname::text AS hostname
+FROM domains d
+JOIN applications a ON a.id = d.application_id
+GROUP BY d.hostname
+HAVING bool_and(a.waf_blocking)
+ORDER BY d.hostname
+`
+
+// The hostnames whose WAF engine is promoted to blocking. A hostname can be
+// split across applications by path (migration 000039) and the WAF sees the
+// whole host, not the path, so a host blocks only when EVERY application serving
+// it has opted in: bool_and, not bool_or. An ambiguous host stays detection-only,
+// which is the direction a mistake costs a missed block rather than a refused
+// visitor.
+func (q *Queries) ListWAFBlockingHostnames(ctx context.Context) ([]string, error) {
+	rows, err := q.db.Query(ctx, listWAFBlockingHostnames)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var hostname string
+		if err := rows.Scan(&hostname); err != nil {
+			return nil, err
+		}
+		items = append(items, hostname)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listWAFExclusions = `-- name: ListWAFExclusions :many
 SELECT
     e.id, e.rule_id, e.collection, e.target_name, e.path_pattern,

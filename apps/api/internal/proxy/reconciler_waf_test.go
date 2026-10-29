@@ -174,3 +174,59 @@ func TestSyncWAF_AnUnreadableExclusionListPushesNothing(t *testing.T) {
 	require.Error(t, r.SyncWAF(context.Background(), routes("a.example.com"), "", switchOf(true)))
 	assert.Len(t, mp.waf, 1, "nothing was pushed, so the exclusions stay in force")
 }
+
+func blockingOf(hosts ...string) func(context.Context) ([]string, error) {
+	return func(context.Context) ([]string, error) { return hosts, nil }
+}
+
+func TestSyncWAF_PromotesOnlyHostsThatOptedIn(t *testing.T) {
+	mp := &mockProxy{}
+	r := wafReconciler(mp, caddyWithWAF).WithWAFBlockingHosts(blockingOf("a.example.com"))
+	require.NoError(t, r.SyncWAF(context.Background(), routes("a.example.com", "b.example.com"), "", switchOf(true)))
+	require.Len(t, mp.waf, 1)
+	assert.Equal(t, []string{"a.example.com", "b.example.com"}, mp.waf[0].Hosts)
+	assert.Equal(t, []string{"a.example.com"}, mp.waf[0].BlockingHosts)
+}
+
+// The dashboard never reaches Hosts, so it can never be enforced on, even if a
+// domains row somehow named it.
+func TestSyncWAF_CannotBlockTheDashboard(t *testing.T) {
+	mp := &mockProxy{}
+	r := wafReconciler(mp, caddyWithWAF).WithWAFBlockingHosts(blockingOf("dash.example.com", "a.example.com"))
+	require.NoError(t, r.SyncWAF(context.Background(), routes("a.example.com", "dash.example.com"), "dash.example.com", switchOf(true)))
+	assert.Equal(t, []string{"a.example.com"}, mp.waf[0].BlockingHosts)
+}
+
+// Reading the list wrong in the direction of empty would demote every blocking
+// host and promote it again on the next good read; push nothing instead.
+func TestSyncWAF_AnUnreadableBlockingListPushesNothing(t *testing.T) {
+	mp := &mockProxy{}
+	ok := true
+	r := wafReconciler(mp, caddyWithWAF).WithWAFBlockingHosts(func(context.Context) ([]string, error) {
+		if ok {
+			return []string{"a.example.com"}, nil
+		}
+		return nil, errors.New("connection refused")
+	})
+	require.NoError(t, r.SyncWAF(context.Background(), routes("a.example.com"), "", switchOf(true)))
+	ok = false
+	require.Error(t, r.SyncWAF(context.Background(), routes("a.example.com"), "", switchOf(true)))
+	assert.Len(t, mp.waf, 1)
+}
+
+func TestBlockingHosts_Narrowing(t *testing.T) {
+	hosts := []string{"*.example.com", "a.example.com", "b.test", "shop.example.com"}
+
+	assert.Equal(t, []string{"a.example.com"}, proxy.BlockingHosts(hosts, []string{"a.example.com", "gone.test"}),
+		"only hosts the WAF inspects")
+	assert.Empty(t, proxy.BlockingHosts(hosts, nil))
+
+	// A wildcard that opted in would also refuse a sibling application's visitors.
+	assert.Equal(t, []string{"a.example.com"}, proxy.BlockingHosts(hosts, []string{"*.example.com", "a.example.com"}),
+		"the wildcard overlaps shop.example.com, which did not opt in")
+	// Dropping the sibling's non-opt-in is not needed when it opted in too.
+	assert.Equal(t, []string{"*.example.com", "a.example.com", "shop.example.com"},
+		proxy.BlockingHosts(hosts, []string{"*.example.com", "a.example.com", "shop.example.com"}))
+	// Different depth never overlaps.
+	assert.Equal(t, []string{"*.example.com"}, proxy.BlockingHosts([]string{"*.example.com", "x.y.example.com"}, []string{"*.example.com"}))
+}

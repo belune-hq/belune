@@ -101,6 +101,21 @@ func TestRealStack_WAF_TheSwitchReachesCaddy(t *testing.T) {
 	hosts, _ = wafRouteHosts(t, adminURL)
 	assert.Equal(t, []string{hostA, hostB}, hosts)
 
+	// An application's opt-in reaches Caddy as a host-scoped promotion, through the
+	// real query; turning it off takes it away again within one pass. The dashboard
+	// is never among the hosts, so it cannot be named.
+	_, err = pool.Exec(ctx, `UPDATE applications SET waf_blocking = TRUE WHERE id = $1`, app.ID)
+	require.NoError(t, err)
+	pass()
+	blocking := wafRouteJSON(t, adminURL)
+	assert.Contains(t, blocking, "ctl:ruleEngine=On")
+	assert.Contains(t, blocking, `waf-a\\.belune\\.local`)
+	assert.NotContains(t, blocking, "waf-dash")
+	_, err = pool.Exec(ctx, `UPDATE applications SET waf_blocking = FALSE WHERE id = $1`, app.ID)
+	require.NoError(t, err)
+	pass()
+	assert.NotContains(t, wafRouteJSON(t, adminURL), "ruleEngine", "back to detection-only")
+
 	// Nothing changed: a further pass must not rewrite the route (a write is a reload).
 	before := wafRouteJSON(t, adminURL)
 	pass()

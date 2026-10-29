@@ -296,7 +296,11 @@ func (h *Handler) UpdateWAF(w http.ResponseWriter, r *http.Request) {
 	if *req.Enabled {
 		action = "enable_waf"
 	}
-	h.audit(r, action, "proxy", "", map[string]any{"mode": wafModeDetectionOnly})
+	// No mode in the details: this switch no longer chooses one. Whether hosts are
+	// enforced on is decided per application and audited there as
+	// enable_waf_blocking, so a mode recorded here would be a snapshot of something
+	// this action did not change, and untrue whenever an application had opted in.
+	h.audit(r, action, "proxy", "", nil)
 
 	// Apply it now rather than on the next 30-second pass, so the answer below is
 	// the state the proxy is actually in. A failed pass is not a failed request:

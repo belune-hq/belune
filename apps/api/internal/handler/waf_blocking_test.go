@@ -186,6 +186,13 @@ func TestWAFEvents_ShowTheDenyingRuleOnceNotTwice(t *testing.T) {
 		mk(949110, "", "detected"), mk(949110, "", "blocked"), // no transaction: nothing to pair, both kept
 	)
 
+	// Unknown disposition beside a blocked row of the same rule: it must stay
+	// listed. "NOT (NULL = 'detected' AND ...)" is NULL and dropped exactly this.
+	unknown := mk(942100, "tx-3", "")
+	unknown.Disposition = pgtype.Text{}
+	deny3 := mk(942100, "tx-3", "blocked")
+	seedWAFEvents(t, unknown, deny3)
+
 	resp := env.DoRequest(t, "GET", "/api/maintenance/proxy/waf/events", nil, testutil.AuthHeader(token))
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	type key struct{ tx, disp string }
@@ -196,11 +203,17 @@ func TestWAFEvents_ShowTheDenyingRuleOnceNotTwice(t *testing.T) {
 		if ev["rule_id"].(float64) == 949110 {
 			got[key{tx, ev["disposition"].(string)}]++
 		}
+		if ev["rule_id"].(float64) == 942100 {
+			d, _ := ev["disposition"].(string)
+			got[key{"unknown:" + tx, d}]++
+		}
 	}
 	assert.Equal(t, map[key]int{
-		{"tx-1", "blocked"}:  1,
-		{"tx-2", "detected"}: 1,
-		{"", "detected"}:     1,
-		{"", "blocked"}:      1,
+		{"tx-1", "blocked"}:         1,
+		{"tx-2", "detected"}:        1,
+		{"", "detected"}:            1,
+		{"", "blocked"}:             1,
+		{"unknown:tx-3", ""}:        1, // not hidden by a sibling it cannot be compared with
+		{"unknown:tx-3", "blocked"}: 1,
 	}, got)
 }

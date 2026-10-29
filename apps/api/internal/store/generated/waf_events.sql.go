@@ -93,7 +93,11 @@ WHERE ($1::bigint IS NULL OR id < $1::bigint)
   -- tx_id (NULL = NULL is unknown), so a row with no transaction cannot match
   -- another one and needs no guard. Both rows stay in the table and in ` + "`" + `events` + "`" + `,
   -- which counts the lines Coraza logged.
-  AND NOT (e.disposition = 'detected' AND EXISTS (
+  -- ⚠️ NULL-safe on purpose: disposition is nullable (every row before 000077, and
+  -- any line whose opening was neither literal), and "NOT (NULL = 'detected' AND
+  -- ...)" is NULL, which a WHERE rejects. That form silently dropped exactly the
+  -- rows whose disposition was unknown, hiding evidence. IS DISTINCT FROM keeps them.
+  AND (e.disposition IS DISTINCT FROM 'detected' OR NOT EXISTS (
       SELECT 1 FROM waf_events b
       WHERE b.tx_id = e.tx_id AND b.rule_id = e.rule_id AND b.disposition = 'blocked'
   ))

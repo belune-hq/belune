@@ -48,6 +48,14 @@ RETURNING *;
 -- rules, so counting events would let one crafted request reach any threshold);
 -- an event with no tx_id counts as its own request rather than all being one.
 -- Ordered worst first, so a cap on how many get banned spares the milder ones.
+--
+-- Immune to blocking mode's duplicate rows, twice over, and neither protection is
+-- redundant: a blocked request logs its deny-ing rule (949110) twice, and this
+-- count does not move because (1) it counts DISTINCT tx_id, so a second row of the
+-- same transaction adds nothing, and (2) 949110 is tagged anomaly-evaluation, not
+-- attack-*, so neither of its rows has a category in the set at all. Without (1),
+-- a hits-based count would halve every operator's threshold the day they turn
+-- blocking on. Keep both.
 SELECT client_ip,
        count(DISTINCT COALESCE(tx_id, id::text))::bigint AS requests,
        max(recorded_at)::timestamptz AS last_seen,

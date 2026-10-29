@@ -1,4 +1,6 @@
 import type {
+  WafBlockingApplication,
+  WafBlockingPage,
   WafClientsPage,
   WafExclusion,
   WafExclusionInput,
@@ -63,4 +65,18 @@ export function createWafExclusion(input: WafExclusionInput) {
 
 export function deleteWafExclusion(id: number) {
   return api.delete<void>(`/maintenance/proxy/waf/exclusions/${id}`);
+}
+
+export function listWafBlocking() {
+  return api.get<WafBlockingPage>("/maintenance/proxy/waf/blocking");
+}
+
+export function setWafBlocking(input: {
+  applicationId: string;
+  enabled: boolean;
+}) {
+  return api.put<WafBlockingApplication>(
+    `/maintenance/proxy/waf/blocking/${input.applicationId}`,
+    { enabled: input.enabled },
+  );
 }

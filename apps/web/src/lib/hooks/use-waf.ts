@@ -108,3 +108,29 @@ export function useCreateWafExclusion() {
 export function useDeleteWafExclusion() {
   return useExclusionChange(wafApi.deleteWafExclusion);
 }
+
+export function useWafBlocking() {
+  return useQuery({
+    queryKey: queryKeys.waf.blocking,
+    queryFn: wafApi.listWafBlocking,
+  });
+}
+
+/**
+ * Blocking changes what a 403 means, so it refreshes the status (the mode and
+ * the count of enforced hosts), the proxy's own state, and the detection lists,
+ * whose Blocked and Would-block badges read from the same switch.
+ */
+export function useSetWafBlocking() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: wafApi.setWafBlocking,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.waf.blocking });
+      qc.invalidateQueries({ queryKey: queryKeys.waf.status });
+      qc.invalidateQueries({ queryKey: queryKeys.proxyReconciler });
+      qc.invalidateQueries({ queryKey: queryKeys.waf.events });
+      qc.invalidateQueries({ queryKey: queryKeys.waf.clients });
+    },
+  });
+}

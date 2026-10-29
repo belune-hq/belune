@@ -16,6 +16,9 @@ type WAFState struct {
 	Active bool `json:"active"`
 	// Hosts is how many application hostnames it inspects.
 	Hosts int `json:"hosts"`
+	// BlockingHosts is how many of them are enforced on: requests the rule set
+	// scores over the threshold are refused rather than only recorded.
+	BlockingHosts int `json:"blocking_hosts"`
 	// Reason says why the WAF is not active although the operator turned it on:
 	// ReasonModuleAbsent, ReasonModulesUnknown or ReasonNoApplications. Empty when
 	// there is nothing to explain.
@@ -230,12 +233,16 @@ func (r *Reconciler) syncWAF(ctx context.Context, expected []RouteConfig, dashbo
 		}
 	}
 
-	if err := r.proxy.SyncWAF(ctx, WAFConfig{Enabled: wanted, Hosts: sorted, BlockingHosts: blockingHosts(sorted, candidates, dashboardHost), Exclusions: exclusions}); err != nil {
+	blocking := blockingHosts(sorted, candidates, dashboardHost)
+	if err := r.proxy.SyncWAF(ctx, WAFConfig{Enabled: wanted, Hosts: sorted, BlockingHosts: blocking, Exclusions: exclusions}); err != nil {
 		state.Active, state.Error = prev.Active, err.Error()
 		r.setWAF(state)
 		return fmt.Errorf("syncing the WAF route: %w", err)
 	}
 	state.Active = wanted && len(sorted) > 0
+	if state.Active {
+		state.BlockingHosts = len(blocking)
+	}
 	r.setWAF(state)
 	return nil
 }

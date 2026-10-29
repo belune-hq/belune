@@ -255,3 +255,15 @@ func TestSyncWAF_AWildcardCannotPromoteTheDashboard(t *testing.T) {
 	assert.Equal(t, []string{"*.example.com"}, mp.waf[0].Hosts, "it is inspected, which is detection only")
 	assert.Empty(t, mp.waf[0].BlockingHosts)
 }
+
+func TestSyncWAF_ReportsHowManyHostsAreEnforcedOn(t *testing.T) {
+	mp := &mockProxy{}
+	r := wafReconciler(mp, caddyWithWAF).WithWAFBlockingHosts(blockingOf("a.example.com"))
+	require.NoError(t, r.SyncWAF(context.Background(), routes("a.example.com", "b.example.com"), "", switchOf(true)))
+	assert.Equal(t, 1, r.WAF().BlockingHosts)
+	assert.Equal(t, 2, r.WAF().Hosts)
+
+	// Switched off, nothing is enforced on, whatever the applications say.
+	require.NoError(t, r.SyncWAF(context.Background(), routes("a.example.com", "b.example.com"), "", switchOf(false)))
+	assert.Zero(t, r.WAF().BlockingHosts)
+}

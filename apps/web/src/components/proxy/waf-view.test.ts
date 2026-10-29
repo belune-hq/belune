@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { WafStatus } from "@/lib/types";
+import { describeBlockingImpact } from "./waf-blocking-view";
 import {
   ANOMALY_SUMMARY_RULE,
   categoryLabel,
@@ -25,7 +26,7 @@ const status = (over: Partial<WafStatus> = {}): WafStatus => ({
   capability: { module: "http.handlers.waf", state: "available" },
   enabled: false,
   mode: "detection_only",
-  state: { active: false, hosts: 0 },
+  state: { active: false, hosts: 0, blocking_hosts: 0 },
   exclusions: { total: 0, inert: 0 },
   recorder: {
     since: "2026-10-23T00:00:00Z",
@@ -86,7 +87,10 @@ describe("describeWaf", () => {
 
   it("reports it running, and that it is detection only", () => {
     const d = describeWaf(
-      status({ enabled: true, state: { active: true, hosts: 3 } }),
+      status({
+        enabled: true,
+        state: { active: true, hosts: 3, blocking_hosts: 0 },
+      }),
     );
     expect(d.pill).toEqual({ label: "Detecting", tone: "ready" });
     expect(d.body).toMatch(/3 application hostnames/);
@@ -95,7 +99,10 @@ describe("describeWaf", () => {
 
   it("singular hostname", () => {
     const d = describeWaf(
-      status({ enabled: true, state: { active: true, hosts: 1 } }),
+      status({
+        enabled: true,
+        state: { active: true, hosts: 1, blocking_hosts: 0 },
+      }),
     );
     expect(d.body).toMatch(/1 application hostname\b(?!s)/);
   });
@@ -105,7 +112,12 @@ describe("describeWaf", () => {
       status({
         enabled: true,
         capability: { module: "m", state: "unknown" },
-        state: { active: true, hosts: 2, reason: "modules_unknown" },
+        state: {
+          active: true,
+          hosts: 2,
+          blocking_hosts: 0,
+          reason: "modules_unknown",
+        },
       }),
     );
     expect(d.pill.label).toBe("Detecting");
@@ -116,7 +128,12 @@ describe("describeWaf", () => {
     const d = describeWaf(
       status({
         enabled: true,
-        state: { active: false, hosts: 0, reason: "no_applications" },
+        state: {
+          active: false,
+          hosts: 0,
+          blocking_hosts: 0,
+          reason: "no_applications",
+        },
       }),
     );
     expect(d.pill.label).toBe("Nothing to inspect");
@@ -131,7 +148,12 @@ describe("describeWaf", () => {
     const d = describeWaf(
       status({
         enabled: true,
-        state: { active: false, hosts: 2, error: "HTTP 500: unknown module" },
+        state: {
+          active: false,
+          hosts: 2,
+          blocking_hosts: 0,
+          error: "HTTP 500: unknown module",
+        },
       }),
     );
     expect(d.pill).toEqual({ label: "Caddy refused it", tone: "error" });
@@ -145,13 +167,23 @@ describe("describeWaf", () => {
     const absent = describeWaf(
       status({
         enabled: true,
-        state: { active: false, hosts: 2, reason: "module_absent" },
+        state: {
+          active: false,
+          hosts: 2,
+          blocking_hosts: 0,
+          reason: "module_absent",
+        },
       }),
     );
     const unknown = describeWaf(
       status({
         enabled: true,
-        state: { active: false, hosts: 2, reason: "modules_unknown" },
+        state: {
+          active: false,
+          hosts: 2,
+          blocking_hosts: 0,
+          reason: "modules_unknown",
+        },
       }),
     );
     expect(absent.pill.label).toBe("Not active");
@@ -371,7 +403,12 @@ describe("the no-applications state", () => {
     describeWaf(
       status({
         enabled: true,
-        state: { active: false, hosts: 0, reason: "no_applications" },
+        state: {
+          active: false,
+          hosts: 0,
+          blocking_hosts: 0,
+          reason: "no_applications",
+        },
         summary: { ...status().summary, total },
       }),
     );
@@ -602,5 +639,16 @@ describe("describeCategory", () => {
     const c = describeCategory({ rule_id: 913100, category: null });
     expect(c.label).toBeNull();
     expect(c.title).toBe("This rule declares no attack class.");
+  });
+});
+
+describe("describeBlockingImpact", () => {
+  it("lists what will be enforced and what stays detection only", () => {
+    expect(
+      describeBlockingImpact({
+        hosts: ["a.test", "b.test"],
+        shared_hosts: ["b.test"],
+      }),
+    ).toEqual({ enforced: ["a.test"], detectionOnly: ["b.test"] });
   });
 });

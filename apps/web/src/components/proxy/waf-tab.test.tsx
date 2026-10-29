@@ -102,6 +102,9 @@ const event = (over: Partial<WafEvent> = {}): WafEvent => ({
   // log is swept on its own retention while the detection stays.
   request: null,
   matched_target: null,
+  disposition: null,
+  request_blocked: false,
+  anomaly_score: null,
   ...over,
 });
 
@@ -113,6 +116,7 @@ const group = (over: Partial<WafClientGroup> = {}): WafClientGroup => ({
   urls: 2,
   last_seen: new Date().toISOString(),
   would_block: false,
+  blocked_requests: 0,
   ...over,
 });
 
@@ -252,6 +256,16 @@ describe("WafTab", () => {
     expect(within(flagged).getByText("Would block")).toBeTruthy();
     const quiet = screen.getByText("198.51.100.7").closest("tr")!;
     expect(within(quiet).queryByText("Would block")).toBeNull();
+  });
+
+  // "Would block" is a counterfactual; once blocking is on it is false for the
+  // requests that were in fact refused, so the row must say what happened.
+  it("says Blocked, and not Would block, for a client that was refused", () => {
+    clients = [group({ would_block: true, blocked_requests: 2 })];
+    render(<WafTab />);
+    const row = screen.getByText("203.0.113.9").closest("tr")!;
+    expect(within(row).getByText("Blocked")).toBeTruthy();
+    expect(within(row).queryByText("Would block")).toBeNull();
   });
 
   // A bare "0" beside three requests reads as a bug in the page. The URL is read

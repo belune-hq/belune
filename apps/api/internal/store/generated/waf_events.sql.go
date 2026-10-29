@@ -23,6 +23,8 @@ type BulkInsertWAFEventsParams struct {
 	ApplicationID pgtype.UUID        `json:"application_id"`
 	TxID          pgtype.Text        `json:"tx_id"`
 	MatchedTarget pgtype.Text        `json:"matched_target"`
+	Disposition   pgtype.Text        `json:"disposition"`
+	AnomalyScore  pgtype.Int4        `json:"anomaly_score"`
 }
 
 const countWAFEvents = `-- name: CountWAFEvents :one
@@ -77,8 +79,12 @@ func (q *Queries) ListApplicationIDsForHost(ctx context.Context, hostname string
 }
 
 const listWAFEvents = `-- name: ListWAFEvents :many
-SELECT id, recorded_at, client_ip, rule_id, severity, category, message, host, application_id, tx_id, matched_target
-FROM waf_events
+SELECT e.id, e.recorded_at, e.client_ip, e.rule_id, e.severity, e.category, e.message, e.host, e.application_id, e.tx_id, e.matched_target, e.disposition, e.anomaly_score,
+       (e.tx_id IS NOT NULL AND EXISTS (
+           SELECT 1 FROM waf_events b
+           WHERE b.tx_id = e.tx_id AND b.disposition = 'blocked'
+       ))::boolean AS request_blocked
+FROM waf_events e
 WHERE ($1::bigint IS NULL OR id < $1::bigint)
   AND ($2::inet IS NULL OR client_ip = $2::inet)
   AND ($3::int IS NULL OR rule_id = $3::int)
@@ -98,9 +104,30 @@ type ListWAFEventsParams struct {
 	RowLimit int32              `json:"row_limit"`
 }
 
+type ListWAFEventsRow struct {
+	ID             int64              `json:"id"`
+	RecordedAt     pgtype.Timestamptz `json:"recorded_at"`
+	ClientIp       netip.Addr         `json:"client_ip"`
+	RuleID         int32              `json:"rule_id"`
+	Severity       string             `json:"severity"`
+	Category       pgtype.Text        `json:"category"`
+	Message        string             `json:"message"`
+	Host           pgtype.Text        `json:"host"`
+	ApplicationID  pgtype.UUID        `json:"application_id"`
+	TxID           pgtype.Text        `json:"tx_id"`
+	MatchedTarget  pgtype.Text        `json:"matched_target"`
+	Disposition    pgtype.Text        `json:"disposition"`
+	AnomalyScore   pgtype.Int4        `json:"anomaly_score"`
+	RequestBlocked bool               `json:"request_blocked"`
+}
+
 // Keyset pagination on id (newest first): an offset would re-scan the head of a
 // table that is being written to while it is read.
-func (q *Queries) ListWAFEvents(ctx context.Context, arg ListWAFEventsParams) ([]WafEvent, error) {
+// request_blocked is an EXISTS over the transaction's own rows, not a column of
+// the row listed: only the deny-ing rule logs "Access denied", so a signature
+// row of a blocked request reads 'detected' itself. Same trap as would_block
+// below, and the same answer.
+func (q *Queries) ListWAFEvents(ctx context.Context, arg ListWAFEventsParams) ([]ListWAFEventsRow, error) {
 	rows, err := q.db.Query(ctx, listWAFEvents,
 		arg.BeforeID,
 		arg.ClientIp,
@@ -112,9 +139,9 @@ func (q *Queries) ListWAFEvents(ctx context.Context, arg ListWAFEventsParams) ([
 		return nil, err
 	}
 	defer rows.Close()
-	items := []WafEvent{}
+	items := []ListWAFEventsRow{}
 	for rows.Next() {
-		var i WafEvent
+		var i ListWAFEventsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.RecordedAt,
@@ -127,6 +154,9 @@ func (q *Queries) ListWAFEvents(ctx context.Context, arg ListWAFEventsParams) ([
 			&i.ApplicationID,
 			&i.TxID,
 			&i.MatchedTarget,
+			&i.Disposition,
+			&i.AnomalyScore,
+			&i.RequestBlocked,
 		); err != nil {
 			return nil, err
 		}
@@ -254,7 +284,18 @@ SELECT e.client_ip,
            WHERE a.client_ip = e.client_ip
              AND a.recorded_at >= $1
              AND a.rule_id = $2::int
-       )::boolean AS would_block
+       )::boolean AS would_block,
+       -- Requests of this client that were actually refused, counted through the
+       -- transaction's blocked rows over the same unfiltered set, for the reason
+       -- above. A transaction id the line did not carry still counts once, by
+       -- row, rather than vanishing from a count of refusals.
+       (
+           SELECT count(DISTINCT COALESCE(d.tx_id, d.id::text))
+           FROM waf_events d
+           WHERE d.client_ip = e.client_ip
+             AND d.recorded_at >= $1
+             AND d.disposition = 'blocked'
+       )::bigint AS blocked_requests
 FROM waf_events e
 LEFT JOIN LATERAL (
     SELECT r.path FROM request_logs r
@@ -279,13 +320,14 @@ type WAFClientSummaryParams struct {
 }
 
 type WAFClientSummaryRow struct {
-	ClientIp   netip.Addr         `json:"client_ip"`
-	Events     int64              `json:"events"`
-	Requests   int64              `json:"requests"`
-	Rules      int64              `json:"rules"`
-	Urls       int64              `json:"urls"`
-	LastSeen   pgtype.Timestamptz `json:"last_seen"`
-	WouldBlock bool               `json:"would_block"`
+	ClientIp        netip.Addr         `json:"client_ip"`
+	Events          int64              `json:"events"`
+	Requests        int64              `json:"requests"`
+	Rules           int64              `json:"rules"`
+	Urls            int64              `json:"urls"`
+	LastSeen        pgtype.Timestamptz `json:"last_seen"`
+	WouldBlock      bool               `json:"would_block"`
+	BlockedRequests int64              `json:"blocked_requests"`
 }
 
 // One row per client that tripped a rule in the window: how many rules it
@@ -306,7 +348,8 @@ type WAFClientSummaryRow struct {
 // over the ones this call selected, because rule_id filters the rows before
 // they are aggregated: bool_or(rule_id = 949110) under "WHERE rule_id = 941100"
 // is false by arithmetic, so every client came back unflagged whenever the
-// caller filtered by any other rule. The flag answers "was this client ever
+// caller filtered by any other rule. blocked_requests is the same shape for the
+// same reason, over disposition instead of a rule id. The flag answers "was this client ever
 // over the threshold in this window", which does not change with the rule being
 // listed, and (client_ip, recorded_at) indexes the lookup.
 // Loudest first. Recency is the window's job, not the sort's: a one-hit scanner
@@ -334,6 +377,7 @@ func (q *Queries) WAFClientSummary(ctx context.Context, arg WAFClientSummaryPara
 			&i.Urls,
 			&i.LastSeen,
 			&i.WouldBlock,
+			&i.BlockedRequests,
 		); err != nil {
 			return nil, err
 		}

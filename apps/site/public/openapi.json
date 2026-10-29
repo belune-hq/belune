@@ -21746,6 +21746,9 @@
       },
       "wafClientGroup": {
         "properties": {
+          "blocked_requests": {
+            "type": "integer"
+          },
           "client_ip": {
             "type": "string"
           },
@@ -21790,6 +21793,12 @@
       },
       "wafEventResponse": {
         "properties": {
+          "anomaly_score": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "application_id": {
             "type": [
               "string",
@@ -21804,6 +21813,12 @@
           },
           "client_ip": {
             "type": "string"
+          },
+          "disposition": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "host": {
             "type": [
@@ -21836,6 +21851,9 @@
                 "type": "null"
               }
             ]
+          },
+          "request_blocked": {
+            "type": "boolean"
           },
           "rule_id": {
             "type": "integer"

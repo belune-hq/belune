@@ -157,6 +157,19 @@ type wafEventResponse struct {
 	// evidence: the text it is read from can be influenced by the request, so
 	// the name can be forged — see waf.matchedTarget.
 	MatchedTarget *string `json:"matched_target"`
+	// Disposition is what Coraza did on THIS rule's line: "blocked" for the rule
+	// that denied the request, "detected" for one that only reported, null for
+	// every detection recorded before 000077 and for a line whose opening was
+	// neither. ⚠️ Not whether the request was blocked: the signature rules of a
+	// blocked request read "detected". That is RequestBlocked.
+	Disposition *string `json:"disposition"`
+	// RequestBlocked is whether any rule of this transaction denied it, read
+	// over the transaction's unfiltered rows. False is "not known to have been
+	// blocked", which is also what an older detection reads.
+	RequestBlocked bool `json:"request_blocked"`
+	// AnomalyScore is the total the scoring rule (949110) reported; null for every
+	// other rule and for rows recorded before 000077.
+	AnomalyScore *int `json:"anomaly_score"`
 	// Request is what the request looked like, joined from the request log by
 	// TxID. Null is the normal case for an older detection: detections outlive
 	// request logs, and an event that never carried a tx_id has nothing to join.
@@ -198,6 +211,11 @@ type wafClientGroup struct {
 	// rule noise. ⚠️ Deliberately NOT scoped by rule_id: it is a fact about the
 	// client, so filtering the list to one rule must not turn the verdict off.
 	WouldBlock bool `json:"would_block"`
+	// BlockedRequests is how many of this client's requests were actually refused
+	// in the window. Like WouldBlock it is a fact about the client and is not
+	// narrowed by a rule filter. WouldBlock stays true for a client that was both
+	// refused and, earlier, only reported: the two are different claims.
+	BlockedRequests int64 `json:"blocked_requests"`
 }
 
 type wafClientsResponse struct {
@@ -402,13 +420,14 @@ func (h *Handler) ListWAFClients(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, c := range rows {
 		resp.Clients = append(resp.Clients, wafClientGroup{
-			ClientIP:   c.ClientIp.String(),
-			Events:     c.Events,
-			Requests:   c.Requests,
-			Rules:      c.Rules,
-			URLs:       c.Urls,
-			LastSeen:   c.LastSeen.Time,
-			WouldBlock: c.WouldBlock,
+			ClientIP:        c.ClientIp.String(),
+			Events:          c.Events,
+			Requests:        c.Requests,
+			Rules:           c.Rules,
+			URLs:            c.Urls,
+			LastSeen:        c.LastSeen.Time,
+			WouldBlock:      c.WouldBlock,
+			BlockedRequests: c.BlockedRequests,
 		})
 	}
 	writeJSON(w, http.StatusOK, resp)
@@ -495,7 +514,7 @@ func (h *Handler) ListWAFEvents(w http.ResponseWriter, r *http.Request) {
 // log looks like, and the operator is better served by the detection without its
 // request than by a 500. So a failed lookup is logged and returns nothing, and
 // every event on the page renders with request: null.
-func (h *Handler) wafRequestDetails(r *http.Request, rows []generated.WafEvent) map[string]*wafRequestDetail {
+func (h *Handler) wafRequestDetails(r *http.Request, rows []generated.ListWAFEventsRow) map[string]*wafRequestDetail {
 	ids := make([]string, 0, len(rows))
 	seen := make(map[string]struct{}, len(rows))
 	for _, e := range rows {
@@ -536,20 +555,27 @@ func (h *Handler) wafRequestDetails(r *http.Request, rows []generated.WafEvent) 
 	return out
 }
 
-func wafEventDTO(e generated.WafEvent) wafEventResponse {
-	return wafEventResponse{
-		ID:            e.ID,
-		RecordedAt:    e.RecordedAt.Time,
-		ClientIP:      e.ClientIp.String(),
-		RuleID:        int(e.RuleID),
-		Severity:      e.Severity,
-		Category:      textPtr(e.Category),
-		Message:       e.Message,
-		Host:          textPtr(e.Host),
-		ApplicationID: uuidPtr(e.ApplicationID),
-		TxID:          textPtr(e.TxID),
-		MatchedTarget: textPtr(e.MatchedTarget),
+func wafEventDTO(e generated.ListWAFEventsRow) wafEventResponse {
+	dto := wafEventResponse{
+		ID:             e.ID,
+		RecordedAt:     e.RecordedAt.Time,
+		ClientIP:       e.ClientIp.String(),
+		RuleID:         int(e.RuleID),
+		Severity:       e.Severity,
+		Category:       textPtr(e.Category),
+		Message:        e.Message,
+		Host:           textPtr(e.Host),
+		ApplicationID:  uuidPtr(e.ApplicationID),
+		TxID:           textPtr(e.TxID),
+		MatchedTarget:  textPtr(e.MatchedTarget),
+		Disposition:    textPtr(e.Disposition),
+		RequestBlocked: e.RequestBlocked,
 	}
+	if e.AnomalyScore.Valid {
+		score := int(e.AnomalyScore.Int32)
+		dto.AnomalyScore = &score
+	}
+	return dto
 }
 
 func textPtr(t pgtype.Text) *string {

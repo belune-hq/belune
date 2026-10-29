@@ -203,3 +203,29 @@ func TestWAFEvents_ApplicationAttributionSurvivesAnApplicationDelete(t *testing.
 	assert.False(t, got[0].ApplicationID.Valid, "attribution degrades to NULL")
 	assert.Equal(t, "shop.example.com", got[0].Host.String, "and the host is still known")
 }
+
+// COPY fails whole, so what the tables refuse is what a batch can lose: the
+// parser has to stay inside these, and these have to refuse what it must not
+// produce.
+func TestWAFEvents_DispositionAndScoreAreConstrained(t *testing.T) {
+	ctx := resetWAF(t)
+	insert := func(mut func(*generated.BulkInsertWAFEventsParams)) error {
+		r := wafRow(time.Now(), "203.0.113.9", 949110, "x")
+		mut(&r)
+		_, err := testQueries.BulkInsertWAFEvents(ctx, []generated.BulkInsertWAFEventsParams{r})
+		return err
+	}
+	text := func(s string) pgtype.Text { return pgtype.Text{String: s, Valid: true} }
+
+	require.NoError(t, insert(func(*generated.BulkInsertWAFEventsParams) {}), "both columns are nullable")
+	require.NoError(t, insert(func(r *generated.BulkInsertWAFEventsParams) {
+		r.Disposition = text("blocked")
+		r.AnomalyScore = pgtype.Int4{Int32: 999999, Valid: true}
+	}))
+	require.NoError(t, insert(func(r *generated.BulkInsertWAFEventsParams) { r.Disposition = text("detected") }))
+	require.Error(t, insert(func(r *generated.BulkInsertWAFEventsParams) { r.Disposition = text("denied") }))
+	require.Error(t, insert(func(r *generated.BulkInsertWAFEventsParams) {
+		r.AnomalyScore = pgtype.Int4{Int32: 1000000, Valid: true}
+	}))
+	require.Error(t, insert(func(r *generated.BulkInsertWAFEventsParams) { r.AnomalyScore = pgtype.Int4{Int32: -1, Valid: true} }))
+}

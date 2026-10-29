@@ -368,3 +368,96 @@ func TestMatchedTarget_IsAlwaysStorable(t *testing.T) {
 		})
 	}
 }
+
+// denyLine is the shape the VPS drill observed for the deny-ing rule: the
+// opening differs, everything after it is the grammar parseMatch already reads.
+func denyLine(opening, msg, uniqueID string) string {
+	return asLine(fmt.Sprintf(`[client "203.0.113.9"] Coraza: %s [file "f.conf"] [line "1"] [id "949110"] [rev ""] [msg %q] [data ""] [severity "unknown"] [ver "OWASP_CRS/4.25.0"] [maturity "0"] [accuracy "0"] [tag "anomaly-evaluation"] [hostname ""] [uri "/"] [unique_id %q]`,
+		opening, msg, uniqueID))
+}
+
+func TestParseCaddyLine_Disposition(t *testing.T) {
+	const score = "Inbound Anomaly Score Exceeded (Total Score: 15)"
+
+	t.Run("the deny-ing rule is blocked", func(t *testing.T) {
+		ev, out := ParseCaddyLine(denyLine("Access denied (phase 2).", score, goodID))
+		require.Equal(t, Matched, out)
+		assert.Equal(t, DispositionBlocked, ev.Disposition)
+	})
+	t.Run("every disrupting opening is blocked and an explicit allow is not", func(t *testing.T) {
+		for _, kind := range []string{"Access denied", "Access dropped", "Access redirected", "Custom disruptive action triggered"} {
+			for phase := 1; phase <= 5; phase++ {
+				ev, out := ParseCaddyLine(denyLine(fmt.Sprintf("%s (phase %d).", kind, phase), score, goodID))
+				require.Equal(t, Matched, out)
+				assert.Equal(t, DispositionBlocked, ev.Disposition, "%s phase %d", kind, phase)
+			}
+		}
+		ev, out := ParseCaddyLine(denyLine("Access allowed (phase 1).", score, goodID))
+		require.Equal(t, Matched, out)
+		assert.Empty(t, ev.Disposition, "an allow is not a refusal")
+	})
+	t.Run("a reporting rule is detected", func(t *testing.T) {
+		ev, out := ParseCaddyLine(realLine("XSS Attack Detected via libinjection", "d", "/", goodID))
+		require.Equal(t, Matched, out)
+		assert.Equal(t, DispositionDetected, ev.Disposition)
+	})
+	t.Run("an opening that is neither literal is unknown, not a guess", func(t *testing.T) {
+		for _, opening := range []string{"Notice.", "Access denied.", "Access denied (phase 9).", "access denied (phase 2).", "Warning.x", " Warning.", "Access denied (phase 2)"} {
+			ev, out := ParseCaddyLine(denyLine(opening, score, goodID))
+			require.Equal(t, Matched, out, opening)
+			assert.Empty(t, ev.Disposition, "%q", opening)
+		}
+	})
+	t.Run("request data inside the message cannot claim a denial", func(t *testing.T) {
+		// The free-text stretch is where CRS expands request data. The opening is
+		// Coraza's own and precedes it, so the words later on prove nothing.
+		for _, lead := range []string{
+			"Access denied (phase 2).",
+			"x Access denied (phase 2). y",
+			"HTTP header is restricted by policy (Access denied (phase 2).)",
+		} {
+			ev, out := ParseCaddyLine(realLine(lead, "d", "/", goodID))
+			require.Equal(t, Matched, out, lead)
+			assert.Equal(t, DispositionDetected, ev.Disposition, "%q", lead)
+		}
+	})
+}
+
+func TestAnomalyScore(t *testing.T) {
+	assert.Equal(t, 15, anomalyScore(949110, "Inbound Anomaly Score Exceeded (Total Score: 15)"))
+	assert.Equal(t, 8, anomalyScore(959100, "Outbound Anomaly Score Exceeded (Total Score: 8)"))
+	assert.Equal(t, 7, anomalyScore(949111, "Inbound Anomaly Score Exceeded in phase 1 (Total Score: 7)"))
+	assert.Equal(t, 9, anomalyScore(959101, "Outbound Anomaly Score Exceeded in phase 3 (Total Score: 9)"))
+	assert.Zero(t, anomalyScore(949110, "Inbound Anomaly Score Exceeded in phase 1 (Total Score: 7)"), "each rule keeps its own shape")
+	assert.Equal(t, 999999, anomalyScore(949110, "Inbound Anomaly Score Exceeded (Total Score: 999999)"))
+
+	for name, c := range map[string]struct {
+		rule int
+		msg  string
+	}{
+		"another rule cannot claim a score":  {941100, "Inbound Anomaly Score Exceeded (Total Score: 15)"},
+		"a trailing tail":                    {949110, "Inbound Anomaly Score Exceeded (Total Score: 15) (x)"},
+		"a leading head":                     {949110, "x Inbound Anomaly Score Exceeded (Total Score: 15)"},
+		"more digits than the column bounds": {949110, "Inbound Anomaly Score Exceeded (Total Score: 1000000)"},
+		"a sign":                             {949110, "Inbound Anomaly Score Exceeded (Total Score: -1)"},
+		"a different message":                {949110, "XSS (Total Score: 15)"},
+		"no score":                           {949110, "Inbound Anomaly Score Exceeded"},
+	} {
+		assert.Zero(t, anomalyScore(c.rule, c.msg), name)
+	}
+}
+
+func TestParseCaddyLine_ScoreAndDispositionAreStorable(t *testing.T) {
+	// Both land in a COPY, which fails whole: whatever the line says, the values
+	// must satisfy the CHECKs in 000077.
+	for _, opening := range []string{"Access denied (phase 2).", "Warning.", "Whatever."} {
+		for _, msg := range []string{"Inbound Anomaly Score Exceeded (Total Score: 99999999999999999999)", "Inbound Anomaly Score Exceeded (Total Score: 15)", "\x00"} {
+			ev, out := ParseCaddyLine(denyLine(opening, msg, goodID))
+			if out != Matched {
+				continue
+			}
+			assert.Contains(t, []string{"", DispositionBlocked, DispositionDetected}, ev.Disposition)
+			assert.True(t, ev.AnomalyScore >= 0 && ev.AnomalyScore <= 999999, "score %d", ev.AnomalyScore)
+		}
+	}
+}

@@ -65,7 +65,9 @@ func (r *Reconciler) WithWAFBlockingHosts(list func(context.Context) ([]string, 
 }
 
 // BlockingHosts exposes the narrowing of opted-in hostnames to enforceable ones.
-func BlockingHosts(hosts, candidates []string) []string { return blockingHosts(hosts, candidates) }
+func BlockingHosts(hosts, candidates []string, dashboardHost string) []string {
+	return blockingHosts(hosts, candidates, dashboardHost)
+}
 
 // WithWAFExclusions supplies the exclusions a pass reads, so a test needs no database.
 func (r *Reconciler) WithWAFExclusions(list func(context.Context) ([]WAFExclusion, error)) *Reconciler {

@@ -129,7 +129,13 @@ func TestRealCaddy_WAF_BlockingIsPerHost(t *testing.T) {
 	require.NoError(t, rig.c.AddRoute(ctx, proxy.RouteConfig{Hostname: otherHost, TargetURL: upstream, SSLMode: proxy.SSLModeOff}))
 	t.Cleanup(func() { _ = rig.c.RemoveRoute(ctx, otherHost, "/") })
 
-	attack := "/?q=" + url.QueryEscape("<script>alert(1)</script> union select 1,2--")
+	// Trips 941100, 941110, 941160 and 941390 (observed against CRS 4.25.0) and
+	// nothing else once the Host header is a name rather than an address.
+	attack := "/?q=" + url.QueryEscape("<script>alert(1)</script>")
+	xss := []proxy.WAFExclusion{}
+	for i, rule := range []int{941100, 941110, 941160, 941390} {
+		xss = append(xss, ex(int64(i+1), rule, true))
+	}
 	status := func(host string) int {
 		req, err := http.NewRequest(http.MethodGet, rig.httpURL+attack, nil)
 		require.NoError(t, err)
@@ -139,11 +145,12 @@ func TestRealCaddy_WAF_BlockingIsPerHost(t *testing.T) {
 		defer func() { _ = resp.Body.Close() }()
 		return resp.StatusCode
 	}
-	sync := func(blocking ...string) {
+	syncWith := func(exclusions []proxy.WAFExclusion, blocking ...string) {
 		require.NoError(t, rig.c.SyncWAF(ctx, proxy.WAFConfig{
-			Enabled: true, Hosts: []string{wafAppHost, otherHost}, BlockingHosts: blocking,
+			Enabled: true, Hosts: []string{wafAppHost, otherHost}, BlockingHosts: blocking, Exclusions: exclusions,
 		}), "Caddy refused the route with the blocking rule")
 	}
+	sync := func(blocking ...string) { syncWith(nil, blocking...) }
 
 	sync()
 	assert.Equal(t, http.StatusOK, status(wafAppHost), "detection-only by default")
@@ -152,6 +159,14 @@ func TestRealCaddy_WAF_BlockingIsPerHost(t *testing.T) {
 	sync(wafAppHost)
 	assert.Equal(t, http.StatusForbidden, status(wafAppHost), "the opted-in host is refused")
 	assert.Equal(t, http.StatusOK, status(otherHost), "the other host is not")
+
+	// Composition: promoting the engine must not un-silence an exclusion. This is
+	// the PostHog case: an application that is opted in AND carved out has to keep
+	// answering 200, or turning blocking on 403s it on every request.
+	syncWith(xss, wafAppHost)
+	assert.Equal(t, http.StatusOK, status(wafAppHost), "the exclusions still silence the rules on a blocking host")
+	syncWith(nil, wafAppHost)
+	assert.Equal(t, http.StatusForbidden, status(wafAppHost), "and without them the same request is refused: the carve-out is what changed")
 
 	// The step that makes it proof: take it away and the 403 goes, on cue.
 	sync()

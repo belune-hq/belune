@@ -184,6 +184,10 @@ func (r *Recorder) flush(ctx context.Context, events []Event) {
 			TxID:       text(ev.TxID),
 			// The variable the rule matched in, never what was in it.
 			MatchedTarget: text(ev.MatchedTarget),
+			// Closed-set text and a bounded int, both nullable: COPY fails
+			// whole, so neither may be a value the CHECKs could refuse.
+			Disposition:  text(ev.Disposition),
+			AnomalyScore: score(ev.AnomalyScore),
 		}
 		// Attribution is best-effort and per row: a failed lookup costs the
 		// application, never the event.
@@ -206,6 +210,9 @@ func (r *Recorder) noteError(err error) {
 }
 
 func text(s string) pgtype.Text { return pgtype.Text{String: s, Valid: s != ""} }
+
+// score is NULL for the 0 that means "not a scoring rule".
+func score(n int) pgtype.Int4 { return pgtype.Int4{Int32: int32(n), Valid: n > 0} }
 
 // hostResolver maps a host to the application that serves it, when exactly one
 // does.

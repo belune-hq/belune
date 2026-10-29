@@ -2,14 +2,22 @@
 -- Bulk path for the recorder, which flushes batches: under attack this table
 -- takes writes at the rate requests arrive, so one round trip per row is the
 -- wrong shape (see BulkInsertContainerLogs, which had the same problem).
-INSERT INTO waf_events (recorded_at, client_ip, rule_id, severity, category, message, host, application_id, tx_id, matched_target)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
+INSERT INTO waf_events (recorded_at, client_ip, rule_id, severity, category, message, host, application_id, tx_id, matched_target, disposition, anomaly_score)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);
 
 -- name: ListWAFEvents :many
 -- Keyset pagination on id (newest first): an offset would re-scan the head of a
 -- table that is being written to while it is read.
-SELECT id, recorded_at, client_ip, rule_id, severity, category, message, host, application_id, tx_id, matched_target
-FROM waf_events
+-- request_blocked is an EXISTS over the transaction's own rows, not a column of
+-- the row listed: only the deny-ing rule logs "Access denied", so a signature
+-- row of a blocked request reads 'detected' itself. Same trap as would_block
+-- below, and the same answer.
+SELECT e.id, e.recorded_at, e.client_ip, e.rule_id, e.severity, e.category, e.message, e.host, e.application_id, e.tx_id, e.matched_target, e.disposition, e.anomaly_score,
+       (e.tx_id IS NOT NULL AND EXISTS (
+           SELECT 1 FROM waf_events b
+           WHERE b.tx_id = e.tx_id AND b.disposition = 'blocked'
+       ))::boolean AS request_blocked
+FROM waf_events e
 WHERE (sqlc.narg('before_id')::bigint IS NULL OR id < sqlc.narg('before_id')::bigint)
   AND (sqlc.narg('client_ip')::inet IS NULL OR client_ip = sqlc.narg('client_ip')::inet)
   AND (sqlc.narg('rule_id')::int IS NULL OR rule_id = sqlc.narg('rule_id')::int)
@@ -63,7 +71,8 @@ LIMIT sqlc.arg('row_limit');
 -- over the ones this call selected, because rule_id filters the rows before
 -- they are aggregated: bool_or(rule_id = 949110) under "WHERE rule_id = 941100"
 -- is false by arithmetic, so every client came back unflagged whenever the
--- caller filtered by any other rule. The flag answers "was this client ever
+-- caller filtered by any other rule. blocked_requests is the same shape for the
+-- same reason, over disposition instead of a rule id. The flag answers "was this client ever
 -- over the threshold in this window", which does not change with the rule being
 -- listed, and (client_ip, recorded_at) indexes the lookup.
 SELECT e.client_ip,
@@ -77,7 +86,18 @@ SELECT e.client_ip,
            WHERE a.client_ip = e.client_ip
              AND a.recorded_at >= sqlc.arg('since')
              AND a.rule_id = sqlc.arg('anomaly_rule')::int
-       )::boolean AS would_block
+       )::boolean AS would_block,
+       -- Requests of this client that were actually refused, counted through the
+       -- transaction's blocked rows over the same unfiltered set, for the reason
+       -- above. A transaction id the line did not carry still counts once, by
+       -- row, rather than vanishing from a count of refusals.
+       (
+           SELECT count(DISTINCT COALESCE(d.tx_id, d.id::text))
+           FROM waf_events d
+           WHERE d.client_ip = e.client_ip
+             AND d.recorded_at >= sqlc.arg('since')
+             AND d.disposition = 'blocked'
+       )::bigint AS blocked_requests
 FROM waf_events e
 LEFT JOIN LATERAL (
     SELECT r.path FROM request_logs r

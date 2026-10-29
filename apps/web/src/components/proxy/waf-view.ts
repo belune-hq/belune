@@ -1,5 +1,6 @@
 import { describeModuleTab } from "@/components/proxy/proxy-traffic";
 import type {
+  WafClientGroup,
   WafEvent,
   WafRecorderStats,
   WafRequestDetail,
@@ -231,14 +232,30 @@ export interface EventVerdict {
  * beside it reads "critical" in red. So the verdict is named instead.
  */
 export function describeEventVerdict(
-  e: Pick<WafEvent, "rule_id" | "severity">,
+  e: Pick<WafEvent, "rule_id" | "severity" | "disposition" | "request_blocked">,
 ): EventVerdict {
   if (e.rule_id === ANOMALY_SUMMARY_RULE) {
+    // "Blocked" is a fact about the transaction and "Would block" a
+    // counterfactual that is only true while the host is detection-only, so the
+    // second must never be shown for a request that was in fact refused.
+    if (e.request_blocked || e.disposition === "blocked") {
+      return {
+        label: "Blocked",
+        tone: "error",
+        title:
+          "This request's anomaly score passed the threshold and it was refused with a 403.",
+        strong: true,
+      };
+    }
     return {
       label: "Would block",
       tone: "error",
+      // A null disposition is a row from before the outcome was kept, or one
+      // whose line said neither word. Neither supports "nothing was blocked".
       title:
-        "This request's anomaly score passed the threshold, so a blocking WAF would have refused it. Nothing was blocked.",
+        e.disposition === "detected"
+          ? "This request's anomaly score passed the threshold, so a blocking WAF would have refused it. Nothing was blocked."
+          : "This request's anomaly score passed the threshold, so a blocking WAF would have refused it. Belune did not record whether this one was.",
       strong: true,
     };
   }
@@ -345,6 +362,33 @@ export function describeRequestDetail(r: WafRequestDetail): RequestSummary {
  */
 export const CLIENT_WOULD_BLOCK =
   "At least one request from this client passed the anomaly-score threshold, so a blocking WAF would have refused it. Nothing was blocked.";
+
+export interface ClientFlag {
+  label: "Blocked" | "Would block";
+  title: string;
+}
+
+/**
+ * The flag on a client row: Blocked when any of its requests was refused,
+ * otherwise Would block, otherwise nothing. Blocked wins because it is the
+ * stronger claim and the true one; a client refused today and only reported last
+ * week is a client that was refused.
+ */
+export function describeClientFlag(
+  g: Pick<WafClientGroup, "would_block" | "blocked_requests">,
+): ClientFlag | null {
+  if (g.blocked_requests > 0) {
+    const n = g.blocked_requests;
+    return {
+      label: "Blocked",
+      title: `${n.toLocaleString()} ${n === 1 ? "request" : "requests"} from this client ${n === 1 ? "was" : "were"} refused with a 403 in this window.`,
+    };
+  }
+  if (g.would_block) {
+    return { label: "Would block", title: CLIENT_WOULD_BLOCK };
+  }
+  return null;
+}
 
 export interface UrlCount {
   /** What the cell says: a number, or a dash when there is nothing to count. */

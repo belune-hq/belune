@@ -1112,6 +1112,22 @@ export interface WafEvent {
    * request, so the name can be forged. Never key a decision on it.
    */
   matched_target: string | null;
+  /**
+   * What Coraza did on THIS rule's line: "blocked" for the rule that denied the
+   * request, "detected" for one that only reported. Null for detections recorded
+   * before 000077 and for a line whose opening was neither.
+   *
+   * ⚠️ Not whether the request was blocked. The signature rules of a blocked
+   * request read "detected"; that is `request_blocked`.
+   */
+  disposition: "blocked" | "detected" | null;
+  /**
+   * Whether any rule of this row's transaction denied the request. False is
+   * "not known to have been blocked", which is also what an older detection reads.
+   */
+  request_blocked: boolean;
+  /** The total the scoring rule (949110) reported; null for every other rule. */
+  anomaly_score: number | null;
 }
 
 /**
@@ -1157,6 +1173,13 @@ export interface WafClientGroup {
    * it is a fact about the client, not about the rule being listed.
    */
   would_block: boolean;
+  /**
+   * How many of this client's requests were actually refused in the window. Not
+   * narrowed by a rule filter, for the same reason as `would_block`. Can be
+   * non-zero alongside `would_block`: a client refused today may only have been
+   * reported last week, before blocking was switched on.
+   */
+  blocked_requests: number;
 }
 
 export interface WafClientsPage {

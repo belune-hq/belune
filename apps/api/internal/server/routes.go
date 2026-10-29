@@ -684,6 +684,8 @@ func registerRoutes(r chi.Router, h *handler.Handler, auth *service.AuthService,
 					r.With(withTimeout(handlerTimeout)).Get("/api/maintenance/proxy/waf/exclusions", h.ListWAFExclusions)
 					r.With(withTimeout(handlerTimeout)).Post("/api/maintenance/proxy/waf/exclusions", h.CreateWAFExclusion)
 					r.With(withTimeout(handlerTimeout)).Delete("/api/maintenance/proxy/waf/exclusions/{id}", h.DeleteWAFExclusion)
+					r.With(withTimeout(handlerTimeout)).Get("/api/maintenance/proxy/waf/blocking", h.ListWAFBlocking)
+					r.With(withTimeout(handlerTimeout)).Put("/api/maintenance/proxy/waf/blocking/{application_id}", h.SetWAFBlocking)
 					// The CDN or load balancer in front of Caddy, if any: whose word about
 					// who the visitor is Caddy takes. A property of the proxy, so it lives
 					// beside it.

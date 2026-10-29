@@ -31,8 +31,11 @@ func (h *Handler) SetWAF(p WAFStatsProvider) {
 }
 
 const (
-	// wafModeDetectionOnly is the only mode there is: nothing is blocked.
+	// wafModeDetectionOnly is the mode while no host is enforced on. wafModeBlocking
+	// means at least one is: the mode is per application, so it says that some
+	// requests are refused, and State.BlockingHosts says how many hosts.
 	wafModeDetectionOnly = "detection_only"
+	wafModeBlocking      = "blocking"
 
 	// wafDefaultWindow is the period the totals and the top lists cover when the
 	// caller does not ask for another. It is also what a PUT reports back, and it
@@ -82,7 +85,7 @@ type wafStatusResponse struct {
 	Capability featureCapability `json:"capability"`
 	// Enabled is the operator's switch.
 	Enabled bool `json:"enabled"`
-	// Mode is always detection_only for now.
+	// Mode is detection_only, or blocking when at least one host is enforced on.
 	Mode string `json:"mode"`
 	// State is what the reconciler last did about it: whether the route is in Caddy,
 	// how many hosts it covers, and why not when it is switched on but inactive.
@@ -618,6 +621,9 @@ func (h *Handler) wafStatus(r *http.Request, window string) (wafStatusResponse, 
 
 	if h.reconciler != nil {
 		resp.State = h.reconciler.WAF()
+	}
+	if resp.State.Active && resp.State.BlockingHosts > 0 {
+		resp.Mode = wafModeBlocking
 	}
 	if h.waf != nil {
 		resp.Recorder = h.waf.Stats()

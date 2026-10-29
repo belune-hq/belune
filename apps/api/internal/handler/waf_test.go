@@ -660,3 +660,80 @@ func TestWAFEvents_CarryTheFieldTheRuleMatchedIn(t *testing.T) {
 	// empty string would render as a field whose name happened to be blank.
 	assert.Nil(t, targets[949110])
 }
+
+// ⚠️ Only the deny-ing rule logs "Access denied": in a blocked request 949110
+// reads 'blocked' while the signature rules that fed its score read 'detected',
+// all under one tx_id. "Was this request blocked" is therefore a question for
+// the transaction. The first version of would_block answered a per-request
+// question over rows a rule filter had already thinned out; this pins that the
+// same trap is not re-made for disposition.
+func TestWAFEvents_ABlockedRequestIsBlockedOnEveryOneOfItsRows(t *testing.T) {
+	token := wafFixture(t)
+	sig := evt("203.0.113.9", 942290, "shop.example.com")
+	sig.TxID = pgtype.Text{String: "tx-blocked", Valid: true}
+	sig.Disposition = pgtype.Text{String: "detected", Valid: true}
+	deny := evt("203.0.113.9", int32(waf.AnomalySummaryRule), "shop.example.com")
+	deny.TxID = pgtype.Text{String: "tx-blocked", Valid: true}
+	deny.Disposition = pgtype.Text{String: "blocked", Valid: true}
+	deny.AnomalyScore = pgtype.Int4{Int32: 15, Valid: true}
+	// Another request, only reported, and a pre-0.2.7 row with no disposition.
+	passed := evt("203.0.113.9", 942290, "shop.example.com")
+	passed.TxID = pgtype.Text{String: "tx-passed", Valid: true}
+	passed.Disposition = pgtype.Text{String: "detected", Valid: true}
+	old := evt("203.0.113.9", 941100, "shop.example.com")
+	old.TxID = pgtype.Text{String: "tx-old", Valid: true}
+	seedWAFEvents(t, sig, deny, passed, old)
+
+	// Filtered to the signature rule: the deny-ing row is not in the result and
+	// the request must still read as blocked.
+	resp := env.DoRequest(t, "GET", "/api/maintenance/proxy/waf/events?rule_id=942290", nil, testutil.AuthHeader(token))
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	byTx := map[string]map[string]any{}
+	for _, e := range testutil.ReadJSON(t, resp)["events"].([]any) {
+		ev := e.(map[string]any)
+		byTx[ev["tx_id"].(string)] = ev
+	}
+	require.Len(t, byTx, 2)
+	assert.Equal(t, true, byTx["tx-blocked"]["request_blocked"], "the signature row of a blocked request")
+	assert.Equal(t, "detected", byTx["tx-blocked"]["disposition"], "the row itself only reported")
+	assert.Equal(t, false, byTx["tx-passed"]["request_blocked"])
+
+	resp = env.DoRequest(t, "GET", "/api/maintenance/proxy/waf/events", nil, testutil.AuthHeader(token))
+	for _, e := range testutil.ReadJSON(t, resp)["events"].([]any) {
+		ev := e.(map[string]any)
+		switch ev["tx_id"] {
+		case "tx-old":
+			assert.Nil(t, ev["disposition"], "unclassified is null, not 'detected'")
+			assert.Equal(t, false, ev["request_blocked"])
+		case "tx-blocked":
+			if ev["rule_id"].(float64) == float64(waf.AnomalySummaryRule) {
+				assert.Equal(t, "blocked", ev["disposition"])
+				assert.Equal(t, float64(15), ev["anomaly_score"])
+			} else {
+				assert.Nil(t, ev["anomaly_score"])
+			}
+		}
+	}
+}
+
+func TestWAFClients_CountRefusedRequestsAndKeepThemUnderARuleFilter(t *testing.T) {
+	token := wafFixture(t)
+	mk := func(rule int32, tx, disp string) generated.BulkInsertWAFEventsParams {
+		e := evt("203.0.113.9", rule, "shop.example.com")
+		e.TxID = pgtype.Text{String: tx, Valid: true}
+		e.Disposition = pgtype.Text{String: disp, Valid: disp != ""}
+		return e
+	}
+	seedWAFEvents(t,
+		mk(941100, "tx-1", "detected"), mk(int32(waf.AnomalySummaryRule), "tx-1", "blocked"),
+		mk(941100, "tx-2", "detected"), mk(int32(waf.AnomalySummaryRule), "tx-2", "blocked"),
+		mk(941100, "tx-3", "detected"), mk(int32(waf.AnomalySummaryRule), "tx-3", "detected"),
+	)
+
+	g := groupFor(t, wafClients(t, token, ""), "203.0.113.9")
+	assert.Equal(t, float64(2), g["blocked_requests"], "two requests refused, one only reported")
+
+	filtered := groupFor(t, wafClients(t, token, "?rule_id=941100"), "203.0.113.9")
+	assert.Equal(t, float64(3), filtered["events"], "counts are scoped to the rule asked for")
+	assert.Equal(t, float64(2), filtered["blocked_requests"], "the refusals are not")
+}

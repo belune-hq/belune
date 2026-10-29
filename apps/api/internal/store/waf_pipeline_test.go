@@ -64,7 +64,7 @@ func TestWAFPipeline_RealCaddyLinesBecomeRows(t *testing.T) {
 	assert.EqualValues(t, 6, rec.Stats().Recorded)
 	assert.Zero(t, rec.Stats().Dropped+rec.Stats().Malformed)
 
-	byRule := map[int32]generated.WafEvent{}
+	byRule := map[int32]generated.ListWAFEventsRow{}
 	for _, e := range rows {
 		byRule[e.RuleID] = e
 		assert.Equal(t, "127.0.0.1", e.ClientIp.String())
@@ -76,6 +76,14 @@ func TestWAFPipeline_RealCaddyLinesBecomeRows(t *testing.T) {
 	assert.Equal(t, "XSS Attack Detected via libinjection", byRule[941100].Message)
 	assert.Equal(t, "unknown", byRule[949110].Severity, "the anomaly summary declares no severity")
 	assert.Equal(t, "Inbound Anomaly Score Exceeded", byRule[949110].Message)
+	// The capture ran DetectionOnly, so every line opens "Warning.": read from
+	// real Coraza output, not from a string the parser's author wrote.
+	for _, e := range byRule {
+		assert.Equal(t, "detected", e.Disposition.String, "rule %d", e.RuleID)
+		assert.False(t, e.RequestBlocked)
+	}
+	assert.Equal(t, int32(25), byRule[949110].AnomalyScore.Int32, "recovered from the message staticMessage cuts")
+	assert.False(t, byRule[941100].AnomalyScore.Valid, "only the scoring rule has one")
 
 	// Nothing the request carried was kept, in any column of any row.
 	var leaks int

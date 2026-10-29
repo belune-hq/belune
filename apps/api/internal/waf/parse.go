@@ -50,7 +50,22 @@ type Event struct {
 	// Empty when the line did not say, which is normal for rules that match on
 	// the request as a whole. See matchedTarget for what it is and is not.
 	MatchedTarget string
+	// Disposition is what Coraza did with the request: DispositionBlocked,
+	// DispositionDetected, or empty when the line began with neither literal.
+	// ⚠️ Per RULE LINE, not per request — see parseDisposition.
+	Disposition string
+	// AnomalyScore is the total the scoring rule reported, or 0 when this is not
+	// that rule (or its message was not in the exact shape). 0 can stand for
+	// "none" because that rule only fires at or above a threshold of at least 1,
+	// and it keeps the zero Event meaning "no score".
+	AnomalyScore int
 }
+
+// The two dispositions Belune stores, matching the CHECK on waf_events.
+const (
+	DispositionBlocked  = "blocked"
+	DispositionDetected = "detected"
+)
 
 // Outcome says what ParseCaddyLine made of a line.
 type Outcome int
@@ -159,6 +174,7 @@ func parseMatch(msg string) (Event, bool) {
 	if i < 0 {
 		return Event{}, false
 	}
+	disposition := parseDisposition(c.s[:i])
 	c.s = c.s[i+1:]
 
 	values := make(map[string]string, len(fixedFields))
@@ -230,7 +246,76 @@ func parseMatch(msg string) (Event, bool) {
 		Host:          host,
 		TxID:          tx,
 		MatchedTarget: matchedTarget(values["data"]),
+		Disposition:   disposition,
+		AnomalyScore:  anomalyScore(ruleID, values["msg"]),
 	}, true
+}
+
+// dispositionLiterals is the closed set of openings Coraza gives a rule line:
+// "Access denied (phase N)." when the rule denies the request, "Warning." when
+// it only reports. Observed levels run the "wrong" way round — a denial logs at
+// warn and a report at error — so the level is no evidence and is not read.
+var dispositionLiterals = []struct{ prefix, disposition string }{
+	{"Access denied (phase 1).", DispositionBlocked},
+	{"Access denied (phase 2).", DispositionBlocked},
+	{"Access denied (phase 3).", DispositionBlocked},
+	{"Access denied (phase 4).", DispositionBlocked},
+	{"Access denied (phase 5).", DispositionBlocked},
+	{"Warning.", DispositionDetected},
+}
+
+// parseDisposition reads the head of the free-text stretch (everything between
+// "Coraza: " and " [file") as a strict PREFIX against a closed set, and nothing
+// else.
+//
+// ⛔⛔ Never a substring search. This stretch is the one unquoted region of the
+// line and CRS expands request data into it, so a payload can put the words
+// "Access denied" anywhere after the opening — and a Contains() would let it
+// label its own detection "blocked". The opening is Coraza's, written before any
+// rule data, which is the only reason a prefix can be believed. The literal must
+// be followed by a space or the end of the stretch, so "Warning.x" is not
+// "Warning.". Neither literal means "" (stored NULL), never a guess.
+//
+// ⚠️ It describes THIS LINE. A blocked request logs "Access denied" on its
+// deny-ing rule only; the signature rules that fed the score logged "Warning."
+// under the same transaction id. Whether a request was blocked is a question
+// for the transaction, answered at read time.
+func parseDisposition(head string) string {
+	for _, l := range dispositionLiterals {
+		if rest, ok := strings.CutPrefix(head, l.prefix); ok && (rest == "" || rest[0] == ' ') {
+			return l.disposition
+		}
+	}
+	return ""
+}
+
+// scoreRules are the CRS rules whose message carries the request's total score.
+var scoreRules = map[int]*regexp.Regexp{
+	949110: regexp.MustCompile(`^Inbound Anomaly Score Exceeded \(Total Score: (\d{1,6})\)$`),
+	959100: regexp.MustCompile(`^Outbound Anomaly Score Exceeded \(Total Score: (\d{1,6})\)$`),
+}
+
+// anomalyScore reads the total out of the scoring rule's message, or returns 0.
+//
+// staticMessage cuts messages at " (" because that is where CRS appends request
+// data, which is why the score was dropped. It is recovered here without
+// loosening that: only the two scoring rules, only a message that is exactly
+// their words and one bounded number, anchored at both ends. A general scan of
+// the parenthesis would let any rule's expanded data supply a "score".
+func anomalyScore(ruleID int, msg string) int {
+	re, ok := scoreRules[ruleID]
+	if !ok {
+		return 0
+	}
+	m := re.FindStringSubmatch(msg)
+	if m == nil {
+		return 0
+	}
+	n, err := strconv.Atoi(m[1])
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
 // matchedTarget names the request variable a rule matched in, from the data

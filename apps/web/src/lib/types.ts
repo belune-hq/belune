@@ -929,6 +929,8 @@ export interface WafState {
   active: boolean;
   /** Application hostnames it inspects. */
   hosts: number;
+  /** How many of them are enforced on: requests over the threshold are refused. */
+  blocking_hosts: number;
   reason?: WafReason;
   /** The last refusal, when Caddy would not take the route. */
   error?: string;
@@ -1059,7 +1061,8 @@ export interface WafStatus {
   capability: { module: string; state: FeatureAvailability };
   /** The operator's switch. */
   enabled: boolean;
-  mode: "detection_only";
+  /** "blocking" when at least one host is enforced on; per application, not install-wide. */
+  mode: "detection_only" | "blocking";
   state: WafState;
   recorder: WafRecorderStats;
   retention_days: number;
@@ -1082,6 +1085,26 @@ export type WafSeverity =
   | "info"
   | "debug"
   | "unknown";
+
+/** An application the WAF can enforce on, with what turning it on affects. */
+export interface WafBlockingApplication {
+  application_id: string;
+  application_name: string;
+  project_name: string;
+  /** Whether the application has opted in. */
+  blocking: boolean;
+  /** Its domains now: the hostnames turning blocking on puts behind enforcement. */
+  hosts: string[];
+  /**
+   * Hosts another application that has not opted in also serves. The WAF sees
+   * the whole host, so these stay detection-only whatever this one is set to.
+   */
+  shared_hosts: string[];
+}
+
+export interface WafBlockingPage {
+  applications: WafBlockingApplication[];
+}
 
 export interface WafEvent {
   id: number;

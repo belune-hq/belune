@@ -50,6 +50,7 @@ import {
 import { LIST_PAGE_SIZES, ListPagination } from "@/components/ui/data-table";
 import { StatCard } from "@/lib/components/stats/stat-card";
 import { WafDetectionSheet } from "@/components/proxy/waf-detection-sheet";
+import { WafBlockingCard } from "@/components/proxy/waf-blocking-card";
 import {
   WAF_EXCLUSIONS_ANCHOR,
   WafExclusionsCard,
@@ -104,9 +105,9 @@ const TEXT_TONE: Record<WafTone, string> = {
 };
 
 /**
- * The WAF: detection only, so what it offers is a switch, the state it is in
- * and an honest account of what it has seen. It never blocks anything, and the
- * page says so rather than leaving it to be inferred.
+ * The WAF: a switch, the state it is in and an honest account of what it has
+ * seen. It detects by default and blocks only for the applications that opted
+ * in, and the page says which rather than leaving it to be inferred.
  */
 export function WafTab() {
   const [windowKey, setWindowKey] = useState<WafWindow>("24h");
@@ -123,6 +124,7 @@ export function WafTab() {
             onWindow={setWindowKey}
           />
           <EventsCard status={status} windowKey={windowKey} />
+          <WafBlockingCard />
           <WafExclusionsCard />
         </>
       )}

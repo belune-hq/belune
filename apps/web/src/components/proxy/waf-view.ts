@@ -55,8 +55,14 @@ export function describeWaf(s: WafStatus): WafDescription {
   // is in, the WAF is running whatever the probe says right now.
   if (s.state.active) {
     return {
-      pill: { label: "Detecting", tone: "ready" },
-      body: `Watching ${plural(s.state.hosts, "application hostname")}. Nothing is blocked.`,
+      pill:
+        s.state.blocking_hosts > 0
+          ? { label: "Blocking", tone: "attention" }
+          : { label: "Detecting", tone: "ready" },
+      body:
+        s.state.blocking_hosts > 0
+          ? `Watching ${plural(s.state.hosts, "application hostname")}. Refusing requests that pass the anomaly threshold on ${s.state.blocking_hosts} of them; the rest only detect.`
+          : `Watching ${plural(s.state.hosts, "application hostname")}. Nothing is blocked.`,
       notice:
         s.state.reason === "modules_unknown"
           ? {
@@ -154,7 +160,7 @@ function plural(n: number, noun: string): string {
 
 /** What turning it on means, said before it is turned on. */
 export const WAF_ENABLE_POINTS = [
-  "Nothing is blocked. The rules only record what they would have blocked.",
+  "Nothing is blocked until you turn blocking on for an application. The rules only record what they would have blocked.",
   "It inspects requests to your applications, not to this dashboard.",
   "Request bodies over 128 KiB, or of unknown length, are not inspected, so uploads are never touched. A payload inside one goes unseen.",
   "The rule, its severity and class, the client address, the host and the name of the field the rule matched in are stored — the name only, never what was in it. The URL, method, content type and user agent are shown from the request log beside them, for as long as that keeps them.",

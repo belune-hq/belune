@@ -6,12 +6,19 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import type { WafClientGroup, WafEvent, WafStatus } from "@/lib/types";
+import type {
+  WafBlockingApplication,
+  WafClientGroup,
+  WafEvent,
+  WafStatus,
+} from "@/lib/types";
 
 /** Comfortably past the filter's 300ms debounce. */
 const FILTER_DEBOUNCE_WINDOW_MS = 500;
 
 const setEnabled = vi.fn();
+const setBlocking = vi.fn();
+let blockingApps: WafBlockingApplication[] = [];
 let status: WafStatus | undefined;
 let events: WafEvent[] = [];
 let clients: WafClientGroup[] = [];
@@ -23,6 +30,12 @@ const clientFilters: unknown[] = [];
 const windows: string[] = [];
 
 vi.mock("@/lib/hooks/use-waf", () => ({
+  useWafBlocking: () => ({
+    data: { applications: blockingApps },
+    isLoading: false,
+    error: null,
+  }),
+  useSetWafBlocking: () => ({ mutateAsync: setBlocking, isPending: false }),
   useWafExclusions: () => ({
     data: {
       exclusions: [],
@@ -64,7 +77,7 @@ const base = (over: Partial<WafStatus> = {}): WafStatus => ({
   capability: { module: "http.handlers.waf", state: "available" },
   enabled: false,
   mode: "detection_only",
-  state: { active: false, hosts: 0 },
+  state: { active: false, hosts: 0, blocking_hosts: 0 },
   exclusions: { total: 0, inert: 0 },
   recorder: {
     since: "2026-10-23T00:00:00Z",
@@ -124,6 +137,8 @@ const group = (over: Partial<WafClientGroup> = {}): WafClientGroup => ({
 describe("WafTab", () => {
   beforeEach(() => {
     setEnabled.mockReset().mockResolvedValue(base());
+    setBlocking.mockReset().mockResolvedValue({});
+    blockingApps = [];
     status = base();
     events = [];
     clients = [];
@@ -176,7 +191,10 @@ describe("WafTab", () => {
   });
 
   it("turning it off needs no confirmation", async () => {
-    status = base({ enabled: true, state: { active: true, hosts: 2 } });
+    status = base({
+      enabled: true,
+      state: { active: true, hosts: 2, blocking_hosts: 0 },
+    });
     render(<WafTab />);
     expect(screen.getByText("Detecting")).toBeTruthy();
     fireEvent.click(screen.getByRole("switch"));
@@ -187,7 +205,7 @@ describe("WafTab", () => {
   it("gives the silence a visible reason when exclusions are in force", () => {
     status = base({
       enabled: true,
-      state: { active: true, hosts: 2 },
+      state: { active: true, hosts: 2, blocking_hosts: 0 },
       exclusions: { total: 3, inert: 1 },
     });
     render(<WafTab />);
@@ -198,7 +216,10 @@ describe("WafTab", () => {
   });
 
   it("says nothing about exclusions when there are none", () => {
-    status = base({ enabled: true, state: { active: true, hosts: 2 } });
+    status = base({
+      enabled: true,
+      state: { active: true, hosts: 2, blocking_hosts: 0 },
+    });
     render(<WafTab />);
     expect(screen.queryByText(/exclusion[s]? in/)).toBeNull();
     expect(screen.queryByRole("button", { name: "View them" })).toBeNull();
@@ -207,7 +228,7 @@ describe("WafTab", () => {
   it("says out loud when detections were lost", () => {
     status = base({
       enabled: true,
-      state: { active: true, hosts: 1 },
+      state: { active: true, hosts: 1, blocking_hosts: 0 },
       recorder: {
         since: "x",
         recorded: 10,
@@ -609,7 +630,7 @@ describe("WafTab", () => {
   it("does not repeat the summary's empty-period sentence", () => {
     status = base({
       enabled: true,
-      state: { active: true, hosts: 1 },
+      state: { active: true, hosts: 1, blocking_hosts: 0 },
       summary: { ...base().summary, events: 0, total: 19 },
     });
     render(<WafTab />);
@@ -834,7 +855,10 @@ describe("WafTab", () => {
     expect(screen.getByText(/The WAF is off/)).toBeTruthy();
     unmount();
 
-    status = base({ enabled: true, state: { active: true, hosts: 1 } });
+    status = base({
+      enabled: true,
+      state: { active: true, hosts: 1, blocking_hosts: 0 },
+    });
     render(<WafTab />);
     expect(screen.getByText("No detections yet.")).toBeTruthy();
   });
@@ -845,7 +869,7 @@ describe("WafTab", () => {
   it("stays on screen when the window is empty but events are kept", () => {
     status = base({
       enabled: true,
-      state: { active: true, hosts: 1 },
+      state: { active: true, hosts: 1, blocking_hosts: 0 },
       summary: { ...base().summary, events: 0, total: 19 },
     });
     render(<WafTab />);
@@ -855,7 +879,10 @@ describe("WafTab", () => {
   });
 
   it("shows nothing above the table when nothing was ever recorded", () => {
-    status = base({ enabled: true, state: { active: true, hosts: 1 } });
+    status = base({
+      enabled: true,
+      state: { active: true, hosts: 1, blocking_hosts: 0 },
+    });
     render(<WafTab />);
     expect(screen.queryByLabelText("Summary period")).toBeNull();
     expect(screen.getByText("No detections yet.")).toBeTruthy();
@@ -895,5 +922,102 @@ describe("WafTab", () => {
     render(<WafTab />);
     expect(screen.queryByText("Top clients")).toBeNull();
     expect(screen.getByText("Top rules")).toBeTruthy();
+  });
+});
+
+const blockingApp = (
+  over: Partial<WafBlockingApplication> = {},
+): WafBlockingApplication => ({
+  application_id: "app-1",
+  application_name: "Shop",
+  project_name: "Main",
+  blocking: false,
+  hosts: ["shop.example.com", "www.example.com"],
+  shared_hosts: [],
+  ...over,
+});
+
+describe("WafTab blocking", () => {
+  beforeEach(() => {
+    setBlocking.mockReset().mockResolvedValue({});
+    status = base();
+    events = [];
+    clients = [];
+  });
+
+  it("names the hostnames before blocking is turned on, and does nothing until confirmed", async () => {
+    blockingApps = [blockingApp()];
+    render(<WafTab />);
+    fireEvent.click(
+      screen.getByRole("switch", { name: "Block requests for Shop" }),
+    );
+
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByText("shop.example.com")).toBeTruthy();
+    expect(within(dialog).getByText("www.example.com")).toBeTruthy();
+    expect(within(dialog).getByText(/403/)).toBeTruthy();
+    expect(setBlocking).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Turn blocking on" }),
+    );
+    await waitFor(() =>
+      expect(setBlocking).toHaveBeenCalledWith({
+        applicationId: "app-1",
+        enabled: true,
+      }),
+    );
+  });
+
+  it("says which hostnames stay detection only because a sibling shares them", async () => {
+    blockingApps = [blockingApp({ shared_hosts: ["www.example.com"] })];
+    render(<WafTab />);
+    fireEvent.click(
+      screen.getByRole("switch", { name: "Block requests for Shop" }),
+    );
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByText(/Still detection only/)).toBeTruthy();
+    expect(within(dialog).getByText(/www\.example\.com/)).toBeTruthy();
+  });
+
+  it("cancelling leaves it off", async () => {
+    blockingApps = [blockingApp()];
+    render(<WafTab />);
+    fireEvent.click(
+      screen.getByRole("switch", { name: "Block requests for Shop" }),
+    );
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(setBlocking).not.toHaveBeenCalled();
+  });
+
+  it("turns it off in one click, with no confirmation", async () => {
+    blockingApps = [blockingApp({ blocking: true })];
+    render(<WafTab />);
+    fireEvent.click(
+      screen.getByRole("switch", { name: "Block requests for Shop" }),
+    );
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    await waitFor(() =>
+      expect(setBlocking).toHaveBeenCalledWith({
+        applicationId: "app-1",
+        enabled: false,
+      }),
+    );
+  });
+
+  it("says when the WAF refuses requests, and on how many hosts", () => {
+    status = base({
+      enabled: true,
+      mode: "blocking",
+      state: { active: true, hosts: 3, blocking_hosts: 2 },
+    });
+    render(<WafTab />);
+    // The pill leaves "Detecting" for "Blocking" (the card title and its
+    // column header say the word too, so the pill is checked by what it replaced).
+    expect(screen.queryByText("Detecting")).toBeNull();
+    expect(screen.getAllByText("Blocking").length).toBeGreaterThan(0);
+    expect(screen.getByText(/on 2 of them/)).toBeTruthy();
+    expect(screen.queryByText(/Nothing is blocked/)).toBeNull();
   });
 });

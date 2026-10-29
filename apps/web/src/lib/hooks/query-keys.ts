@@ -294,6 +294,7 @@ export const queryKeys = {
     eventsFiltered: (clientIp: string, ruleId: number | null, window: string) =>
       ["proxy", "waf", "events", clientIp, ruleId, window] as const,
     exclusions: ["proxy", "waf", "exclusions"] as const,
+    blocking: ["proxy", "waf", "blocking"] as const,
     clients: ["proxy", "waf", "clients"] as const,
     clientsFor: (window: string, clientIp: string, ruleId: number | null) =>
       ["proxy", "waf", "clients", window, clientIp, ruleId] as const,

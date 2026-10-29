@@ -19,21 +19,6 @@ SELECT e.id, e.recorded_at, e.client_ip, e.rule_id, e.severity, e.category, e.me
        ))::boolean AS request_blocked
 FROM waf_events e
 WHERE (sqlc.narg('before_id')::bigint IS NULL OR id < sqlc.narg('before_id')::bigint)
-  -- A blocked request logs its deny-ing rule twice (a "Warning." line, then the
-  -- "Access denied" one), so the list would show 949110 twice with the same
-  -- message and score. The reporting row is hidden when the denying row of the
-  -- same (tx_id, rule_id) exists. b.tx_id = e.tx_id is never true for a NULL
-  -- tx_id (NULL = NULL is unknown), so a row with no transaction cannot match
-  -- another one and needs no guard. Both rows stay in the table and in `events`,
-  -- which counts the lines Coraza logged.
-  -- ⚠️ NULL-safe on purpose: disposition is nullable (every row before 000077, and
-  -- any line whose opening was neither literal), and "NOT (NULL = 'detected' AND
-  -- ...)" is NULL, which a WHERE rejects. That form silently dropped exactly the
-  -- rows whose disposition was unknown, hiding evidence. IS DISTINCT FROM keeps them.
-  AND (e.disposition IS DISTINCT FROM 'detected' OR NOT EXISTS (
-      SELECT 1 FROM waf_events b
-      WHERE b.tx_id = e.tx_id AND b.rule_id = e.rule_id AND b.disposition = 'blocked'
-  ))
   AND (sqlc.narg('client_ip')::inet IS NULL OR client_ip = sqlc.narg('client_ip')::inet)
   AND (sqlc.narg('rule_id')::int IS NULL OR rule_id = sqlc.narg('rule_id')::int)
   -- NULL means every event still kept, which is what every caller got before the

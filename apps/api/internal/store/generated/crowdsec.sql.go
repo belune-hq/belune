@@ -230,13 +230,12 @@ type WAFAutobanCandidatesRow struct {
 // an event with no tx_id counts as its own request rather than all being one.
 // Ordered worst first, so a cap on how many get banned spares the milder ones.
 //
-// Immune to blocking mode's duplicate rows, twice over, and neither protection is
-// redundant: a blocked request logs its deny-ing rule (949110) twice, and this
-// count does not move because (1) it counts DISTINCT tx_id, so a second row of the
-// same transaction adds nothing, and (2) 949110 is tagged anomaly-evaluation, not
-// attack-*, so neither of its rows has a category in the set at all. Without (1),
-// a hits-based count would halve every operator's threshold the day they turn
-// blocking on. Keep both.
+// Blocking mode does not change this count, on two independent grounds, and
+// neither is redundant: (1) it counts DISTINCT tx_id, so extra rows of one
+// transaction add nothing, and (2) the anomaly verdict (949110) is tagged
+// anomaly-evaluation, not attack-*, so it has no category in the set at all.
+// Without (1), a count of hits rather than requests would move with how many
+// rules one request trips. Keep both.
 func (q *Queries) WAFAutobanCandidates(ctx context.Context, arg WAFAutobanCandidatesParams) ([]WAFAutobanCandidatesRow, error) {
 	rows, err := q.db.Query(ctx, wAFAutobanCandidates,
 		arg.Since,

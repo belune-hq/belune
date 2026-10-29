@@ -102,7 +102,6 @@ Blocking is **off for every application** and is switched on per application, in
 - **The dashboard is never affected.** It is not among the hostnames the WAF inspects, and a wildcard domain that would also match the dashboard's hostname is left detecting. You cannot lock yourself out of the screen that turns blocking off.
 - **A host shared between applications stays detection only unless every one of them opted in.** A hostname can be split across applications by path, and the WAF sees the host, not the path. A wildcard domain that overlaps a host that has not opted in is also left detecting.
 - **Exclusions still apply.** A rule you have excluded stays silenced on a blocking host, so carve out what is yours first.
-- **A blocked request is logged twice.** The rule that refuses it, usually `949110`, is recorded once as a match and once as the denial, with the same message and score. The detection list shows it once. The count of detections includes both, because it counts what the WAF logged; the count of requests, the rule count and CrowdSec's automatic bans count requests and are not affected.
 - **Turning it off takes about 30 seconds.** Belune applies the change at once and re-checks every 30 seconds. Switching the WAF off removes it entirely.
 
 Every change is recorded in the audit log with the hostnames it covered.

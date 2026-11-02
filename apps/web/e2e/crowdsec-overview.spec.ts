@@ -70,7 +70,20 @@ test("the summary and the history are legible, and a ban is attributed to a pers
     enabled: boolean;
     local_api: { reachable: boolean };
   }>(page, "GET", "/maintenance/proxy/crowdsec");
-  if (!status?.enabled || !status.local_api.reachable) {
+  // Which branch ran has to reach the job log: the card-only branch asserts far
+  // less, and a green tick alone cannot tell the two apart. If CrowdSec stops
+  // being on at this point, the attribution would quietly stop being proved.
+  const strong = Boolean(status?.enabled && status.local_api.reachable);
+  test.info().annotations.push({
+    type: "branch",
+    description: strong
+      ? "placed a ban and asserted attribution"
+      : "CrowdSec off: asserted the card only",
+  });
+  console.log(
+    `[crowdsec-overview] branch=${strong ? "attribution" : "card-only"}`,
+  );
+  if (!strong) {
     // Nothing can be banned: the card still has to say something.
     await expect(
       page

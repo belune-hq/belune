@@ -7,11 +7,7 @@ import type {
 import { api } from "./client";
 
 export type CleanupAction =
-  | "deployments"
-  | "images"
-  | "volumes"
-  | "containers"
-  | "build_cache";
+  "deployments" | "images" | "volumes" | "containers" | "build_cache";
 
 // Empty/omitted actions = full cleanup (all steps).
 export function runCleanup(actions?: CleanupAction[]) {
@@ -50,11 +46,7 @@ export function clearPendingQueue() {
 }
 
 export type PlatformService =
-  | "belune"
-  | "caddy"
-  | "redis"
-  | "postgres"
-  | "buildkit";
+  "belune" | "caddy" | "redis" | "postgres" | "buildkit";
 
 export function getPlatformLogs(service: PlatformService) {
   return api.get<{ service: string; content: string }>(

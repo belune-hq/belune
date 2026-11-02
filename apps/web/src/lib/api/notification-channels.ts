@@ -1,13 +1,7 @@
 import { api } from "./client";
 
 export type ChannelType =
-  | "discord"
-  | "telegram"
-  | "slack"
-  | "webhook"
-  | "ntfy"
-  | "gotify"
-  | "email";
+  "discord" | "telegram" | "slack" | "webhook" | "ntfy" | "gotify" | "email";
 
 export type EventSeverity = "ok" | "warn" | "error";
 

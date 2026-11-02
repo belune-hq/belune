@@ -117,6 +117,13 @@ func (s *Server) setupRouter() chi.Router {
 	r.Use(s.proxyTrust.Middleware)
 	// OTel HTTP server middleware: one span per request plus W3C traceparent
 	// extraction. No-ops when the tracer provider is the default no-op.
+	//
+	// The span name is "GET /api/tokens/{tokenId}", the route template, and the
+	// "http.request" below is ignored. chi writes the template to Request.Pattern
+	// on the request that reaches the router, and otelhttp reads it back from the
+	// request it handed down, so this holds only while nothing between here and
+	// the router replaces the request (r.WithContext and the like). If something
+	// does, every span silently falls back to a bare "GET" and no test notices.
 	r.Use(func(next http.Handler) http.Handler {
 		return otelhttp.NewHandler(next, "http.request")
 	})

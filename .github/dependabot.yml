@@ -119,9 +119,26 @@ updates:
     commit-message:
       prefix: "ci"
     groups:
-      actions:
+      # Minor and patch only, for the same reason the npm groups are limited that
+      # way: a group exists to collapse routine noise, not to make nine majors
+      # arrive as one unreviewable diff.
+      #
+      # Without this filter the group did exactly that — it proposed checkout,
+      # setup-go, setup-node and upload-artifact jumping to v7 together with four
+      # docker/* majors, and three of those (build-push-action, login-action,
+      # metadata-action) are what release.yml uses to build and publish the image
+      # installs pull. A break there surfaces at tag time.
+      #
+      # Majors are NOT ignored here, unlike the frontend ones. An action major is
+      # usually a drop-in rather than a migration, and actions carry security
+      # fixes, so they are worth seeing. They now arrive one PR at a time, which
+      # `open-pull-requests-limit` paces.
+      actions-minor-and-patch:
         patterns:
           - "*"
+        update-types:
+          - minor
+          - patch
 
 # ⛔ The `docker` ecosystem is deliberately NOT enabled, for two separate
 # reasons, and neither is reluctance to keep images current.

@@ -660,6 +660,10 @@ function CertificateDetail({ certificate }: { certificate: Certificate }) {
 // opening on a healthy domain too, rather than expanding to "nothing to report".
 function DomainTLSDetail({ domain }: { domain: DomainTLSStatus }) {
   const { tls_error: error, tls_advisory: advisory } = domain;
+  // The status comes from the row here and from useApplication on the
+  // application's Domains page, on purpose: this page spans many applications, so
+  // the list has to carry it per row, while that page is already viewing one
+  // application and has its status. Both read the same column.
   const unrouted = unroutedNotice(domain.ssl_mode, domain.application_status);
 
   return (

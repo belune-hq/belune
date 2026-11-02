@@ -115,3 +115,33 @@ func TestDomainTLSStatus_RespectsTokenPin(t *testing.T) {
 	assert.Equal(t, []string{"first.example.com"}, tlsHostnames(t, pinned),
 		"a pinned token is narrowed to its project")
 }
+
+// A domain whose application is not running has no route, so nothing asks for its
+// certificate and it sits at "pending" for ever. The row carries the application's
+// status so the dashboard can say why instead of leaving it unexplained.
+func TestDomainTLSStatus_CarriesTheApplicationStatus(t *testing.T) {
+	resetDB(t)
+	adminToken := env.SetupAdmin(t, "admin@test.com", "password123")
+	project := env.CreateProject(t, adminToken, "Status Project", "status-project")
+	projectID := extractID(project["id"])
+	app := env.CreateApplication(t, adminToken, projectID, map[string]any{
+		"name": "Idle", "type": "git", "build_type": "railpack",
+		"source_repo": "https://github.com/test/repo", "branch": "main",
+	})
+	resp := env.DoRequest(t, "POST",
+		fmt.Sprintf("/api/projects/%s/applications/%s/domains", projectID, extractID(app["id"])),
+		map[string]any{"hostname": "idle.example.com", "ssl_enabled": true},
+		testutil.AuthHeader(adminToken))
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	_ = resp.Body.Close()
+
+	resp = env.DoRequest(t, "GET", "/api/domains/tls", nil, testutil.AuthHeader(adminToken))
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	defer func() { _ = resp.Body.Close() }()
+	rows := testutil.ReadJSONArray(t, resp)
+	require.Len(t, rows, 1)
+	row := rows[0].(map[string]any)
+	assert.Equal(t, app["status"], row["application_status"],
+		"the row says the application's own status, the one the proxy reconciler gates routing on")
+	assert.NotEmpty(t, row["application_status"])
+}

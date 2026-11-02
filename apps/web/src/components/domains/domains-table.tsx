@@ -72,6 +72,7 @@ export function DomainsTable({
   onEdit,
   onEditFeatures,
   canDelete,
+  applicationStatus,
 }: {
   projectId: string;
   applicationId: string;
@@ -80,6 +81,8 @@ export function DomainsTable({
   onEdit: (domain: DomainExpanded) => void;
   onEditFeatures: (domain: DomainExpanded) => void;
   canDelete: boolean;
+  /** Passed down so a pending domain of a stopped application can say why. */
+  applicationStatus?: string;
 }) {
   // A domain row carries certificate_id but nothing to resolve it with:
   // ListDomainsByApplication is SELECT * FROM domains. /domains/tls is the only
@@ -125,6 +128,7 @@ export function DomainsTable({
             projectId={projectId}
             applicationId={applicationId}
             certificateName={certificateNameByDomain.get(row.original.id)}
+            applicationStatus={applicationStatus}
           />
         ),
       },
@@ -181,6 +185,7 @@ export function DomainsTable({
       onEditFeatures,
       canDelete,
       certificateNameByDomain,
+      applicationStatus,
     ],
   );
 

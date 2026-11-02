@@ -568,7 +568,8 @@ func (q *Queries) ListDomainsForTLSProbe(ctx context.Context) ([]ListDomainsForT
 const listDomainsWithTLSStatus = `-- name: ListDomainsWithTLSStatus :many
 SELECT d.id, d.hostname, d.ssl_mode, d.tls_status, d.tls_issuer, d.tls_not_after,
        d.tls_last_checked_at, d.tls_error, d.tls_advisory, c.name AS certificate_name,
-       a.name AS application_name, a.id AS application_id, p.id AS project_id
+       a.name AS application_name, a.id AS application_id, a.status AS application_status,
+       p.id AS project_id
 FROM domains d
 JOIN applications a ON a.id = d.application_id
 JOIN projects p ON p.id = a.project_id
@@ -591,19 +592,20 @@ type ListDomainsWithTLSStatusParams struct {
 }
 
 type ListDomainsWithTLSStatusRow struct {
-	ID               pgtype.UUID        `json:"id"`
-	Hostname         string             `json:"hostname"`
-	SslMode          string             `json:"ssl_mode"`
-	TlsStatus        string             `json:"tls_status"`
-	TlsIssuer        pgtype.Text        `json:"tls_issuer"`
-	TlsNotAfter      pgtype.Timestamptz `json:"tls_not_after"`
-	TlsLastCheckedAt pgtype.Timestamptz `json:"tls_last_checked_at"`
-	TlsError         pgtype.Text        `json:"tls_error"`
-	TlsAdvisory      pgtype.Text        `json:"tls_advisory"`
-	CertificateName  pgtype.Text        `json:"certificate_name"`
-	ApplicationName  string             `json:"application_name"`
-	ApplicationID    pgtype.UUID        `json:"application_id"`
-	ProjectID        pgtype.UUID        `json:"project_id"`
+	ID                pgtype.UUID        `json:"id"`
+	Hostname          string             `json:"hostname"`
+	SslMode           string             `json:"ssl_mode"`
+	TlsStatus         string             `json:"tls_status"`
+	TlsIssuer         pgtype.Text        `json:"tls_issuer"`
+	TlsNotAfter       pgtype.Timestamptz `json:"tls_not_after"`
+	TlsLastCheckedAt  pgtype.Timestamptz `json:"tls_last_checked_at"`
+	TlsError          pgtype.Text        `json:"tls_error"`
+	TlsAdvisory       pgtype.Text        `json:"tls_advisory"`
+	CertificateName   pgtype.Text        `json:"certificate_name"`
+	ApplicationName   string             `json:"application_name"`
+	ApplicationID     pgtype.UUID        `json:"application_id"`
+	ApplicationStatus string             `json:"application_status"`
+	ProjectID         pgtype.UUID        `json:"project_id"`
 }
 
 // The central "Domain TLS" table on the certificates page: every domain with the
@@ -614,6 +616,11 @@ type ListDomainsWithTLSStatusRow struct {
 // can reach. Same OR p.shared idiom as ListGlobalDeploymentsFiltered and
 // ListProjectsByUser, and for the same reason: sharing grants operational access,
 // so a shared project's domains are as visible as an owned one's.
+//
+// application_status rides along because a domain whose application is not running
+// has no route and so is never asked for a certificate: without it a stopped app's
+// domain sits at "pending" with nothing to say why. The reconciler's gate is
+// status = running, and this is the one place the two are put side by side.
 //
 // The certificate join is why this matters to a member at all. ListDomainsByApplication
 // is SELECT * FROM domains, so it returns certificate_id as a bare UUID with nothing
@@ -640,6 +647,7 @@ func (q *Queries) ListDomainsWithTLSStatus(ctx context.Context, arg ListDomainsW
 			&i.CertificateName,
 			&i.ApplicationName,
 			&i.ApplicationID,
+			&i.ApplicationStatus,
 			&i.ProjectID,
 		); err != nil {
 			return nil, err

@@ -18,7 +18,7 @@ import (
 )
 
 func TestBuildWAFRoute_Shape(t *testing.T) {
-	r := buildWAFRoute([]string{"a.example.com", "b.example.com"}, nil, nil)
+	r := buildWAFRoute([]string{"a.example.com", "b.example.com"}, nil, nil, nil)
 	b, err := json.Marshal(r)
 	require.NoError(t, err)
 
@@ -297,7 +297,7 @@ func TestWAFRoute_StaysFirstAndIsNotAnApplicationRoute(t *testing.T) {
 // no request detail and no error anywhere. So the placeholder is asserted here
 // rather than left to be noticed.
 func TestWAFRoute_CarriesTheRequestUUIDTheRequestLogJoinsOn(t *testing.T) {
-	b, err := json.Marshal(buildWAFRoute([]string{"a.example.com"}, nil, nil))
+	b, err := json.Marshal(buildWAFRoute([]string{"a.example.com"}, nil, nil, nil))
 	require.NoError(t, err)
 
 	var got struct {
@@ -320,4 +320,18 @@ func TestWAFRoute_CarriesTheRequestUUIDTheRequestLogJoinsOn(t *testing.T) {
 	// the last underscore and request_logs stores Caddy's bare uuid.
 	assert.True(t, strings.HasSuffix(values[0], "_{http.request.uuid}"),
 		"splitTxID takes the uuid as the segment after the last underscore, so it must end the value; got %q", values[0])
+}
+
+// A wildcard host covers the dashboard when it is served on a name under it. The
+// exemption has to be Caddy's to apply, so it is a `not` matcher, and the wildcard
+// stays in the host list so the application behind it is still inspected.
+func TestBuildWAFRoute_ExemptsTheDashboardFromAWildcard(t *testing.T) {
+	r := buildWAFRoute([]string{"*.example.com"}, []string{"dash.example.com"}, nil, nil)
+	b, err := json.Marshal(r.Match)
+	require.NoError(t, err)
+	assert.JSONEq(t, `[{"host":["*.example.com"],"not":[{"host":["dash.example.com"]}]}]`, string(b))
+
+	plain, err := json.Marshal(buildWAFRoute([]string{"a.example.com"}, nil, nil, nil).Match)
+	require.NoError(t, err)
+	assert.NotContains(t, string(plain), `"not"`, "with nothing to exempt the matcher is the plain host list, so an install without a dashboard host sees no route diff")
 }

@@ -110,14 +110,15 @@ func (r *Reconciler) wafBlockingCandidates(ctx context.Context) ([]string, error
 // on. The result is always a subset of hosts, so the dashboard (which never
 // reaches hosts) can never be enforced on, and a host with no route is not named.
 //
-// ⛔ Two locks keep the dashboard out, and neither is redundant. The first is
-// that the dashboard never reaches hosts, so it cannot be named. That does not
-// stop a WILDCARD from covering it: "*.example.com" is a valid application
-// domain, Caddy's host matcher glob-matches it, and the WAF route (first in the
-// table, not terminal) then sees "panel.example.com" and the scoping pattern
-// matches it too. The dashboard takes commands and credentials as ordinary input,
-// which a rule set reads as attacks, and its recovery path is the dashboard, so
-// the second lock drops any candidate whose pattern covers dashboardHost.
+// ⛔ Two locks keep the dashboard out of enforcement, and the second is kept on
+// purpose. The first is the route's own: it carries the dashboard as a `not`
+// matcher, so Caddy declines a request for it even when a wildcard such as
+// "*.example.com" in hosts covers it. The second is this one, which drops any
+// candidate whose pattern covers dashboardHost. With the first sound the second
+// never changes the outcome, and that is the point: the dashboard takes commands
+// and credentials as ordinary input, which a rule set reads as attacks, and its
+// recovery path is the dashboard, so the cost of the first failing while the
+// second is absent would be a lockout, not noise.
 //
 // A wildcard is dropped when it overlaps a host that did NOT opt in: the rule
 // that scopes it is a pattern over the request's host, and "*.example.com" would
@@ -234,7 +235,11 @@ func (r *Reconciler) syncWAF(ctx context.Context, expected []RouteConfig, dashbo
 	}
 
 	blocking := blockingHosts(sorted, candidates, dashboardHost)
-	if err := r.proxy.SyncWAF(ctx, WAFConfig{Enabled: wanted, Hosts: sorted, BlockingHosts: blocking, Exclusions: exclusions}); err != nil {
+	cfg := WAFConfig{Enabled: wanted, Hosts: sorted, BlockingHosts: blocking, Exclusions: exclusions}
+	if dashboardHost != "" {
+		cfg.Exempt = []string{dashboardHost}
+	}
+	if err := r.proxy.SyncWAF(ctx, cfg); err != nil {
 		state.Active, state.Error = prev.Active, err.Error()
 		r.setWAF(state)
 		return fmt.Errorf("syncing the WAF route: %w", err)

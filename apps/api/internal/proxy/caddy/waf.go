@@ -106,7 +106,13 @@ func renderWAFDirectives(exclusions []proxy.WAFExclusion, blockingHosts []string
 	return wafDirectivesHead + renderWAFExclusions(exclusions) + renderWAFBlocking(blockingHosts) + wafDirectivesTail
 }
 
-// buildWAFRoute renders the WAF route for these hosts.
+// buildWAFRoute renders the WAF route for these hosts, leaving out exempt.
+//
+// exempt is a `not` matcher and not a filter on hosts, for the reason
+// buildCrowdSecRoute gives: hosts can hold a wildcard that covers the exempt name,
+// and only Caddy can say that a request for it is not this route's. Filtering the
+// wildcard out of hosts instead would stop the whole wildcard application being
+// inspected, to protect one name.
 //
 // It has no `terminal`, so Caddy carries on to the application's own route once
 // the module has looked at the request.
@@ -117,10 +123,14 @@ func renderWAFDirectives(exclusions []proxy.WAFExclusion, blockingHosts []string
 // pipeline has to be joined to learn it. The header is SET, not appended, so a
 // client cannot supply its own, and the last handler removes it so the application
 // never sees it.
-func buildWAFRoute(hosts []string, exclusions []proxy.WAFExclusion, blockingHosts []string) caddyRoute {
+func buildWAFRoute(hosts, exempt []string, exclusions []proxy.WAFExclusion, blockingHosts []string) caddyRoute {
+	m := caddyMatch{Host: hosts}
+	if len(exempt) > 0 {
+		m.Not = []caddyMatch{{Host: exempt}}
+	}
 	return caddyRoute{
 		ID:    wafRouteID,
-		Match: []caddyMatch{{Host: hosts}},
+		Match: []caddyMatch{m},
 		Handle: []caddyHandle{
 			{
 				"handler": "headers",
@@ -165,7 +175,7 @@ func (c *Client) SyncWAF(ctx context.Context, cfg proxy.WAFConfig) (err error) {
 		return nil
 	}
 
-	desired := buildWAFRoute(hosts, cfg.Exclusions, wafBlockingHosts(hosts, cfg.BlockingHosts))
+	desired := buildWAFRoute(hosts, wafHosts(cfg.Exempt), cfg.Exclusions, wafBlockingHosts(hosts, cfg.BlockingHosts))
 	if found {
 		same, err := routeJSONEqual(current, desired)
 		if err != nil {

@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/belune-hq/belune/internal/proxy"
 	"github.com/belune-hq/belune/internal/store/generated"
 )
 
@@ -94,6 +95,25 @@ type previewView struct {
 	Status         string `json:"status"`
 	LastActivityAt string `json:"last_activity_at"`
 	Hostname       string `json:"hostname,omitempty"`
+	// URL is where the preview is served, scheme included. It is built here, from
+	// the domain row, because the scheme depends on the domain's ssl_mode ("off"
+	// is plain HTTP) and a client that is handed only a hostname has to guess.
+	URL string `json:"url,omitempty"`
+}
+
+// setDomain fills the fields that come from the preview's first domain.
+func (v *previewView) setDomain(d generated.Domain) {
+	v.Hostname = d.Hostname
+	v.URL = domainURL(d.Hostname, d.SslMode)
+}
+
+// domainURL is the address a domain answers on. Only ssl_mode "off" has no HTTPS
+// listener (see proxy.SSLModeOff), so every other mode is https.
+func domainURL(hostname, sslMode string) string {
+	if sslMode == proxy.SSLModeOff {
+		return "http://" + hostname
+	}
+	return "https://" + hostname
 }
 
 // ListPreviews returns all preview children of the given parent application.
@@ -132,7 +152,7 @@ func (h *Handler) ListPreviews(w http.ResponseWriter, r *http.Request) {
 			view.LastActivityAt = row.LastActivityAt.Time.UTC().Format("2006-01-02T15:04:05Z")
 		}
 		if domains, derr := h.queries.ListDomainsByApplication(r.Context(), row.ID); derr == nil && len(domains) > 0 {
-			view.Hostname = domains[0].Hostname
+			view.setDomain(domains[0])
 		}
 		out = append(out, view)
 	}
@@ -190,7 +210,7 @@ func (h *Handler) GetPreview(w http.ResponseWriter, r *http.Request) {
 		view.LastActivityAt = row.LastActivityAt.Time.UTC().Format("2006-01-02T15:04:05Z")
 	}
 	if domains, derr := h.queries.ListDomainsByApplication(r.Context(), row.ID); derr == nil && len(domains) > 0 {
-		view.Hostname = domains[0].Hostname
+		view.setDomain(domains[0])
 	}
 	writeJSON(w, http.StatusOK, view)
 }

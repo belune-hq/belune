@@ -20378,6 +20378,9 @@
           },
           "status": {
             "type": "string"
+          },
+          "url": {
+            "type": "string"
           }
         },
         "type": "object"

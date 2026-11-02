@@ -404,13 +404,7 @@ export interface DatabaseBackup {
 }
 
 export type BackupProvider =
-  | "s3"
-  | "r2"
-  | "b2"
-  | "wasabi"
-  | "minio"
-  | "other"
-  | "local";
+  "s3" | "r2" | "b2" | "wasabi" | "minio" | "other" | "local";
 
 export interface BackupDestination {
   id: string;
@@ -463,11 +457,7 @@ export interface RouteFeature {
   id: string;
   domain_id: string;
   feature_type:
-    | "basic_auth"
-    | "redirect"
-    | "headers"
-    | "ip_allowlist"
-    | "rate_limit";
+    "basic_auth" | "redirect" | "headers" | "ip_allowlist" | "rate_limit";
   config: Record<string, unknown>;
   enabled: boolean;
   created_at: string;
@@ -823,10 +813,7 @@ export interface ProxyDegradation {
 }
 
 export type CaddyAdminState =
-  | "unknown"
-  | "unreachable"
-  | "healthy"
-  | "lost_config";
+  "unknown" | "unreachable" | "healthy" | "lost_config";
 
 /** Every nullable or "unknown" value here means "could not be determined",
  *  which is NOT the same as absent — render it as unknown, never as none. */
@@ -882,12 +869,7 @@ export interface AccessLogStatus {
 }
 
 export type ProxyTrafficState =
-  | "ok"
-  | "collecting"
-  | "no_data"
-  | "disabled"
-  | "unreachable"
-  | "unknown";
+  "ok" | "collecting" | "no_data" | "disabled" | "unreachable" | "unknown";
 
 /** Traffic through Caddy's reverse_proxy handler. A null number means it could
  *  not be determined (or, for latency, that nothing completed) — never zero. */
@@ -1225,10 +1207,7 @@ export interface WafEventsPage {
  *  CrowdSec container is not answering; the first two are the Caddy probe's two
  *  different answers and must not be collapsed. */
 export type CrowdSecReason =
-  | "module_absent"
-  | "modules_unknown"
-  | "no_applications"
-  | "lapi_unavailable";
+  "module_absent" | "modules_unknown" | "no_applications" | "lapi_unavailable";
 
 export interface CrowdSecState {
   /** The bouncer route is in Caddy now. */
@@ -1276,10 +1255,7 @@ export interface CrowdSecAutobanStatus {
  *  covered by an unexpired allowlist entry. `exposed`: public, and nothing covers
  *  it. `unknown`: the local API could not be asked. */
 export type CrowdSecProtection =
-  | "unbannable"
-  | "allowlisted"
-  | "exposed"
-  | "unknown";
+  "unbannable" | "allowlisted" | "exposed" | "unknown";
 
 export interface CrowdSecStatus {
   capability: { module: string; state: FeatureAvailability };
@@ -1355,11 +1331,7 @@ export interface DockerNetwork {
 }
 
 export type ScheduledTaskRunStatus =
-  | "running"
-  | "succeeded"
-  | "failed"
-  | "skipped"
-  | "timed_out";
+  "running" | "succeeded" | "failed" | "skipped" | "timed_out";
 
 export interface ScheduledTaskRun {
   id: string;

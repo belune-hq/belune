@@ -9,68 +9,57 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as SetupRouteImport } from './routes/setup'
-import { Route as ResetPasswordRouteImport } from './routes/reset-password'
-import { Route as LoginRouteImport } from './routes/login'
-import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
-import { Route as AcceptInviteRouteImport } from './routes/accept-invite'
-import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as DevThemeRouteImport } from './routes/dev.theme'
-import { Route as AppTemplatesRouteImport } from './routes/_app/templates'
-import { Route as AppTeamRouteImport } from './routes/_app/team'
-import { Route as AppServerRouteImport } from './routes/_app/server'
-import { Route as AppQuotasRouteImport } from './routes/_app/quotas'
-import { Route as AppProxyRouteImport } from './routes/_app/proxy'
-import { Route as AppNotificationsRouteImport } from './routes/_app/notifications'
-import { Route as AppGitRouteImport } from './routes/_app/git'
-import { Route as AppDockerRouteImport } from './routes/_app/docker'
-import { Route as AppDashboardRouteImport } from './routes/_app/dashboard'
-import { Route as AppCertificatesRouteImport } from './routes/_app/certificates'
-import { Route as AppAuditRouteImport } from './routes/_app/audit'
-import { Route as AppAccountRouteImport } from './routes/_app/account'
+import { Route as AppRouteImport } from './routes/_app'
+import { Route as AcceptInviteRouteImport } from './routes/accept-invite'
+import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as SetupRouteImport } from './routes/setup'
 import { Route as AppAboutRouteImport } from './routes/_app/about'
-import { Route as AppRequestsIndexRouteImport } from './routes/_app/requests/index'
-import { Route as AppProjectsIndexRouteImport } from './routes/_app/projects/index'
+import { Route as AppAccountRouteImport } from './routes/_app/account'
+import { Route as AppAuditRouteImport } from './routes/_app/audit'
+import { Route as AppCertificatesRouteImport } from './routes/_app/certificates'
+import { Route as AppDashboardRouteImport } from './routes/_app/dashboard'
+import { Route as AppDockerRouteImport } from './routes/_app/docker'
+import { Route as AppGitRouteImport } from './routes/_app/git'
+import { Route as AppNotificationsRouteImport } from './routes/_app/notifications'
+import { Route as AppProxyRouteImport } from './routes/_app/proxy'
+import { Route as AppQuotasRouteImport } from './routes/_app/quotas'
+import { Route as AppServerRouteImport } from './routes/_app/server'
+import { Route as AppTeamRouteImport } from './routes/_app/team'
+import { Route as AppTemplatesRouteImport } from './routes/_app/templates'
+import { Route as DevThemeRouteImport } from './routes/dev.theme'
 import { Route as AppDeploymentsIndexRouteImport } from './routes/_app/deployments/index'
-import { Route as AppProjectsNewRouteImport } from './routes/_app/projects/new'
+import { Route as AppProjectsIndexRouteImport } from './routes/_app/projects/index'
 import { Route as AppProjectsProjectIdRouteImport } from './routes/_app/projects/$projectId'
+import { Route as AppProjectsNewRouteImport } from './routes/_app/projects/new'
+import { Route as AppRequestsIndexRouteImport } from './routes/_app/requests/index'
 import { Route as AppProjectsProjectIdIndexRouteImport } from './routes/_app/projects/$projectId/index'
-import { Route as AppProjectsProjectIdSettingsRouteImport } from './routes/_app/projects/$projectId/settings'
-import { Route as AppProjectsProjectIdEnvRouteImport } from './routes/_app/projects/$projectId/env'
 import { Route as AppProjectsProjectIdBackupsRouteImport } from './routes/_app/projects/$projectId/backups'
-import { Route as AppProjectsProjectIdDatabasesDatabaseIdRouteImport } from './routes/_app/projects/$projectId/databases/$databaseId'
+import { Route as AppProjectsProjectIdEnvRouteImport } from './routes/_app/projects/$projectId/env'
+import { Route as AppProjectsProjectIdSettingsRouteImport } from './routes/_app/projects/$projectId/settings'
 import { Route as AppProjectsProjectIdApplicationsApplicationIdRouteImport } from './routes/_app/projects/$projectId/applications/$applicationId'
+import { Route as AppProjectsProjectIdDatabasesDatabaseIdRouteImport } from './routes/_app/projects/$projectId/databases/$databaseId'
 import { Route as AppProjectsProjectIdApplicationsApplicationIdIndexRouteImport } from './routes/_app/projects/$projectId/applications/$applicationId/index'
-import { Route as AppProjectsProjectIdApplicationsApplicationIdTerminalRouteImport } from './routes/_app/projects/$projectId/applications/$applicationId/terminal'
-import { Route as AppProjectsProjectIdApplicationsApplicationIdTasksRouteImport } from './routes/_app/projects/$projectId/applications/$applicationId/tasks'
-import { Route as AppProjectsProjectIdApplicationsApplicationIdSettingsRouteImport } from './routes/_app/projects/$projectId/applications/$applicationId/settings'
-import { Route as AppProjectsProjectIdApplicationsApplicationIdPreviewsRouteImport } from './routes/_app/projects/$projectId/applications/$applicationId/previews'
-import { Route as AppProjectsProjectIdApplicationsApplicationIdMountsRouteImport } from './routes/_app/projects/$projectId/applications/$applicationId/mounts'
-import { Route as AppProjectsProjectIdApplicationsApplicationIdMetricsRouteImport } from './routes/_app/projects/$projectId/applications/$applicationId/metrics'
-import { Route as AppProjectsProjectIdApplicationsApplicationIdLogsRouteImport } from './routes/_app/projects/$projectId/applications/$applicationId/logs'
-import { Route as AppProjectsProjectIdApplicationsApplicationIdEnvRouteImport } from './routes/_app/projects/$projectId/applications/$applicationId/env'
-import { Route as AppProjectsProjectIdApplicationsApplicationIdDomainsRouteImport } from './routes/_app/projects/$projectId/applications/$applicationId/domains'
 import { Route as AppProjectsProjectIdApplicationsApplicationIdDeploymentsRouteImport } from './routes/_app/projects/$projectId/applications/$applicationId/deployments'
+import { Route as AppProjectsProjectIdApplicationsApplicationIdDomainsRouteImport } from './routes/_app/projects/$projectId/applications/$applicationId/domains'
+import { Route as AppProjectsProjectIdApplicationsApplicationIdEnvRouteImport } from './routes/_app/projects/$projectId/applications/$applicationId/env'
+import { Route as AppProjectsProjectIdApplicationsApplicationIdLogsRouteImport } from './routes/_app/projects/$projectId/applications/$applicationId/logs'
+import { Route as AppProjectsProjectIdApplicationsApplicationIdMetricsRouteImport } from './routes/_app/projects/$projectId/applications/$applicationId/metrics'
+import { Route as AppProjectsProjectIdApplicationsApplicationIdMountsRouteImport } from './routes/_app/projects/$projectId/applications/$applicationId/mounts'
+import { Route as AppProjectsProjectIdApplicationsApplicationIdPreviewsRouteImport } from './routes/_app/projects/$projectId/applications/$applicationId/previews'
+import { Route as AppProjectsProjectIdApplicationsApplicationIdSettingsRouteImport } from './routes/_app/projects/$projectId/applications/$applicationId/settings'
+import { Route as AppProjectsProjectIdApplicationsApplicationIdTasksRouteImport } from './routes/_app/projects/$projectId/applications/$applicationId/tasks'
+import { Route as AppProjectsProjectIdApplicationsApplicationIdTerminalRouteImport } from './routes/_app/projects/$projectId/applications/$applicationId/terminal'
 
-const SetupRoute = SetupRouteImport.update({
-  id: '/setup',
-  path: '/setup',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ResetPasswordRoute = ResetPasswordRouteImport.update({
-  id: '/reset-password',
-  path: '/reset-password',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
-  id: '/forgot-password',
-  path: '/forgot-password',
+const AppRoute = AppRouteImport.update({
+  id: '/_app',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AcceptInviteRoute = AcceptInviteRouteImport.update({
@@ -78,73 +67,29 @@ const AcceptInviteRoute = AcceptInviteRouteImport.update({
   path: '/accept-invite',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AppRoute = AppRouteImport.update({
-  id: '/_app',
+const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
+  id: '/forgot-password',
+  path: '/forgot-password',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DevThemeRoute = DevThemeRouteImport.update({
-  id: '/dev/theme',
-  path: '/dev/theme',
+const ResetPasswordRoute = ResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AppTemplatesRoute = AppTemplatesRouteImport.update({
-  id: '/templates',
-  path: '/templates',
-  getParentRoute: () => AppRoute,
+const SetupRoute = SetupRouteImport.update({
+  id: '/setup',
+  path: '/setup',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const AppTeamRoute = AppTeamRouteImport.update({
-  id: '/team',
-  path: '/team',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppServerRoute = AppServerRouteImport.update({
-  id: '/server',
-  path: '/server',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppQuotasRoute = AppQuotasRouteImport.update({
-  id: '/quotas',
-  path: '/quotas',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppProxyRoute = AppProxyRouteImport.update({
-  id: '/proxy',
-  path: '/proxy',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppNotificationsRoute = AppNotificationsRouteImport.update({
-  id: '/notifications',
-  path: '/notifications',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppGitRoute = AppGitRouteImport.update({
-  id: '/git',
-  path: '/git',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppDockerRoute = AppDockerRouteImport.update({
-  id: '/docker',
-  path: '/docker',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppDashboardRoute = AppDashboardRouteImport.update({
-  id: '/dashboard',
-  path: '/dashboard',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppCertificatesRoute = AppCertificatesRouteImport.update({
-  id: '/certificates',
-  path: '/certificates',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppAuditRoute = AppAuditRouteImport.update({
-  id: '/audit',
-  path: '/audit',
+const AppAboutRoute = AppAboutRouteImport.update({
+  id: '/about',
+  path: '/about',
   getParentRoute: () => AppRoute,
 } as any)
 const AppAccountRoute = AppAccountRouteImport.update({
@@ -152,14 +97,69 @@ const AppAccountRoute = AppAccountRouteImport.update({
   path: '/account',
   getParentRoute: () => AppRoute,
 } as any)
-const AppAboutRoute = AppAboutRouteImport.update({
-  id: '/about',
-  path: '/about',
+const AppAuditRoute = AppAuditRouteImport.update({
+  id: '/audit',
+  path: '/audit',
   getParentRoute: () => AppRoute,
 } as any)
-const AppRequestsIndexRoute = AppRequestsIndexRouteImport.update({
-  id: '/requests/',
-  path: '/requests/',
+const AppCertificatesRoute = AppCertificatesRouteImport.update({
+  id: '/certificates',
+  path: '/certificates',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDashboardRoute = AppDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDockerRoute = AppDockerRouteImport.update({
+  id: '/docker',
+  path: '/docker',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppGitRoute = AppGitRouteImport.update({
+  id: '/git',
+  path: '/git',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppNotificationsRoute = AppNotificationsRouteImport.update({
+  id: '/notifications',
+  path: '/notifications',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppProxyRoute = AppProxyRouteImport.update({
+  id: '/proxy',
+  path: '/proxy',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppQuotasRoute = AppQuotasRouteImport.update({
+  id: '/quotas',
+  path: '/quotas',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppServerRoute = AppServerRouteImport.update({
+  id: '/server',
+  path: '/server',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppTeamRoute = AppTeamRouteImport.update({
+  id: '/team',
+  path: '/team',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppTemplatesRoute = AppTemplatesRouteImport.update({
+  id: '/templates',
+  path: '/templates',
+  getParentRoute: () => AppRoute,
+} as any)
+const DevThemeRoute = DevThemeRouteImport.update({
+  id: '/dev/theme',
+  path: '/dev/theme',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppDeploymentsIndexRoute = AppDeploymentsIndexRouteImport.update({
+  id: '/deployments/',
+  path: '/deployments/',
   getParentRoute: () => AppRoute,
 } as any)
 const AppProjectsIndexRoute = AppProjectsIndexRouteImport.update({
@@ -167,9 +167,9 @@ const AppProjectsIndexRoute = AppProjectsIndexRouteImport.update({
   path: '/projects/',
   getParentRoute: () => AppRoute,
 } as any)
-const AppDeploymentsIndexRoute = AppDeploymentsIndexRouteImport.update({
-  id: '/deployments/',
-  path: '/deployments/',
+const AppProjectsProjectIdRoute = AppProjectsProjectIdRouteImport.update({
+  id: '/projects/$projectId',
+  path: '/projects/$projectId',
   getParentRoute: () => AppRoute,
 } as any)
 const AppProjectsNewRoute = AppProjectsNewRouteImport.update({
@@ -177,9 +177,9 @@ const AppProjectsNewRoute = AppProjectsNewRouteImport.update({
   path: '/projects/new',
   getParentRoute: () => AppRoute,
 } as any)
-const AppProjectsProjectIdRoute = AppProjectsProjectIdRouteImport.update({
-  id: '/projects/$projectId',
-  path: '/projects/$projectId',
+const AppRequestsIndexRoute = AppRequestsIndexRouteImport.update({
+  id: '/requests/',
+  path: '/requests/',
   getParentRoute: () => AppRoute,
 } as any)
 const AppProjectsProjectIdIndexRoute =
@@ -188,10 +188,10 @@ const AppProjectsProjectIdIndexRoute =
     path: '/',
     getParentRoute: () => AppProjectsProjectIdRoute,
   } as any)
-const AppProjectsProjectIdSettingsRoute =
-  AppProjectsProjectIdSettingsRouteImport.update({
-    id: '/settings',
-    path: '/settings',
+const AppProjectsProjectIdBackupsRoute =
+  AppProjectsProjectIdBackupsRouteImport.update({
+    id: '/backups',
+    path: '/backups',
     getParentRoute: () => AppProjectsProjectIdRoute,
   } as any)
 const AppProjectsProjectIdEnvRoute = AppProjectsProjectIdEnvRouteImport.update({
@@ -199,16 +199,10 @@ const AppProjectsProjectIdEnvRoute = AppProjectsProjectIdEnvRouteImport.update({
   path: '/env',
   getParentRoute: () => AppProjectsProjectIdRoute,
 } as any)
-const AppProjectsProjectIdBackupsRoute =
-  AppProjectsProjectIdBackupsRouteImport.update({
-    id: '/backups',
-    path: '/backups',
-    getParentRoute: () => AppProjectsProjectIdRoute,
-  } as any)
-const AppProjectsProjectIdDatabasesDatabaseIdRoute =
-  AppProjectsProjectIdDatabasesDatabaseIdRouteImport.update({
-    id: '/databases/$databaseId',
-    path: '/databases/$databaseId',
+const AppProjectsProjectIdSettingsRoute =
+  AppProjectsProjectIdSettingsRouteImport.update({
+    id: '/settings',
+    path: '/settings',
     getParentRoute: () => AppProjectsProjectIdRoute,
   } as any)
 const AppProjectsProjectIdApplicationsApplicationIdRoute =
@@ -217,58 +211,22 @@ const AppProjectsProjectIdApplicationsApplicationIdRoute =
     path: '/applications/$applicationId',
     getParentRoute: () => AppProjectsProjectIdRoute,
   } as any)
+const AppProjectsProjectIdDatabasesDatabaseIdRoute =
+  AppProjectsProjectIdDatabasesDatabaseIdRouteImport.update({
+    id: '/databases/$databaseId',
+    path: '/databases/$databaseId',
+    getParentRoute: () => AppProjectsProjectIdRoute,
+  } as any)
 const AppProjectsProjectIdApplicationsApplicationIdIndexRoute =
   AppProjectsProjectIdApplicationsApplicationIdIndexRouteImport.update({
     id: '/',
     path: '/',
     getParentRoute: () => AppProjectsProjectIdApplicationsApplicationIdRoute,
   } as any)
-const AppProjectsProjectIdApplicationsApplicationIdTerminalRoute =
-  AppProjectsProjectIdApplicationsApplicationIdTerminalRouteImport.update({
-    id: '/terminal',
-    path: '/terminal',
-    getParentRoute: () => AppProjectsProjectIdApplicationsApplicationIdRoute,
-  } as any)
-const AppProjectsProjectIdApplicationsApplicationIdTasksRoute =
-  AppProjectsProjectIdApplicationsApplicationIdTasksRouteImport.update({
-    id: '/tasks',
-    path: '/tasks',
-    getParentRoute: () => AppProjectsProjectIdApplicationsApplicationIdRoute,
-  } as any)
-const AppProjectsProjectIdApplicationsApplicationIdSettingsRoute =
-  AppProjectsProjectIdApplicationsApplicationIdSettingsRouteImport.update({
-    id: '/settings',
-    path: '/settings',
-    getParentRoute: () => AppProjectsProjectIdApplicationsApplicationIdRoute,
-  } as any)
-const AppProjectsProjectIdApplicationsApplicationIdPreviewsRoute =
-  AppProjectsProjectIdApplicationsApplicationIdPreviewsRouteImport.update({
-    id: '/previews',
-    path: '/previews',
-    getParentRoute: () => AppProjectsProjectIdApplicationsApplicationIdRoute,
-  } as any)
-const AppProjectsProjectIdApplicationsApplicationIdMountsRoute =
-  AppProjectsProjectIdApplicationsApplicationIdMountsRouteImport.update({
-    id: '/mounts',
-    path: '/mounts',
-    getParentRoute: () => AppProjectsProjectIdApplicationsApplicationIdRoute,
-  } as any)
-const AppProjectsProjectIdApplicationsApplicationIdMetricsRoute =
-  AppProjectsProjectIdApplicationsApplicationIdMetricsRouteImport.update({
-    id: '/metrics',
-    path: '/metrics',
-    getParentRoute: () => AppProjectsProjectIdApplicationsApplicationIdRoute,
-  } as any)
-const AppProjectsProjectIdApplicationsApplicationIdLogsRoute =
-  AppProjectsProjectIdApplicationsApplicationIdLogsRouteImport.update({
-    id: '/logs',
-    path: '/logs',
-    getParentRoute: () => AppProjectsProjectIdApplicationsApplicationIdRoute,
-  } as any)
-const AppProjectsProjectIdApplicationsApplicationIdEnvRoute =
-  AppProjectsProjectIdApplicationsApplicationIdEnvRouteImport.update({
-    id: '/env',
-    path: '/env',
+const AppProjectsProjectIdApplicationsApplicationIdDeploymentsRoute =
+  AppProjectsProjectIdApplicationsApplicationIdDeploymentsRouteImport.update({
+    id: '/deployments',
+    path: '/deployments',
     getParentRoute: () => AppProjectsProjectIdApplicationsApplicationIdRoute,
   } as any)
 const AppProjectsProjectIdApplicationsApplicationIdDomainsRoute =
@@ -277,10 +235,52 @@ const AppProjectsProjectIdApplicationsApplicationIdDomainsRoute =
     path: '/domains',
     getParentRoute: () => AppProjectsProjectIdApplicationsApplicationIdRoute,
   } as any)
-const AppProjectsProjectIdApplicationsApplicationIdDeploymentsRoute =
-  AppProjectsProjectIdApplicationsApplicationIdDeploymentsRouteImport.update({
-    id: '/deployments',
-    path: '/deployments',
+const AppProjectsProjectIdApplicationsApplicationIdEnvRoute =
+  AppProjectsProjectIdApplicationsApplicationIdEnvRouteImport.update({
+    id: '/env',
+    path: '/env',
+    getParentRoute: () => AppProjectsProjectIdApplicationsApplicationIdRoute,
+  } as any)
+const AppProjectsProjectIdApplicationsApplicationIdLogsRoute =
+  AppProjectsProjectIdApplicationsApplicationIdLogsRouteImport.update({
+    id: '/logs',
+    path: '/logs',
+    getParentRoute: () => AppProjectsProjectIdApplicationsApplicationIdRoute,
+  } as any)
+const AppProjectsProjectIdApplicationsApplicationIdMetricsRoute =
+  AppProjectsProjectIdApplicationsApplicationIdMetricsRouteImport.update({
+    id: '/metrics',
+    path: '/metrics',
+    getParentRoute: () => AppProjectsProjectIdApplicationsApplicationIdRoute,
+  } as any)
+const AppProjectsProjectIdApplicationsApplicationIdMountsRoute =
+  AppProjectsProjectIdApplicationsApplicationIdMountsRouteImport.update({
+    id: '/mounts',
+    path: '/mounts',
+    getParentRoute: () => AppProjectsProjectIdApplicationsApplicationIdRoute,
+  } as any)
+const AppProjectsProjectIdApplicationsApplicationIdPreviewsRoute =
+  AppProjectsProjectIdApplicationsApplicationIdPreviewsRouteImport.update({
+    id: '/previews',
+    path: '/previews',
+    getParentRoute: () => AppProjectsProjectIdApplicationsApplicationIdRoute,
+  } as any)
+const AppProjectsProjectIdApplicationsApplicationIdSettingsRoute =
+  AppProjectsProjectIdApplicationsApplicationIdSettingsRouteImport.update({
+    id: '/settings',
+    path: '/settings',
+    getParentRoute: () => AppProjectsProjectIdApplicationsApplicationIdRoute,
+  } as any)
+const AppProjectsProjectIdApplicationsApplicationIdTasksRoute =
+  AppProjectsProjectIdApplicationsApplicationIdTasksRouteImport.update({
+    id: '/tasks',
+    path: '/tasks',
+    getParentRoute: () => AppProjectsProjectIdApplicationsApplicationIdRoute,
+  } as any)
+const AppProjectsProjectIdApplicationsApplicationIdTerminalRoute =
+  AppProjectsProjectIdApplicationsApplicationIdTerminalRouteImport.update({
+    id: '/terminal',
+    path: '/terminal',
     getParentRoute: () => AppProjectsProjectIdApplicationsApplicationIdRoute,
   } as any)
 
@@ -563,39 +563,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/setup': {
-      id: '/setup'
-      path: '/setup'
-      fullPath: '/setup'
-      preLoaderRoute: typeof SetupRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/reset-password': {
-      id: '/reset-password'
-      path: '/reset-password'
-      fullPath: '/reset-password'
-      preLoaderRoute: typeof ResetPasswordRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/forgot-password': {
-      id: '/forgot-password'
-      path: '/forgot-password'
-      fullPath: '/forgot-password'
-      preLoaderRoute: typeof ForgotPasswordRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/accept-invite': {
-      id: '/accept-invite'
-      path: '/accept-invite'
-      fullPath: '/accept-invite'
-      preLoaderRoute: typeof AcceptInviteRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app': {
@@ -605,95 +577,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/accept-invite': {
+      id: '/accept-invite'
+      path: '/accept-invite'
+      fullPath: '/accept-invite'
+      preLoaderRoute: typeof AcceptInviteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/dev/theme': {
-      id: '/dev/theme'
-      path: '/dev/theme'
-      fullPath: '/dev/theme'
-      preLoaderRoute: typeof DevThemeRouteImport
+    '/forgot-password': {
+      id: '/forgot-password'
+      path: '/forgot-password'
+      fullPath: '/forgot-password'
+      preLoaderRoute: typeof ForgotPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_app/templates': {
-      id: '/_app/templates'
-      path: '/templates'
-      fullPath: '/templates'
-      preLoaderRoute: typeof AppTemplatesRouteImport
-      parentRoute: typeof AppRoute
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/_app/team': {
-      id: '/_app/team'
-      path: '/team'
-      fullPath: '/team'
-      preLoaderRoute: typeof AppTeamRouteImport
-      parentRoute: typeof AppRoute
+    '/reset-password': {
+      id: '/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof ResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/_app/server': {
-      id: '/_app/server'
-      path: '/server'
-      fullPath: '/server'
-      preLoaderRoute: typeof AppServerRouteImport
-      parentRoute: typeof AppRoute
+    '/setup': {
+      id: '/setup'
+      path: '/setup'
+      fullPath: '/setup'
+      preLoaderRoute: typeof SetupRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/_app/quotas': {
-      id: '/_app/quotas'
-      path: '/quotas'
-      fullPath: '/quotas'
-      preLoaderRoute: typeof AppQuotasRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/proxy': {
-      id: '/_app/proxy'
-      path: '/proxy'
-      fullPath: '/proxy'
-      preLoaderRoute: typeof AppProxyRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/notifications': {
-      id: '/_app/notifications'
-      path: '/notifications'
-      fullPath: '/notifications'
-      preLoaderRoute: typeof AppNotificationsRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/git': {
-      id: '/_app/git'
-      path: '/git'
-      fullPath: '/git'
-      preLoaderRoute: typeof AppGitRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/docker': {
-      id: '/_app/docker'
-      path: '/docker'
-      fullPath: '/docker'
-      preLoaderRoute: typeof AppDockerRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/dashboard': {
-      id: '/_app/dashboard'
-      path: '/dashboard'
-      fullPath: '/dashboard'
-      preLoaderRoute: typeof AppDashboardRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/certificates': {
-      id: '/_app/certificates'
-      path: '/certificates'
-      fullPath: '/certificates'
-      preLoaderRoute: typeof AppCertificatesRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/audit': {
-      id: '/_app/audit'
-      path: '/audit'
-      fullPath: '/audit'
-      preLoaderRoute: typeof AppAuditRouteImport
+    '/_app/about': {
+      id: '/_app/about'
+      path: '/about'
+      fullPath: '/about'
+      preLoaderRoute: typeof AppAboutRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/account': {
@@ -703,18 +626,95 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAccountRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/about': {
-      id: '/_app/about'
-      path: '/about'
-      fullPath: '/about'
-      preLoaderRoute: typeof AppAboutRouteImport
+    '/_app/audit': {
+      id: '/_app/audit'
+      path: '/audit'
+      fullPath: '/audit'
+      preLoaderRoute: typeof AppAuditRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/requests/': {
-      id: '/_app/requests/'
-      path: '/requests'
-      fullPath: '/requests/'
-      preLoaderRoute: typeof AppRequestsIndexRouteImport
+    '/_app/certificates': {
+      id: '/_app/certificates'
+      path: '/certificates'
+      fullPath: '/certificates'
+      preLoaderRoute: typeof AppCertificatesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/dashboard': {
+      id: '/_app/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof AppDashboardRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/docker': {
+      id: '/_app/docker'
+      path: '/docker'
+      fullPath: '/docker'
+      preLoaderRoute: typeof AppDockerRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/git': {
+      id: '/_app/git'
+      path: '/git'
+      fullPath: '/git'
+      preLoaderRoute: typeof AppGitRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/notifications': {
+      id: '/_app/notifications'
+      path: '/notifications'
+      fullPath: '/notifications'
+      preLoaderRoute: typeof AppNotificationsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/proxy': {
+      id: '/_app/proxy'
+      path: '/proxy'
+      fullPath: '/proxy'
+      preLoaderRoute: typeof AppProxyRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/quotas': {
+      id: '/_app/quotas'
+      path: '/quotas'
+      fullPath: '/quotas'
+      preLoaderRoute: typeof AppQuotasRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/server': {
+      id: '/_app/server'
+      path: '/server'
+      fullPath: '/server'
+      preLoaderRoute: typeof AppServerRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/team': {
+      id: '/_app/team'
+      path: '/team'
+      fullPath: '/team'
+      preLoaderRoute: typeof AppTeamRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/templates': {
+      id: '/_app/templates'
+      path: '/templates'
+      fullPath: '/templates'
+      preLoaderRoute: typeof AppTemplatesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/dev/theme': {
+      id: '/dev/theme'
+      path: '/dev/theme'
+      fullPath: '/dev/theme'
+      preLoaderRoute: typeof DevThemeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_app/deployments/': {
+      id: '/_app/deployments/'
+      path: '/deployments'
+      fullPath: '/deployments/'
+      preLoaderRoute: typeof AppDeploymentsIndexRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/projects/': {
@@ -724,11 +724,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProjectsIndexRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/deployments/': {
-      id: '/_app/deployments/'
-      path: '/deployments'
-      fullPath: '/deployments/'
-      preLoaderRoute: typeof AppDeploymentsIndexRouteImport
+    '/_app/projects/$projectId': {
+      id: '/_app/projects/$projectId'
+      path: '/projects/$projectId'
+      fullPath: '/projects/$projectId'
+      preLoaderRoute: typeof AppProjectsProjectIdRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/projects/new': {
@@ -738,11 +738,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProjectsNewRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/projects/$projectId': {
-      id: '/_app/projects/$projectId'
-      path: '/projects/$projectId'
-      fullPath: '/projects/$projectId'
-      preLoaderRoute: typeof AppProjectsProjectIdRouteImport
+    '/_app/requests/': {
+      id: '/_app/requests/'
+      path: '/requests'
+      fullPath: '/requests/'
+      preLoaderRoute: typeof AppRequestsIndexRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/projects/$projectId/': {
@@ -752,11 +752,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProjectsProjectIdIndexRouteImport
       parentRoute: typeof AppProjectsProjectIdRoute
     }
-    '/_app/projects/$projectId/settings': {
-      id: '/_app/projects/$projectId/settings'
-      path: '/settings'
-      fullPath: '/projects/$projectId/settings'
-      preLoaderRoute: typeof AppProjectsProjectIdSettingsRouteImport
+    '/_app/projects/$projectId/backups': {
+      id: '/_app/projects/$projectId/backups'
+      path: '/backups'
+      fullPath: '/projects/$projectId/backups'
+      preLoaderRoute: typeof AppProjectsProjectIdBackupsRouteImport
       parentRoute: typeof AppProjectsProjectIdRoute
     }
     '/_app/projects/$projectId/env': {
@@ -766,18 +766,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProjectsProjectIdEnvRouteImport
       parentRoute: typeof AppProjectsProjectIdRoute
     }
-    '/_app/projects/$projectId/backups': {
-      id: '/_app/projects/$projectId/backups'
-      path: '/backups'
-      fullPath: '/projects/$projectId/backups'
-      preLoaderRoute: typeof AppProjectsProjectIdBackupsRouteImport
-      parentRoute: typeof AppProjectsProjectIdRoute
-    }
-    '/_app/projects/$projectId/databases/$databaseId': {
-      id: '/_app/projects/$projectId/databases/$databaseId'
-      path: '/databases/$databaseId'
-      fullPath: '/projects/$projectId/databases/$databaseId'
-      preLoaderRoute: typeof AppProjectsProjectIdDatabasesDatabaseIdRouteImport
+    '/_app/projects/$projectId/settings': {
+      id: '/_app/projects/$projectId/settings'
+      path: '/settings'
+      fullPath: '/projects/$projectId/settings'
+      preLoaderRoute: typeof AppProjectsProjectIdSettingsRouteImport
       parentRoute: typeof AppProjectsProjectIdRoute
     }
     '/_app/projects/$projectId/applications/$applicationId': {
@@ -787,6 +780,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProjectsProjectIdApplicationsApplicationIdRouteImport
       parentRoute: typeof AppProjectsProjectIdRoute
     }
+    '/_app/projects/$projectId/databases/$databaseId': {
+      id: '/_app/projects/$projectId/databases/$databaseId'
+      path: '/databases/$databaseId'
+      fullPath: '/projects/$projectId/databases/$databaseId'
+      preLoaderRoute: typeof AppProjectsProjectIdDatabasesDatabaseIdRouteImport
+      parentRoute: typeof AppProjectsProjectIdRoute
+    }
     '/_app/projects/$projectId/applications/$applicationId/': {
       id: '/_app/projects/$projectId/applications/$applicationId/'
       path: '/'
@@ -794,60 +794,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProjectsProjectIdApplicationsApplicationIdIndexRouteImport
       parentRoute: typeof AppProjectsProjectIdApplicationsApplicationIdRoute
     }
-    '/_app/projects/$projectId/applications/$applicationId/terminal': {
-      id: '/_app/projects/$projectId/applications/$applicationId/terminal'
-      path: '/terminal'
-      fullPath: '/projects/$projectId/applications/$applicationId/terminal'
-      preLoaderRoute: typeof AppProjectsProjectIdApplicationsApplicationIdTerminalRouteImport
-      parentRoute: typeof AppProjectsProjectIdApplicationsApplicationIdRoute
-    }
-    '/_app/projects/$projectId/applications/$applicationId/tasks': {
-      id: '/_app/projects/$projectId/applications/$applicationId/tasks'
-      path: '/tasks'
-      fullPath: '/projects/$projectId/applications/$applicationId/tasks'
-      preLoaderRoute: typeof AppProjectsProjectIdApplicationsApplicationIdTasksRouteImport
-      parentRoute: typeof AppProjectsProjectIdApplicationsApplicationIdRoute
-    }
-    '/_app/projects/$projectId/applications/$applicationId/settings': {
-      id: '/_app/projects/$projectId/applications/$applicationId/settings'
-      path: '/settings'
-      fullPath: '/projects/$projectId/applications/$applicationId/settings'
-      preLoaderRoute: typeof AppProjectsProjectIdApplicationsApplicationIdSettingsRouteImport
-      parentRoute: typeof AppProjectsProjectIdApplicationsApplicationIdRoute
-    }
-    '/_app/projects/$projectId/applications/$applicationId/previews': {
-      id: '/_app/projects/$projectId/applications/$applicationId/previews'
-      path: '/previews'
-      fullPath: '/projects/$projectId/applications/$applicationId/previews'
-      preLoaderRoute: typeof AppProjectsProjectIdApplicationsApplicationIdPreviewsRouteImport
-      parentRoute: typeof AppProjectsProjectIdApplicationsApplicationIdRoute
-    }
-    '/_app/projects/$projectId/applications/$applicationId/mounts': {
-      id: '/_app/projects/$projectId/applications/$applicationId/mounts'
-      path: '/mounts'
-      fullPath: '/projects/$projectId/applications/$applicationId/mounts'
-      preLoaderRoute: typeof AppProjectsProjectIdApplicationsApplicationIdMountsRouteImport
-      parentRoute: typeof AppProjectsProjectIdApplicationsApplicationIdRoute
-    }
-    '/_app/projects/$projectId/applications/$applicationId/metrics': {
-      id: '/_app/projects/$projectId/applications/$applicationId/metrics'
-      path: '/metrics'
-      fullPath: '/projects/$projectId/applications/$applicationId/metrics'
-      preLoaderRoute: typeof AppProjectsProjectIdApplicationsApplicationIdMetricsRouteImport
-      parentRoute: typeof AppProjectsProjectIdApplicationsApplicationIdRoute
-    }
-    '/_app/projects/$projectId/applications/$applicationId/logs': {
-      id: '/_app/projects/$projectId/applications/$applicationId/logs'
-      path: '/logs'
-      fullPath: '/projects/$projectId/applications/$applicationId/logs'
-      preLoaderRoute: typeof AppProjectsProjectIdApplicationsApplicationIdLogsRouteImport
-      parentRoute: typeof AppProjectsProjectIdApplicationsApplicationIdRoute
-    }
-    '/_app/projects/$projectId/applications/$applicationId/env': {
-      id: '/_app/projects/$projectId/applications/$applicationId/env'
-      path: '/env'
-      fullPath: '/projects/$projectId/applications/$applicationId/env'
-      preLoaderRoute: typeof AppProjectsProjectIdApplicationsApplicationIdEnvRouteImport
+    '/_app/projects/$projectId/applications/$applicationId/deployments': {
+      id: '/_app/projects/$projectId/applications/$applicationId/deployments'
+      path: '/deployments'
+      fullPath: '/projects/$projectId/applications/$applicationId/deployments'
+      preLoaderRoute: typeof AppProjectsProjectIdApplicationsApplicationIdDeploymentsRouteImport
       parentRoute: typeof AppProjectsProjectIdApplicationsApplicationIdRoute
     }
     '/_app/projects/$projectId/applications/$applicationId/domains': {
@@ -857,11 +808,60 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProjectsProjectIdApplicationsApplicationIdDomainsRouteImport
       parentRoute: typeof AppProjectsProjectIdApplicationsApplicationIdRoute
     }
-    '/_app/projects/$projectId/applications/$applicationId/deployments': {
-      id: '/_app/projects/$projectId/applications/$applicationId/deployments'
-      path: '/deployments'
-      fullPath: '/projects/$projectId/applications/$applicationId/deployments'
-      preLoaderRoute: typeof AppProjectsProjectIdApplicationsApplicationIdDeploymentsRouteImport
+    '/_app/projects/$projectId/applications/$applicationId/env': {
+      id: '/_app/projects/$projectId/applications/$applicationId/env'
+      path: '/env'
+      fullPath: '/projects/$projectId/applications/$applicationId/env'
+      preLoaderRoute: typeof AppProjectsProjectIdApplicationsApplicationIdEnvRouteImport
+      parentRoute: typeof AppProjectsProjectIdApplicationsApplicationIdRoute
+    }
+    '/_app/projects/$projectId/applications/$applicationId/logs': {
+      id: '/_app/projects/$projectId/applications/$applicationId/logs'
+      path: '/logs'
+      fullPath: '/projects/$projectId/applications/$applicationId/logs'
+      preLoaderRoute: typeof AppProjectsProjectIdApplicationsApplicationIdLogsRouteImport
+      parentRoute: typeof AppProjectsProjectIdApplicationsApplicationIdRoute
+    }
+    '/_app/projects/$projectId/applications/$applicationId/metrics': {
+      id: '/_app/projects/$projectId/applications/$applicationId/metrics'
+      path: '/metrics'
+      fullPath: '/projects/$projectId/applications/$applicationId/metrics'
+      preLoaderRoute: typeof AppProjectsProjectIdApplicationsApplicationIdMetricsRouteImport
+      parentRoute: typeof AppProjectsProjectIdApplicationsApplicationIdRoute
+    }
+    '/_app/projects/$projectId/applications/$applicationId/mounts': {
+      id: '/_app/projects/$projectId/applications/$applicationId/mounts'
+      path: '/mounts'
+      fullPath: '/projects/$projectId/applications/$applicationId/mounts'
+      preLoaderRoute: typeof AppProjectsProjectIdApplicationsApplicationIdMountsRouteImport
+      parentRoute: typeof AppProjectsProjectIdApplicationsApplicationIdRoute
+    }
+    '/_app/projects/$projectId/applications/$applicationId/previews': {
+      id: '/_app/projects/$projectId/applications/$applicationId/previews'
+      path: '/previews'
+      fullPath: '/projects/$projectId/applications/$applicationId/previews'
+      preLoaderRoute: typeof AppProjectsProjectIdApplicationsApplicationIdPreviewsRouteImport
+      parentRoute: typeof AppProjectsProjectIdApplicationsApplicationIdRoute
+    }
+    '/_app/projects/$projectId/applications/$applicationId/settings': {
+      id: '/_app/projects/$projectId/applications/$applicationId/settings'
+      path: '/settings'
+      fullPath: '/projects/$projectId/applications/$applicationId/settings'
+      preLoaderRoute: typeof AppProjectsProjectIdApplicationsApplicationIdSettingsRouteImport
+      parentRoute: typeof AppProjectsProjectIdApplicationsApplicationIdRoute
+    }
+    '/_app/projects/$projectId/applications/$applicationId/tasks': {
+      id: '/_app/projects/$projectId/applications/$applicationId/tasks'
+      path: '/tasks'
+      fullPath: '/projects/$projectId/applications/$applicationId/tasks'
+      preLoaderRoute: typeof AppProjectsProjectIdApplicationsApplicationIdTasksRouteImport
+      parentRoute: typeof AppProjectsProjectIdApplicationsApplicationIdRoute
+    }
+    '/_app/projects/$projectId/applications/$applicationId/terminal': {
+      id: '/_app/projects/$projectId/applications/$applicationId/terminal'
+      path: '/terminal'
+      fullPath: '/projects/$projectId/applications/$applicationId/terminal'
+      preLoaderRoute: typeof AppProjectsProjectIdApplicationsApplicationIdTerminalRouteImport
       parentRoute: typeof AppProjectsProjectIdApplicationsApplicationIdRoute
     }
   }

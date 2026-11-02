@@ -20,10 +20,7 @@ interface InboundMessage {
 type MessageHandler = (event: string, data: unknown) => void;
 
 export type ConnectionState =
-  | "connected"
-  | "connecting"
-  | "disconnected"
-  | "failed";
+  "connected" | "connecting" | "disconnected" | "failed";
 
 // Singleton WebSocket state
 let ws: WebSocket | null = null;

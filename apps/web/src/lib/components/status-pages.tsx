@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Link, useRouter } from "@tanstack/react-router";
+import type { ErrorComponentProps } from "@tanstack/react-router";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { BeluneLogo } from "@/lib/components/belune-logo";
 import { useInstanceName } from "@/lib/hooks/use-features";
@@ -79,8 +80,10 @@ export function NotFoundPage() {
   );
 }
 
-export function RootErrorBoundary({ error }: { error: Error }) {
+export function RootErrorBoundary({ error }: ErrorComponentProps) {
   const router = useRouter();
+  // The router types a boundary's error as unknown — anything can be thrown.
+  const message = error instanceof Error ? error.message : undefined;
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   return (
     <StatusPageFrame
@@ -104,13 +107,13 @@ export function RootErrorBoundary({ error }: { error: Error }) {
         </Link>
       </div>
 
-      {error.message && (
+      {message && (
         <details className="mt-6 text-left">
           <summary className="text-text-faint hover:text-foreground cursor-pointer text-xs">
             Technical details
           </summary>
           <pre className="bg-elev text-text-muted mt-2 max-h-48 overflow-auto rounded-lg p-3 text-left font-mono text-xs">
-            {error.message}
+            {message}
           </pre>
         </details>
       )}

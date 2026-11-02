@@ -48,8 +48,8 @@ A CI check enforces this on every pull request.
 
 **Prerequisites**
 
-- Go 1.25+
-- Node.js 22+
+- Go 1.26+
+- Node.js 24+
 - Docker and Docker Compose
 - [Task](https://taskfile.dev/) — `go install github.com/go-task/task/v3/cmd/task@latest`
 - [Air](https://github.com/air-verse/air) — `go install github.com/air-verse/air@latest`

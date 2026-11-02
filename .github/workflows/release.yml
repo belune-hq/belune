@@ -53,9 +53,13 @@ jobs:
           go vet ./...
           go test -short -count=1 ./...
 
+      # Must be the Node the image's frontend stage uses (Dockerfile, "FROM
+      # node:...-alpine AS frontend"). This job gates `publish`, so a different
+      # Node here means the gate green-lights a build that is not the one
+      # published.
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
 

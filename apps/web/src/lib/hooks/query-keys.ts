@@ -303,6 +303,7 @@ export const queryKeys = {
     status: ["proxy", "crowdsec", "status"] as const,
     decisions: ["proxy", "crowdsec", "decisions"] as const,
     allowlist: ["proxy", "crowdsec", "allowlist"] as const,
+    history: ["proxy", "crowdsec", "history"] as const,
   },
   maintenanceQueue: ["maintenance", "queue"] as const,
   maintenancePlatformLogs: ["maintenance", "platform-logs"] as const,

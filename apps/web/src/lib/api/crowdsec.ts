@@ -5,6 +5,7 @@ import type {
   CrowdSecPolicy,
   CrowdSecStatus,
 } from "@/lib/types";
+import { listAuditLogs } from "./audit-logs";
 import { api } from "./client";
 
 const BASE = "/maintenance/proxy/crowdsec";
@@ -66,4 +67,13 @@ export function setCrowdSecAutoban(policy: CrowdSecPolicy) {
 
 export function rotateCrowdSecKey() {
   return api.post<CrowdSecStatus>(`${BASE}/rotate-key`);
+}
+
+/**
+ * What happened on this tab, newest first, from the audit log. Operator actions
+ * and the automatic bans are both written there with resource type "crowdsec", so
+ * the history needs no storage of its own.
+ */
+export function listCrowdSecHistory(limit = 25) {
+  return listAuditLogs({ resource_type: "crowdsec", limit, offset: 0 });
 }

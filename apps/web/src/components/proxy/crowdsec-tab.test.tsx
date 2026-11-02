@@ -28,6 +28,7 @@ const h = vi.hoisted(() => {
       status: undefined as unknown,
       decisions: [] as unknown[],
       allowlist: [] as unknown[],
+      history: [] as unknown[],
       wafEnabled: true,
     },
   };
@@ -41,6 +42,11 @@ vi.mock("@/lib/hooks/use-crowdsec", () => ({
   }),
   useCrowdSecDecisions: () => ({
     data: { decisions: h.state.decisions },
+    isLoading: false,
+    error: null,
+  }),
+  useCrowdSecHistory: () => ({
+    data: { items: h.state.history, total: h.state.history.length },
     isLoading: false,
     error: null,
   }),
@@ -124,6 +130,7 @@ describe("CrowdSecTab", () => {
     h.state.status = base();
     h.state.decisions = [];
     h.state.allowlist = [];
+    h.state.history = [];
     h.state.wafEnabled = true;
   });
 
@@ -233,6 +240,61 @@ describe("CrowdSecTab", () => {
       screen.getByRole("button", { name: /Rotate the bouncer key/ }),
     );
     expect(rotate).toHaveBeenCalled();
+  });
+
+  describe("history", () => {
+    const entry = (over: Record<string, unknown>) => ({
+      id: "1",
+      user_id: null,
+      action: "crowdsec_ban",
+      resource_type: "crowdsec",
+      resource_id: "203.0.113.9",
+      details: null,
+      ip_address: null,
+      created_at: new Date().toISOString(),
+      ...over,
+    });
+
+    it("says an automatic ban was Belune's, and names the operator on a manual one", () => {
+      h.state.status = on();
+      h.state.history = [
+        entry({
+          id: "a",
+          action: "crowdsec_autoban",
+          details: { requests: 12 },
+        }),
+        entry({
+          id: "b",
+          resource_id: "198.51.100.4",
+          user_email: "admin@example.com",
+        }),
+      ];
+      render(<CrowdSecTab />);
+      expect(screen.getByText("Belune (automatic)")).toBeTruthy();
+      expect(screen.getByText("admin@example.com")).toBeTruthy();
+      expect(screen.getByText("Banned automatically")).toBeTruthy();
+    });
+
+    it("says so when nothing has happened yet", () => {
+      h.state.status = on();
+      render(<CrowdSecTab />);
+      expect(screen.getByText("Nothing yet.")).toBeTruthy();
+    });
+  });
+
+  describe("summary", () => {
+    it("counts the bans in force and the automatic ones among them", () => {
+      h.state.status = on();
+      h.state.decisions = [
+        decision({ id: 1, source: "waf" }),
+        decision({ id: 2, source: "dashboard", value: "198.51.100.4" }),
+      ];
+      render(<CrowdSecTab />);
+      expect(screen.getByText("Bans in force")).toBeTruthy();
+      expect(
+        screen.getByText("1 automatic, 1 by an operator or cscli."),
+      ).toBeTruthy();
+    });
   });
 
   describe("bans", () => {

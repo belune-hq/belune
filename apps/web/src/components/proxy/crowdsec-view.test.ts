@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type {
+  AuditLog,
+  CrowdSecDecision,
   CrowdSecAutobanStatus,
   CrowdSecLocalApi,
   CrowdSecPolicy,
@@ -12,7 +14,9 @@ import {
   bouncerNotice,
   crowdSecEnablePoints,
   describeAutoban,
+  describeHistory,
   describeSkipped,
+  summarizeCrowdSec,
   describeCrowdSec,
   describeYourAddress,
   isBanTarget,
@@ -446,5 +450,182 @@ describe("addedAt", () => {
     expect(addedAt("")).toBeNull();
     expect(addedAt(undefined)).toBeNull();
     expect(addedAt("not a date")).toBeNull();
+  });
+});
+
+describe("summarizeCrowdSec", () => {
+  const on = (over: Partial<CrowdSecStatus> = {}) =>
+    status({ enabled: true, state: { active: true, hosts: 2 }, ...over });
+  const tile = (stats: ReturnType<typeof summarizeCrowdSec>, key: string) =>
+    stats.find((s) => s.key === key)!;
+  const ban = (
+    id: number,
+    source: CrowdSecDecision["source"],
+  ): CrowdSecDecision => ({
+    id,
+    value: `203.0.113.${id}`,
+    scope: "ip",
+    source,
+    reason: "",
+    created_at: secondsAgo(60),
+    expires_at: secondsAgo(-3600),
+  });
+
+  it("says a working bouncer is connected, and when it last pulled", () => {
+    const b = tile(summarizeCrowdSec(on(), [], NOW), "bouncer");
+    expect(b.value).toBe("Connected");
+    expect(b.tone).toBe("ready");
+    expect(b.hint).toBe("Last pulled under a minute ago.");
+  });
+
+  it("keeps off, unreachable, stale and idle apart", () => {
+    const v = (s: CrowdSecStatus) =>
+      tile(summarizeCrowdSec(s, [], NOW), "bouncer").value;
+    expect(v(status())).toBe("Off");
+    expect(v(on({ local_api: api({ reachable: false }) }))).toBe("Unreachable");
+    expect(v(on({ local_api: api({ last_pull: secondsAgo(600) }) }))).toBe(
+      "Not pulling bans",
+    );
+    expect(v(on({ state: { active: false, hosts: 0 } }))).toBe("Idle");
+  });
+
+  it("counts the automatic bans among the bans in force", () => {
+    const stats = summarizeCrowdSec(
+      on(),
+      [ban(1, "waf"), ban(2, "waf"), ban(3, "dashboard")],
+      NOW,
+    );
+    expect(tile(stats, "bans").value).toBe("3");
+    expect(tile(stats, "bans").hint).toBe(
+      "2 automatic, 1 by an operator or cscli.",
+    );
+  });
+
+  it("does not read an unreadable ban list as no bans", () => {
+    const b = tile(summarizeCrowdSec(on(), undefined, NOW), "bans");
+    expect(b.value).toBe("Unknown");
+  });
+
+  it("states the policy, and that the check is not running while it is off", () => {
+    const off = summarizeCrowdSec(on(), [], NOW);
+    expect(tile(off, "automatic").value).toBe("Off");
+    expect(tile(off, "check").value).toBe("Not running");
+
+    const p = on({
+      autoban: {
+        policy: policy({ enabled: true }),
+        status: run({ last_run: secondsAgo(150) }),
+        categories: [],
+      },
+    });
+    const stats = summarizeCrowdSec(p, [], NOW);
+    expect(tile(stats, "automatic").hint).toBe(
+      "10 tripped requests in 10 minutes, banned for 60 minutes.",
+    );
+    expect(tile(stats, "check").value).toBe("3 minutes ago");
+  });
+
+  it("surfaces skipped, capped and a failed check instead of dropping them", () => {
+    const base = { policy: policy({ enabled: true }), categories: [] };
+    const skipped = summarizeCrowdSec(
+      on({
+        autoban: {
+          ...base,
+          status: run({ last_run: secondsAgo(5), skipped: 2 }),
+        },
+      }),
+      [],
+      NOW,
+    );
+    expect(tile(skipped, "check").hint).toBe("2 addresses left alone.");
+
+    const capped = summarizeCrowdSec(
+      on({
+        autoban: {
+          ...base,
+          status: run({ last_run: secondsAgo(5), capped: true }),
+        },
+      }),
+      [],
+      NOW,
+    );
+    expect(tile(capped, "check").tone).toBe("attention");
+    expect(tile(capped, "check").hint).toMatch(/limit of 25 bans/);
+
+    const failed = summarizeCrowdSec(
+      on({
+        autoban: { ...base, status: run({ last_error: "database is locked" }) },
+      }),
+      [],
+      NOW,
+    );
+    expect(tile(failed, "check").value).toBe("Failed");
+    expect(tile(failed, "check").hint).toBe("database is locked");
+  });
+});
+
+describe("describeHistory", () => {
+  const log = (over: Partial<AuditLog>): AuditLog => ({
+    id: "1",
+    user_id: null,
+    action: "crowdsec_ban",
+    resource_type: "crowdsec",
+    resource_id: "203.0.113.9",
+    details: null,
+    ip_address: null,
+    created_at: secondsAgo(10),
+    ...over,
+  });
+
+  it("attributes an automatic ban to Belune, not to a blank", () => {
+    const e = describeHistory(
+      log({
+        action: "crowdsec_autoban",
+        details: {
+          requests: 14,
+          categories: ["attack-sqli"],
+          window_minutes: 10,
+          duration: "1h0m0s",
+        },
+      }),
+    );
+    expect(e.actor).toEqual({ kind: "system", label: "Belune (automatic)" });
+    expect(e.what).toBe("Banned automatically");
+    expect(e.detail).toBe("14 requests tripped attack-sqli in 10 minutes");
+  });
+
+  it("does not call an operator whose account was deleted Belune", () => {
+    const e = describeHistory(log({ action: "crowdsec_ban", user_id: null }));
+    expect(e.actor).toEqual({ kind: "removed", label: "A removed user" });
+  });
+
+  it("names the operator, or the token when there is no session", () => {
+    expect(
+      describeHistory(log({ user_email: "a@example.com" })).actor.label,
+    ).toBe("a@example.com");
+    expect(describeHistory(log({ token_name: "ci" })).actor).toEqual({
+      kind: "token",
+      label: "ci (API token)",
+    });
+  });
+
+  it("puts the duration and the operator's own words in the detail", () => {
+    const e = describeHistory(
+      log({
+        user_email: "a@example.com",
+        details: { duration: "24h", reason: "belune: scanning /admin" },
+      }),
+    );
+    expect(e.what).toBe("Banned");
+    expect(e.target).toBe("203.0.113.9");
+    expect(e.detail).toBe("for 24h; scanning /admin");
+  });
+
+  it("falls back to the raw action rather than hiding an unknown one", () => {
+    expect(
+      describeHistory(
+        log({ action: "crowdsec_future_thing", user_email: "a@b.c" }),
+      ).what,
+    ).toBe("crowdsec_future_thing");
   });
 });

@@ -334,7 +334,7 @@ func TestRealCaddy_WAF_AcceptsEveryExclusionShape(t *testing.T) {
 	assert.Contains(t, string(route), "ruleRemoveTargetById=942290;REQUEST_COOKIES:ph_phc_x_posthog")
 
 	// The same set again is a read: a write is a reload.
-	same, err := routeJSONEqual(route, buildWAFRoute(wafHosts(cfg.Hosts), exclusions, wafBlockingHosts(wafHosts(cfg.Hosts), cfg.BlockingHosts)))
+	same, err := routeJSONEqual(route, buildWAFRoute(wafHosts(cfg.Hosts), wafHosts(cfg.Exempt), exclusions, wafBlockingHosts(wafHosts(cfg.Hosts), cfg.BlockingHosts)))
 	require.NoError(t, err)
 	assert.True(t, same, "the route Caddy holds differs from what would be written again, so every pass would reload")
 
@@ -344,4 +344,44 @@ func TestRealCaddy_WAF_AcceptsEveryExclusionShape(t *testing.T) {
 	route, _, err = c.fetchRouteByID(ctx, wafRouteID)
 	require.NoError(t, err)
 	assert.NotContains(t, string(route), "ruleRemoveTargetById")
+}
+
+// A wildcard application host covers the dashboard when the dashboard is served on
+// a name under it. The route must still inspect the application behind the
+// wildcard and must not inspect the dashboard.
+//
+// The signal is blocking mode, because it is visible from the client: the same
+// attack is refused on a name the wildcard covers and is not refused on the
+// dashboard. Had the dashboard been matched by the route it would be refused too,
+// so the second assertion fails without the `not` matcher.
+func TestRealCaddy_WAF_AWildcardDoesNotCoverTheDashboard(t *testing.T) {
+	rig := newWAFRig(t)
+	ctx := context.Background()
+
+	const wild, shop, dash = "*.waf-wild.belune.local", "shop.waf-wild.belune.local", "dash.waf-wild.belune.local"
+	require.NoError(t, rig.c.SyncWAF(ctx, proxy.WAFConfig{
+		Enabled: true, Hosts: []string{wild}, Exempt: []string{dash}, BlockingHosts: []string{wild},
+	}), "Caddy refused the exemption")
+
+	attack := "/search?q=%3Cscript%3Ealert(1)%3C/script%3E&id=1%27%20OR%20%271%27=%271&x=../../etc/passwd"
+	get := func(host string) int {
+		req, err := http.NewRequest("GET", rig.httpURL+attack, nil)
+		require.NoError(t, err)
+		req.Host = host
+		resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+		require.NoError(t, err)
+		_ = resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	assert.Equal(t, http.StatusForbidden, get(shop), "a name the wildcard covers is still inspected, and enforced on")
+	assert.NotEqual(t, http.StatusForbidden, get(dash), "the dashboard sits under the wildcard and must not be behind the WAF")
+
+	// A second sync of the same config has nothing to write: the route Caddy holds
+	// is the one this builds, `not` matcher included.
+	routes, err := rig.c.fetchRawRoutes(ctx)
+	require.NoError(t, err)
+	same, err := routeJSONEqual(routes[0], buildWAFRoute([]string{wild}, []string{dash}, nil, wafBlockingHosts([]string{wild}, []string{wild})))
+	require.NoError(t, err)
+	assert.True(t, same)
 }

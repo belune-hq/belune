@@ -391,13 +391,15 @@ func (h *TaskHandler) provisionDBContainer(ctx context.Context, rt runtime.Conta
 		return fmt.Errorf("start container: %w", err)
 	}
 
-	h.Queries.UpdateDatabaseAfterProvision(ctx, generated.UpdateDatabaseAfterProvisionParams{
+	if _, err := h.Queries.UpdateDatabaseAfterProvision(ctx, generated.UpdateDatabaseAfterProvisionParams{
 		ID:           db.ID,
 		Status:       status.DatabaseRunning,
 		InternalHost: pgtype.Text{String: containerName, Valid: true},
 		InternalPort: pgtype.Int4{Int32: port, Valid: true},
 		HostPort:     hostPortCol,
-	})
+	}); err != nil {
+		return fmt.Errorf("record the provisioned database: %w", err)
+	}
 	return nil
 }
 
@@ -427,8 +429,10 @@ func freeLoopbackPort() (int32, error) {
 
 func (h *TaskHandler) failDatabase(ctx context.Context, dbID pgtype.UUID, errMsg string) {
 	slog.Error("database task failed", "database_id", fmt.Sprintf("%v", dbID), "error", errMsg)
-	h.Queries.UpdateDatabaseStatus(ctx, generated.UpdateDatabaseStatusParams{
+	if _, err := h.Queries.UpdateDatabaseStatus(ctx, generated.UpdateDatabaseStatusParams{
 		ID:     dbID,
 		Status: status.DatabaseFailed,
-	})
+	}); err != nil {
+		slog.Error("could not record the database status", "error", err)
+	}
 }

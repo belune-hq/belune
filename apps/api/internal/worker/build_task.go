@@ -52,10 +52,12 @@ func (h *TaskHandler) HandleBuildTask(ctx context.Context, t *asynq.Task) error 
 	}
 
 	// Update deployment status to building
-	h.Queries.UpdateDeploymentStatus(ctx, generated.UpdateDeploymentStatusParams{
+	if _, err := h.Queries.UpdateDeploymentStatus(ctx, generated.UpdateDeploymentStatusParams{
 		ID:     deploymentID,
 		Status: status.DeploymentBuilding,
-	})
+	}); err != nil {
+		slog.Error("could not record the deployment status", "error", err)
+	}
 
 	// Fetch application details with project slug
 	appRow, err := h.Queries.GetApplicationWithProjectSlug(ctx, applicationID)
@@ -76,10 +78,12 @@ func (h *TaskHandler) HandleBuildTask(ctx context.Context, t *asynq.Task) error 
 	// Image-type applications have nothing to build
 	if app.Type == "image" {
 		slog.Info("skipping build for image-type application", "application_id", payload.ApplicationID)
-		h.Queries.UpdateDeploymentStatus(ctx, generated.UpdateDeploymentStatusParams{
+		if _, err := h.Queries.UpdateDeploymentStatus(ctx, generated.UpdateDeploymentStatusParams{
 			ID:     deploymentID,
 			Status: status.DeploymentSuccess,
-		})
+		}); err != nil {
+			slog.Error("could not record the deployment status", "error", err)
+		}
 		return nil
 	}
 
@@ -175,10 +179,12 @@ func (h *TaskHandler) HandleBuildTask(ctx context.Context, t *asynq.Task) error 
 	// this on failure too, so a failed build surfaces the full output in the log
 	// viewer instead of only the (summarised) error message.
 	if buildLogs := sink.NDJSON(); buildLogs != "" {
-		h.Queries.UpdateDeploymentBuildLogs(ctx, generated.UpdateDeploymentBuildLogsParams{
+		if err := h.Queries.UpdateDeploymentBuildLogs(ctx, generated.UpdateDeploymentBuildLogsParams{
 			ID:        deploymentID,
 			BuildLogs: pgtype.Text{String: buildLogs, Valid: true},
-		})
+		}); err != nil {
+			slog.Error("could not store the build logs", "error", err)
+		}
 	}
 
 	if err != nil {
@@ -187,10 +193,12 @@ func (h *TaskHandler) HandleBuildTask(ctx context.Context, t *asynq.Task) error 
 	}
 
 	// Mark as success — no container creation
-	h.Queries.UpdateDeploymentStatus(ctx, generated.UpdateDeploymentStatusParams{
+	if _, err := h.Queries.UpdateDeploymentStatus(ctx, generated.UpdateDeploymentStatusParams{
 		ID:     deploymentID,
 		Status: status.DeploymentSuccess,
-	})
+	}); err != nil {
+		slog.Error("could not record the build as succeeded", "error", err)
+	}
 
 	slog.Info("build completed",
 		"application_id", payload.ApplicationID,

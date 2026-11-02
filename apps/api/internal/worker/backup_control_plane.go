@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -89,7 +90,11 @@ func (h *TaskHandler) buildControlPlaneArchive(ctx context.Context, lg *runLog) 
 	if err := os.MkdirAll(workDir, 0o755); err != nil {
 		return "", fmt.Errorf("create work dir: %w", err)
 	}
-	defer os.RemoveAll(workDir)
+	defer func() {
+		if err := os.RemoveAll(workDir); err != nil {
+			slog.Error("could not remove the staging directory", "error", err)
+		}
+	}()
 
 	lg.step("Dumping Postgres database...")
 	pgContainer, err := h.resolveInfraContainer(ctx, "postgres")

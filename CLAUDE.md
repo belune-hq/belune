@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 Belune — a self-hosted PaaS that ships as **one Go binary with the React SPA embedded**.
-Monorepo: `apps/api` (Go 1.25 · chi · pgx · sqlc · asynq), `apps/web` (React 19 · Vite · TanStack Router/Query · Tailwind 4 · shadcn/base-ui), `apps/site` (Next.js + Fumadocs, belune.dev).
+Monorepo: `apps/api` (Go 1.26 · chi · pgx · sqlc · asynq), `apps/web` (React 19 · Vite · TanStack Router/Query · Tailwind 4 · shadcn/base-ui), `apps/site` (Next.js + Fumadocs, belune.dev).
 
 ## Commands
 

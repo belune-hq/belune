@@ -86,8 +86,12 @@ COPY apps/web/ ./
 RUN npm run build
 
 # ── Stage: backend ───────────────────────────────────────────────────────────
-# Match the Go version the devcontainer uses (go.mod requires >= 1.25); a stale
-# 1.24 here is what made the prod image silently unbuildable.
+# One toolchain across all four places that build this project: this stage, the
+# devcontainer, CI, and a developer's machine. CI takes Go from go.mod's own
+# directive and Node from an explicit `node-version`, so both must be kept in
+# step with the two FROM lines here by hand. A stale 1.24 here is what made the
+# prod image silently unbuildable; the inverse — CI a version behind the image —
+# means a green run never exercised the compiler that built the artifact.
 #
 # Runs on the BUILD platform and cross-compiles to $TARGETARCH. CGO_ENABLED=0
 # makes that free, and it keeps multi-arch releases off QEMU, where compiling

@@ -1166,8 +1166,12 @@ type apidocDirective struct {
 // apidocDirectivePrefix has NO space after "//" — it's a directive line,
 // not prose, so it can sit inside an otherwise ordinary doc comment
 // without reading as part of it (CLAUDE.md's "comments explain why, not
-// what" is about prose comments; this is closer to //go:generate or
-// //nolint:, an established idiom for a machine-read comment).
+// what" is about prose comments; this is closer to //go:generate or to
+// a //nolint: directive, an established idiom for a machine-read comment).
+//
+// The wrap above is load-bearing: a comment line STARTING with "//nolint:"
+// is read as a real directive even inside prose, and an empty linter list
+// makes golangci-lint warn on every run.
 const apidocDirectivePrefix = "//apidoc:"
 
 // apidocParseDirective scans a doc comment for //apidoc: lines, in any

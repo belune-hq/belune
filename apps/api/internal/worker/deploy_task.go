@@ -405,10 +405,12 @@ func (h *TaskHandler) prepareImage(ctx context.Context, dc *deployContext) error
 			sink.Flush()
 			pub.Close(ctx)
 			if b := sink.NDJSON(); b != "" {
-				h.Queries.UpdateDeploymentBuildLogs(ctx, generated.UpdateDeploymentBuildLogsParams{
+				if err := h.Queries.UpdateDeploymentBuildLogs(ctx, generated.UpdateDeploymentBuildLogsParams{
 					ID:        dc.deploymentID,
 					BuildLogs: pgtype.Text{String: b, Valid: true},
-				})
+				}); err != nil {
+					slog.Error("could not store the build logs", "error", err)
+				}
 			}
 		}
 
@@ -445,10 +447,12 @@ func (h *TaskHandler) prepareImage(ctx context.Context, dc *deployContext) error
 	}
 
 	// Store the image tag for future rollback support.
-	h.Queries.UpdateDeploymentImageTag(ctx, generated.UpdateDeploymentImageTagParams{
+	if err := h.Queries.UpdateDeploymentImageTag(ctx, generated.UpdateDeploymentImageTagParams{
 		ID:       dc.deploymentID,
 		ImageTag: pgtype.Text{String: dc.imageName, Valid: true},
-	})
+	}); err != nil {
+		slog.Error("could not record the image tag; rollback will have none", "error", err)
+	}
 	return nil
 }
 
@@ -460,7 +464,11 @@ func (h *TaskHandler) buildFromGit(ctx context.Context, dc *deployContext) error
 	if err != nil {
 		return fmt.Errorf("create temp dir: %w", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() {
+		if err := os.RemoveAll(tmpDir); err != nil {
+			slog.Error("could not remove the build directory", "error", err)
+		}
+	}()
 
 	buildCtx, buildCancel := context.WithTimeout(ctx, time.Duration(h.Config.BuildTimeoutMinutes)*time.Minute)
 	defer buildCancel()
@@ -516,10 +524,12 @@ func (h *TaskHandler) buildFromGit(ctx context.Context, dc *deployContext) error
 	// so deployment history shows it (webhook pushes set it at create time, but
 	// manual/reload/rebuild deploys otherwise wouldn't).
 	if dc.commitSHA != "" {
-		h.Queries.UpdateDeploymentCommitSha(ctx, generated.UpdateDeploymentCommitShaParams{
+		if err := h.Queries.UpdateDeploymentCommitSha(ctx, generated.UpdateDeploymentCommitShaParams{
 			ID:        dc.deploymentID,
 			CommitSha: pgtype.Text{String: dc.commitSHA, Valid: true},
-		})
+		}); err != nil {
+			slog.Error("could not record the deployment commit", "error", err)
+		}
 	}
 
 	var customBuildpacks []string
@@ -559,10 +569,12 @@ func (h *TaskHandler) buildFromGit(ctx context.Context, dc *deployContext) error
 	// too, so a failed deploy surfaces the full build output in the log viewer
 	// instead of only the (summarised) error message.
 	if buildLogs := sink.NDJSON(); buildLogs != "" {
-		h.Queries.UpdateDeploymentBuildLogs(ctx, generated.UpdateDeploymentBuildLogsParams{
+		if err := h.Queries.UpdateDeploymentBuildLogs(ctx, generated.UpdateDeploymentBuildLogsParams{
 			ID:        dc.deploymentID,
 			BuildLogs: pgtype.Text{String: buildLogs, Valid: true},
-		})
+		}); err != nil {
+			slog.Error("could not store the build logs", "error", err)
+		}
 	}
 
 	if err != nil {
@@ -594,10 +606,12 @@ func (h *TaskHandler) startBuildLogFlusher(ctx context.Context, deploymentID pgt
 				return
 			case <-t.C:
 				if s := sink.NDJSON(); s != "" {
-					h.Queries.UpdateDeploymentBuildLogs(ctx, generated.UpdateDeploymentBuildLogsParams{
+					if err := h.Queries.UpdateDeploymentBuildLogs(ctx, generated.UpdateDeploymentBuildLogsParams{
 						ID:        deploymentID,
 						BuildLogs: pgtype.Text{String: s, Valid: true},
-					})
+					}); err != nil {
+						slog.Error("could not store the build logs", "error", err)
+					}
 				}
 			}
 		}
@@ -1034,14 +1048,18 @@ func (h *TaskHandler) finalize(ctx context.Context, dc *deployContext) error {
 			slog.Warn("invalid deployment transition skipped", "from", status.DeploymentDeploying, "to", status.DeploymentSuccess)
 			return nil
 		}
-		q.UpdateDeploymentStatus(ctx, generated.UpdateDeploymentStatusParams{
+		if _, err := q.UpdateDeploymentStatus(ctx, generated.UpdateDeploymentStatusParams{
 			ID:     dc.deploymentID,
 			Status: status.DeploymentSuccess,
-		})
-		q.UpdateApplicationStatus(ctx, generated.UpdateApplicationStatusParams{
+		}); err != nil {
+			return fmt.Errorf("mark the deployment succeeded: %w", err)
+		}
+		if _, err := q.UpdateApplicationStatus(ctx, generated.UpdateApplicationStatusParams{
 			ID:     dc.applicationID,
 			Status: status.ApplicationRunning,
-		})
+		}); err != nil {
+			return fmt.Errorf("mark the application running: %w", err)
+		}
 		// Stamp last_activity_at for preview GC. Doing this on every deploy
 		// (not just previews) keeps the column meaningful if we later extend
 		// idle cleanup to parents too.
@@ -1129,11 +1147,13 @@ func (h *TaskHandler) failDeployment(ctx context.Context, dc *deployContext, kin
 	)
 
 	if retried >= maxRetry {
-		h.Queries.UpdateDeploymentStatus(ctx, generated.UpdateDeploymentStatusParams{
+		if _, err := h.Queries.UpdateDeploymentStatus(ctx, generated.UpdateDeploymentStatusParams{
 			ID:           deploymentID,
 			Status:       status.DeploymentFailed,
 			ErrorMessage: pgtype.Text{String: safeMsg, Valid: true},
-		})
+		}); err != nil {
+			slog.Error("could not record the deployment status", "error", err)
+		}
 
 		if deployFailureErrorsApp(dc) {
 			if _, err := h.Queries.UpdateApplicationStatus(ctx, generated.UpdateApplicationStatusParams{
@@ -1280,18 +1300,26 @@ func (h *TaskHandler) updateDeploymentStatus(ctx context.Context, id pgtype.UUID
 			"deployment_id", fmt.Sprintf("%v", id))
 		return
 	}
-	h.Queries.UpdateDeploymentStatus(ctx, generated.UpdateDeploymentStatusParams{
+	if _, err := h.Queries.UpdateDeploymentStatus(ctx, generated.UpdateDeploymentStatusParams{
 		ID:     id,
 		Status: to,
-	})
+	}); err != nil {
+		slog.Error("could not record the deployment status", "error", err, "deployment_id", id, "status", to)
+	}
 	switch to {
 	case status.DeploymentBuilding:
-		h.Queries.SetDeploymentBuildStarted(ctx, id)
+		if err := h.Queries.SetDeploymentBuildStarted(ctx, id); err != nil {
+			slog.Error("could not stamp the build start", "error", err, "deployment_id", id)
+		}
 	case status.DeploymentDeploying:
 		if from == status.DeploymentBuilding {
-			h.Queries.SetDeploymentBuildEnded(ctx, id)
+			if err := h.Queries.SetDeploymentBuildEnded(ctx, id); err != nil {
+				slog.Error("could not stamp the build end", "error", err, "deployment_id", id)
+			}
 		}
-		h.Queries.SetDeploymentDeployStarted(ctx, id)
+		if err := h.Queries.SetDeploymentDeployStarted(ctx, id); err != nil {
+			slog.Error("could not stamp the deploy start", "error", err, "deployment_id", id)
+		}
 	}
 }
 

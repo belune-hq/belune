@@ -46,6 +46,8 @@ func TestSyncWAF_ProtectsTheApplicationsAndNotTheDashboard(t *testing.T) {
 	assert.True(t, mp.waf[0].Enabled)
 	assert.Equal(t, []string{"a.example.com", "b.example.com"}, mp.waf[0].Hosts,
 		"sorted and deduplicated, with the dashboard left out: its API takes commands and credentials as ordinary input")
+	assert.Equal(t, []string{"dash.example.com"}, mp.waf[0].Exempt,
+		"named as an exemption too, because a wildcard application host would otherwise cover it")
 	st := r.WAF()
 	assert.True(t, st.Active)
 	assert.Equal(t, 2, st.Hosts)

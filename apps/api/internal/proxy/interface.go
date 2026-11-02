@@ -67,6 +67,11 @@ type WAFConfig struct {
 	// which a generic rule set reads as attacks, and an admin panel is not what the
 	// WAF is here to watch. No hosts means no route.
 	Hosts []string
+	// Exempt are hostnames the route must never match: the dashboard's. Hosts can
+	// hold a wildcard ("*.example.com"), which Caddy's matcher applies to the
+	// dashboard when it is served on a name under it, so leaving the dashboard out
+	// of Hosts is not enough.
+	Exempt []string
 	// BlockingHosts are the hosts, a subset of Hosts, whose engine is promoted
 	// from detection-only to blocking. ⛔ Fail safe: the engine is DetectionOnly
 	// unless a generated rule says otherwise for a host, so an empty, missing or

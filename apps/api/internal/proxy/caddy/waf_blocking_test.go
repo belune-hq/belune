@@ -107,11 +107,11 @@ func TestWAFBlockingHosts_AreOnlyHostsTheRouteInspects(t *testing.T) {
 }
 
 func TestBuildWAFRoute_CarriesTheBlockingRule(t *testing.T) {
-	r := buildWAFRoute([]string{"a.example.com"}, nil, []string{"a.example.com"})
+	r := buildWAFRoute([]string{"a.example.com"}, nil, nil, []string{"a.example.com"})
 	b, err := json.Marshal(r)
 	require.NoError(t, err)
 	assert.Contains(t, string(b), "ctl:ruleEngine=On")
-	plain, err := json.Marshal(buildWAFRoute([]string{"a.example.com"}, nil, nil))
+	plain, err := json.Marshal(buildWAFRoute([]string{"a.example.com"}, nil, nil, nil))
 	require.NoError(t, err)
 	assert.NotContains(t, string(plain), "ruleEngine")
 }

@@ -54,6 +54,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { HistoryCard, SummaryCard } from "@/components/proxy/crowdsec-overview";
 import {
   ALLOW_DURATIONS,
   BAN_DURATIONS,
@@ -123,6 +124,7 @@ export function CrowdSecTab() {
   return (
     <div className="space-y-6">
       <StatusCard status={status} loading={isLoading} />
+      {status && <SummaryCard status={status} reachable={reachable} />}
       {status && reachable && (
         <>
           <BansCard status={status} />
@@ -130,6 +132,7 @@ export function CrowdSecTab() {
         </>
       )}
       {status && <AutobanCard status={status} />}
+      <HistoryCard />
       <LockoutCard />
     </div>
   );

@@ -30,6 +30,15 @@ export function useCrowdSecAllowlist(enabled = true) {
   });
 }
 
+export function useCrowdSecHistory() {
+  return useQuery({
+    queryKey: queryKeys.crowdsec.history,
+    queryFn: () => crowdsecApi.listCrowdSecHistory(),
+    // The automatic bans arrive on their own, a minute apart at most.
+    refetchInterval: 30_000,
+  });
+}
+
 /** The statuses these return are the state AFTER the change was applied. */
 function useStatusMutation<V>(fn: (v: V) => Promise<CrowdSecStatus>) {
   const qc = useQueryClient();
@@ -38,6 +47,7 @@ function useStatusMutation<V>(fn: (v: V) => Promise<CrowdSecStatus>) {
     onSuccess: (status) => {
       qc.setQueryData(queryKeys.crowdsec.status, status);
       qc.invalidateQueries({ queryKey: queryKeys.proxyReconciler });
+      qc.invalidateQueries({ queryKey: queryKeys.crowdsec.history });
     },
   });
 }
@@ -68,8 +78,10 @@ export function useBanAddress() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: crowdsecApi.banAddress,
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: queryKeys.crowdsec.decisions }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.crowdsec.decisions });
+      qc.invalidateQueries({ queryKey: queryKeys.crowdsec.history });
+    },
   });
 }
 
@@ -77,8 +89,10 @@ export function useLiftBan() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: crowdsecApi.liftBan,
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: queryKeys.crowdsec.decisions }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.crowdsec.decisions });
+      qc.invalidateQueries({ queryKey: queryKeys.crowdsec.history });
+    },
   });
 }
 
@@ -90,6 +104,7 @@ export function useAllowAddress() {
       qc.invalidateQueries({ queryKey: queryKeys.crowdsec.allowlist });
       // Allowlisting an address lifts a ban already on it.
       qc.invalidateQueries({ queryKey: queryKeys.crowdsec.decisions });
+      qc.invalidateQueries({ queryKey: queryKeys.crowdsec.history });
     },
   });
 }
@@ -98,7 +113,9 @@ export function useRemoveAllowed() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: crowdsecApi.removeAllowed,
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: queryKeys.crowdsec.allowlist }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.crowdsec.allowlist });
+      qc.invalidateQueries({ queryKey: queryKeys.crowdsec.history });
+    },
   });
 }

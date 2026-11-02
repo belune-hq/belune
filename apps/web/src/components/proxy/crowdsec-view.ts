@@ -1,7 +1,9 @@
 import { describeModuleTab } from "@/components/proxy/proxy-traffic";
 import { formatDateTime } from "@/lib/utils/format";
 import type {
+  AuditLog,
   CrowdSecAutobanStatus,
+  CrowdSecDecision,
   CrowdSecProtection,
   CrowdSecLocalApi,
   CrowdSecPolicy,
@@ -425,4 +427,255 @@ export function crowdSecShield(
 ): CrowdSecShield {
   if (!s?.enabled) return "off";
   return s.state.active ? "enforcing" : "idle";
+}
+
+export interface SummaryStat {
+  key: "bouncer" | "bans" | "automatic" | "check";
+  label: string;
+  value: string;
+  tone: CrowdSecTone;
+  /** A second line under the value; absent when there is nothing to add. */
+  hint?: string;
+}
+
+/**
+ * CrowdSec at a glance: is the bouncer connected, what is banned, are automatic
+ * bans on, and has the check that places them been running.
+ *
+ * Every field of the status either appears here or is left out on purpose, so a
+ * computed number cannot reach no surface again (`skipped` once did):
+ *   - `last_run` and `last_error` are the "Last check" tile;
+ *   - `skipped` and `capped` ride on that tile's hint;
+ *   - `active` is not shown, because the ban count comes from the live list of
+ *     bans, which is the thing CrowdSec enforces, and a second count of the same
+ *     thing could only disagree with it;
+ *   - `banned` is not shown: it counts bans issued since this process started, so
+ *     it resets on every restart and an update would read as the bans vanishing.
+ *
+ * `decisions` is undefined while the list cannot be read (the local API is not
+ * answering), and the tile then says so instead of reading as "0 bans".
+ */
+export function summarizeCrowdSec(
+  s: CrowdSecStatus,
+  decisions: CrowdSecDecision[] | undefined,
+  now: Date,
+): SummaryStat[] {
+  const stale = bouncerNotice(s.local_api, now);
+  let bouncer: SummaryStat;
+  if (!s.enabled) {
+    bouncer = {
+      key: "bouncer",
+      label: "Bouncer",
+      value: "Off",
+      tone: "neutral",
+      hint: "Bans are recorded but not enforced.",
+    };
+  } else if (!s.local_api.reachable) {
+    bouncer = {
+      key: "bouncer",
+      label: "Bouncer",
+      value: "Unreachable",
+      tone: "error",
+      hint: "The CrowdSec container is not answering.",
+    };
+  } else if (stale) {
+    bouncer = {
+      key: "bouncer",
+      label: "Bouncer",
+      value: "Not pulling bans",
+      tone: stale.tone,
+    };
+  } else if (!s.state.active) {
+    bouncer = {
+      key: "bouncer",
+      label: "Bouncer",
+      value: "Idle",
+      tone: "neutral",
+      hint: "No application is covered yet.",
+    };
+  } else {
+    const pulled = s.local_api.last_pull
+      ? (now.getTime() - new Date(s.local_api.last_pull).getTime()) / 1000
+      : null;
+    bouncer = {
+      key: "bouncer",
+      label: "Bouncer",
+      value: "Connected",
+      tone: "ready",
+      hint: pulled === null ? undefined : `Last pulled ${ago(pulled)} ago.`,
+    };
+  }
+
+  const automaticCount = decisions?.filter((d) => d.source === "waf").length;
+  const bans: SummaryStat = decisions
+    ? {
+        key: "bans",
+        label: "Bans in force",
+        value: String(decisions.length),
+        tone: "neutral",
+        hint:
+          decisions.length === 0
+            ? undefined
+            : `${automaticCount} automatic, ${decisions.length - (automaticCount ?? 0)} by an operator or cscli.`,
+      }
+    : {
+        key: "bans",
+        label: "Bans in force",
+        value: "Unknown",
+        tone: "neutral",
+        hint: "The ban list can only be read while CrowdSec answers.",
+      };
+
+  const p = s.autoban.policy;
+  const automatic: SummaryStat = {
+    key: "automatic",
+    label: "Automatic bans",
+    value: p.enabled ? "On" : "Off",
+    tone: "neutral",
+    hint: p.enabled
+      ? `${p.threshold} tripped requests in ${spanMinutes(p.window_minutes)}, banned for ${spanMinutes(p.duration_minutes)}.`
+      : undefined,
+  };
+
+  const r = s.autoban.status;
+  let check: SummaryStat;
+  if (!p.enabled) {
+    check = {
+      key: "check",
+      label: "Last check",
+      value: "Not running",
+      tone: "neutral",
+    };
+  } else if (r.last_error) {
+    check = {
+      key: "check",
+      label: "Last check",
+      value: "Failed",
+      tone: "error",
+      hint: r.last_error,
+    };
+  } else if (!r.last_run) {
+    check = {
+      key: "check",
+      label: "Last check",
+      value: "Not yet",
+      tone: "neutral",
+    };
+  } else {
+    // Relative, not a timestamp: the check runs every minute, so an absolute
+    // time would be stale by the time it was read, and "2 minutes ago" is the
+    // honest account of a thing that is meant to be near-continuous.
+    const hints: string[] = [];
+    if (r.capped) hints.push(`Stopped at the limit of ${p.max_active} bans.`);
+    if (r.skipped > 0)
+      hints.push(
+        `${r.skipped} ${r.skipped === 1 ? "address" : "addresses"} left alone.`,
+      );
+    const age = (now.getTime() - new Date(r.last_run).getTime()) / 1000;
+    check = {
+      key: "check",
+      label: "Last check",
+      value: `${ago(age)} ago`,
+      tone: r.capped ? "attention" : "neutral",
+      hint: hints.length ? hints.join(" ") : undefined,
+    };
+  }
+  return [bouncer, bans, automatic, check];
+}
+
+export interface HistoryEntry {
+  id: string;
+  /** Absolute time, for the row; the exact moment matters to someone reading a log. */
+  when: string;
+  /** Who did it. `system` is Belune acting on its own policy. */
+  actor: { kind: "system" | "person" | "token" | "removed"; label: string };
+  /** What happened, as a verb phrase. */
+  what: string;
+  /** The address or range it was about, when there is one. */
+  target: string | null;
+  detail: string | null;
+}
+
+const HISTORY_WHAT: Record<string, string> = {
+  crowdsec_ban: "Banned",
+  crowdsec_unban: "Lifted the ban on",
+  crowdsec_allow: "Allowlisted",
+  crowdsec_unallow: "Removed from the allowlist",
+  crowdsec_autoban: "Banned automatically",
+  crowdsec_autoban_policy: "Changed the automatic-ban policy",
+  crowdsec_rotate_key: "Replaced the bouncer's key",
+};
+
+function str(v: unknown): string | null {
+  return typeof v === "string" && v !== "" ? v : null;
+}
+
+/**
+ * One audit row, in words.
+ *
+ * ⛔ An automatic ban is written with NO user (`recordSystem` logs an empty actor),
+ * so a table that prints the user column shows a blank for exactly the rows an
+ * operator most wants to understand. The action decides who acted, not the
+ * absence of a user: a row from an operator whose account was deleted has no user
+ * either (`ON DELETE SET NULL`), and calling that "Belune" would be a lie.
+ */
+export function describeHistory(log: AuditLog): HistoryEntry {
+  const d = log.details ?? {};
+  let actor: HistoryEntry["actor"];
+  if (log.action === "crowdsec_autoban") {
+    actor = { kind: "system", label: "Belune (automatic)" };
+  } else if (log.user_email || log.user_username) {
+    actor = {
+      kind: "person",
+      label: (log.user_email || log.user_username) as string,
+    };
+  } else if (log.token_name) {
+    actor = { kind: "token", label: `${log.token_name} (API token)` };
+  } else {
+    actor = { kind: "removed", label: "A removed user" };
+  }
+
+  const detail: string[] = [];
+  switch (log.action) {
+    case "crowdsec_ban": {
+      const duration = str(d.duration);
+      const reason = str(d.reason);
+      if (duration) detail.push(`for ${duration}`);
+      if (reason) detail.push(reasonText(reason));
+      break;
+    }
+    case "crowdsec_allow": {
+      const duration = str(d.duration);
+      if (duration) detail.push(`for ${duration}`);
+      break;
+    }
+    case "crowdsec_autoban": {
+      const cats = Array.isArray(d.categories) ? d.categories.join(", ") : null;
+      if (typeof d.requests === "number") {
+        detail.push(
+          `${plural(d.requests, "request")} tripped ${cats || "attack rules"}` +
+            (typeof d.window_minutes === "number"
+              ? ` in ${spanMinutes(d.window_minutes)}`
+              : ""),
+        );
+      }
+      break;
+    }
+    case "crowdsec_autoban_policy":
+      detail.push(
+        d.enabled === true
+          ? `on: ${d.threshold} requests in ${d.window_minutes} minutes`
+          : "off",
+      );
+      break;
+  }
+
+  return {
+    id: log.id,
+    when: log.created_at,
+    actor,
+    what: HISTORY_WHAT[log.action] ?? log.action,
+    target: log.resource_id || null,
+    detail: detail.length ? detail.join("; ") : null,
+  };
 }

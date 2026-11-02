@@ -5,6 +5,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { unroutedNotice } from "@/lib/domain-tls";
 import { useRecheckDomainTLS } from "@/lib/hooks/use-certificates";
 import type { DomainExpanded, TLSStatus } from "@/lib/types";
 import { RefreshCw } from "lucide-react";
@@ -61,6 +62,7 @@ export function DomainTLSBadge({
   projectId,
   applicationId,
   certificateName,
+  applicationStatus,
 }: {
   domain: DomainExpanded;
   projectId: string;
@@ -69,11 +71,15 @@ export function DomainTLSBadge({
    *  only certificate_id, which names nothing on its own. Undefined whenever
    *  the domain is not serving an uploaded certificate. */
   certificateName?: string;
+  /** The application's status, to explain a domain that is pending because the
+   *  application is not running. */
+  applicationStatus?: string;
 }) {
   const recheck = useRecheckDomainTLS(projectId, applicationId);
   const status: TLSStatus = domain.tls_status ?? "unknown";
   const style = STYLES[status] ?? STYLES.unknown;
 
+  const unrouted = unroutedNotice(domain.ssl_mode, applicationStatus);
   const expires = formatDate(domain.tls_not_after);
   const checked = formatDate(domain.tls_last_checked_at);
 
@@ -110,7 +116,16 @@ export function DomainTLSBadge({
         {/* An advisory is a suspicion, not a verdict — styled as a caution rather
             than an error, because a hostname resolving somewhere that isn't us is
             also just what a proxy in front of us looks like. */}
-        {!domain.tls_error && domain.tls_advisory && (
+        {/* Said before the advisory and the generic wait: with no route nothing
+            is waiting on a certificate, and a hostname-resolution suspicion
+            would be about a request that cannot arrive. */}
+        {!domain.tls_error && unrouted && (
+          <p className="text-status-building bg-status-building/10 rounded-md p-2 text-xs break-words">
+            {unrouted}
+          </p>
+        )}
+
+        {!domain.tls_error && !unrouted && domain.tls_advisory && (
           <p className="text-status-building bg-status-building/10 rounded-md p-2 text-xs break-words">
             {domain.tls_advisory}
           </p>
@@ -141,12 +156,16 @@ export function DomainTLSBadge({
           <dd className="text-foreground">{checked ?? "not yet"}</dd>
         </dl>
 
-        {status === "pending" && !domain.tls_error && !domain.tls_advisory && (
-          <p className="text-muted-foreground text-xs">
-            Waiting on a certificate. Issuance needs ports 80 and 443 reachable
-            from the internet and this hostname pointing at this server.
-          </p>
-        )}
+        {status === "pending" &&
+          !unrouted &&
+          !domain.tls_error &&
+          !domain.tls_advisory && (
+            <p className="text-muted-foreground text-xs">
+              Waiting on a certificate. Issuance needs ports 80 and 443
+              reachable from the internet and this hostname pointing at this
+              server.
+            </p>
+          )}
 
         <Button
           size="sm"

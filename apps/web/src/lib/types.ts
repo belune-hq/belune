@@ -541,7 +541,10 @@ export interface AuditLog {
   details: Record<string, unknown> | null;
   ip_address: string | null;
   created_at: string;
-  user_email?: string;
+  user_email?: string | null;
+  user_username?: string | null;
+  /** Empty for an action from a human session. */
+  token_name?: string;
 }
 
 export interface Invitation {

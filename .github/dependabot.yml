@@ -45,6 +45,49 @@ updates:
       - dependency-name: "@types/node"
         update-types:
           - version-update:semver-major
+
+      # ── TEMPORARY: delete this whole block with the toolchain release ──
+      #
+      # These eleven majors are deferred, not declined. They were all proposed
+      # the first hour this config was live and all closed again, and left alone
+      # they would reopen every week.
+      #
+      # They belong together in one release because several are not dependency
+      # bumps at all: TypeScript 5.9 to 7 is the native-port compiler, and Vite,
+      # Vitest, jsdom and the plugin are one build-and-test toolchain that moves
+      # as a unit. jsdom especially — this repo's unit tests cannot see rendering
+      # (no layout engine, partial getComputedStyle), so changing it changes what
+      # "the tests pass" is worth.
+      #
+      # Two others are simply wide: zod 4 reaches 32 files and lucide-react 1
+      # reaches 112.
+      #
+      # ⚠️ Each entry silences that package's majors, including ones released
+      # after the deferred jump. Remove the block when the toolchain release
+      # lands rather than editing entries out one at a time.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "vite"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@vitejs/plugin-react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "vitest"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "jsdom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@eslint/js"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "zod"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "lucide-react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@tanstack/react-table"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-day-picker"
+        update-types: ["version-update:semver-major"]
+      # ── end TEMPORARY block ───────────────────────────────────────────
     groups:
       web-minor-and-patch:
         patterns:

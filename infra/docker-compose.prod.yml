@@ -238,6 +238,34 @@ services:
   # The data volume is mandatory, not a nicety: the image's entrypoint prints a
   # message and exits 0, starting nothing, when /var/lib/crowdsec/data is not a
   # mount. Bans, the allowlist and the bouncer registration live there.
+  #
+  # Both capabilities below are off on purpose, and that makes this service a
+  # decision store and nothing else: Belune's entire use of it is `cscli
+  # decisions list/add/delete` and `cscli bouncers list/add/delete`. No alerts,
+  # no hub, no parsers, no scenarios. The bans themselves live here rather than
+  # in Postgres, which is why the data volume above is mandatory.
+  #
+  # That is a smaller job than CrowdSec is built for, and worth being honest
+  # about: stock caddy:2-alpine already has the remote_ip and client_ip
+  # matchers, so the reconciler that rewrites Caddy's config every 30s could
+  # refuse a list of CIDRs with no container, no volume and no bouncer module.
+  # The service is kept for what it can become rather than what it does today —
+  # enabling DISABLE_ONLINE_API would bring the community blocklist, which is
+  # the thing no amount of local code reproduces.
+  #
+  # DISABLE_AGENT: no log parsing and no scenarios. Belune decides what to ban,
+  #   from its own WAF detections, so a second opinion reading the same logs
+  #   would only duplicate it.
+  # DISABLE_ONLINE_API: no central API. Nothing leaves the server, and nothing
+  #   is banned that the operator or their own policy did not ban. A community
+  #   blocklist would also ban addresses behind shared NAT and CDNs, which is a
+  #   trade an operator should opt into rather than inherit.
+  #
+  # ⚠️ Turning the central API on later needs /etc/crowdsec to become a mount
+  # first. Its credentials live in the container's writable layer, and update.sh
+  # recreates this container on every upgrade, so the install would re-register
+  # as a new machine each time. The local API is unaffected: its machine id is
+  # fixed, so re-registration overwrites rather than accumulates.
   crowdsec:
     image: crowdsecurity/crowdsec:v1.8.1
     environment:

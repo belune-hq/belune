@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
 	"time"
 
@@ -65,7 +66,7 @@ type Config struct {
 // should not be able to override a scheme the operator wrote out.
 func exporterOptions(cfg Config) []otlptracehttp.Option {
 	if strings.Contains(cfg.Endpoint, "://") {
-		return []otlptracehttp.Option{otlptracehttp.WithEndpointURL(cfg.Endpoint)}
+		return []otlptracehttp.Option{otlptracehttp.WithEndpointURL(withTracesPath(cfg.Endpoint))}
 	}
 
 	opts := []otlptracehttp.Option{otlptracehttp.WithEndpoint(cfg.Endpoint)}
@@ -73,6 +74,28 @@ func exporterOptions(cfg Config) []otlptracehttp.Option {
 		opts = append(opts, otlptracehttp.WithInsecure())
 	}
 	return opts
+}
+
+// withTracesPath completes an endpoint URL that names a host but no path.
+//
+// OTEL_EXPORTER_OTLP_ENDPOINT is the general variable: the spec has the SDK
+// append /v1/traces to it, where the signal-specific ..._TRACES_ENDPOINT is
+// used exactly as written. WithEndpointURL did the former until otlptracehttp
+// v1.45.0 (opentelemetry-go #8538) changed it to the latter, so
+// "https://api.honeycomb.io" started posting to "/" and every span was lost.
+//
+// "/" is completed too, though it was never right: before v1.45.0 the default
+// path applied only to an empty path, so a trailing slash already posted to "/".
+//
+// Any other path is the operator's own and is passed through untouched. A URL
+// that does not parse is also passed through, so WithEndpointURL rejects it
+// exactly as it did before.
+func withTracesPath(endpoint string) string {
+	u, err := url.Parse(endpoint)
+	if err != nil || (u.Path != "" && u.Path != "/") {
+		return endpoint
+	}
+	return u.JoinPath("/v1/traces").String()
 }
 
 // ShutdownFunc flushes buffered spans and releases exporter resources.

@@ -28,6 +28,28 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      # golangci-lint has never run in CI, so "CI is green" has never included
+      # it. It cannot simply be switched on: 578 findings exist on main, 449 of
+      # them in test files, and clearing that is not a prerequisite for new code
+      # being clean. only-new-issues grandfathers the backlog and gates the diff,
+      # which is the only arrangement that stops it growing again.
+      #
+      # Pull requests only, deliberately. On a push there is no base to diff
+      # against, so the action reports the entire backlog and main goes
+      # permanently red. Every change reaches main through a PR anyway.
+      #
+      # The version is pinned because the linter set is the baseline: a new
+      # release that adds a check would fail PRs that touch untouched code. When
+      # raising it, re-measure the total first — dependabot bumps `uses:` refs
+      # but not this input, so it will not move on its own.
+      - name: Lint (new issues only)
+        if: github.event_name == 'pull_request'
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.15.0
+          working-directory: apps/api
+          only-new-issues: true
+
       # -count=1 disables the test result cache. TestExpiryWarningMatchesFrontend
       # reads a file in apps/web, which lives outside this module, so the cache
       # does not track it — edit the frontend constant alone and a cached PASS is

@@ -1,0 +1,31 @@
+# golangci-lint configuration.
+#
+# Until now there was no config file at all, so every run used whatever set
+# golangci-lint happened to enable by default. That set is pinned explicitly
+# below, so upgrading the linter cannot quietly add a sixth linter and turn CI
+# red on code nobody touched — or, worse, move the baseline this repo's lint
+# numbers are measured against.
+version: "2"
+
+linters:
+  default: none
+  # Exactly the five golangci-lint 2.x enables by default, named so the set is
+  # a decision rather than an accident.
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+issues:
+  # ⛔ These two are the whole reason "79 lint issues" was quoted in this repo's
+  # backlog for weeks as though it were a count. It never was: the defaults are
+  # max-issues-per-linter 50 and max-same-issues 3, so every run reported a
+  # different 79 of the 606 that actually exist, and fixing 63 of them left the
+  # reported total unmoved because the cap simply refilled.
+  #
+  # A capped total cannot tell you whether a sweep is making progress, so there
+  # is no setting of these other than 0.
+  max-issues-per-linter: 0
+  max-same-issues: 0

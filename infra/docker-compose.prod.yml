@@ -273,6 +273,21 @@ services:
       DISABLE_ONLINE_API: "true"
     volumes:
       - crowdsecdata:/var/lib/crowdsec/data
+      # /etc/crowdsec does not exist in the image: the entrypoint creates it on
+      # first run by rsyncing /staging/etc/crowdsec into it, and ONLY when
+      # local_api_credentials.yaml and config.yaml are both absent (--ignore-
+      # existing, so it never overwrites). Without a mount it is rebuilt in the
+      # writable layer every time the container is recreated, which update.sh
+      # does on every upgrade.
+      #
+      # That costs nothing today — the local API's machine id is fixed, so
+      # re-registering overwrites rather than accumulates. It would cost
+      # something the moment the central API is enabled, because CAPI enrols
+      # with a GENERATED id: the install would appear to CrowdSec as a new
+      # machine after each upgrade. Mounted now rather than with that feature,
+      # so the volume has been carried through a release or two before anything
+      # depends on it.
+      - crowdsecconfig:/etc/crowdsec
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/health"]
       interval: 10s
@@ -343,4 +358,5 @@ volumes:
   belunedata:
   buildkitcache:
   crowdsecdata:
+  crowdsecconfig:
   registrydata:

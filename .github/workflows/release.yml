@@ -125,7 +125,7 @@ jobs:
 
       - name: Derive image tags
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           # Both paths take the identical tag set and one push writes both, so a
           # given tag always carries the SAME digest at both — which makes

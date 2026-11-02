@@ -102,8 +102,12 @@ func canAccessOwned(ctx context.Context, ownerID pgtype.UUID, shared bool) bool 
 	if shared {
 		return true
 	}
+	// See handler.callerUUID: a failed scan leaves the zero UUID, which compares
+	// EQUAL to a NULL owner column, so it must deny rather than fall through.
 	var userID pgtype.UUID
-	userID.Scan(middleware.UserIDFromContext(ctx))
+	if err := userID.Scan(middleware.UserIDFromContext(ctx)); err != nil {
+		return false
+	}
 	return ownerID == userID
 }
 

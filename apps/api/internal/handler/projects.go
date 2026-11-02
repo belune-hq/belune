@@ -44,8 +44,11 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var userID pgtype.UUID
-	userID.Scan(middleware.UserIDFromContext(r.Context()))
+	userID, ok := callerUUID(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 
 	// Every project is placed on a server. With no agent yet that is always the
 	// control plane's own host; the caller does not get to choose.
@@ -144,8 +147,11 @@ func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var userID pgtype.UUID
-	userID.Scan(middleware.UserIDFromContext(r.Context()))
+	userID, ok := callerUUID(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 
 	projects, err := h.queries.ListProjectsByUser(r.Context(), userID)
 	if err != nil {

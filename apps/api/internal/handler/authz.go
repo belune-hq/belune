@@ -69,6 +69,28 @@ func (h *Handler) ownedAccess(r *http.Request, getOwner ownerLookup, allow func(
 	return allow(ctx, ownerID, shared)
 }
 
+// callerUUID is the authenticated user's id, and whether the context carried a
+// usable one.
+//
+// ⛔ Honour the second result. An unchecked Scan leaves the ZERO pgtype.UUID,
+// and a zero UUID compares EQUAL to a NULL owner column — so in a predicate of
+// the form `ownerID == userID` a failed scan would GRANT access to an ownerless
+// row (owner_id is nullable: ON DELETE SET NULL leaves rows behind when a user
+// is deleted) rather than deny it.
+//
+// Not reachable today, which is why these scans were never checked: the id comes
+// from auth middleware, which sets either a real UUID string or a PAT's owner,
+// and a JWT carrying an empty one would have to be signed with the install's own
+// secret. Checked anyway, so the predicate below says what it means without the
+// reader having to establish that.
+func callerUUID(ctx context.Context) (pgtype.UUID, bool) {
+	var id pgtype.UUID
+	if err := id.Scan(middleware.UserIDFromContext(ctx)); err != nil {
+		return pgtype.UUID{}, false
+	}
+	return id, true
+}
+
 // ownerMayAccess is the ownership/sharing rule behind canAccessOwned, on values
 // the caller has already resolved: an admin passes, a shared project passes for
 // every Member, otherwise only the owner does. It reads the caller from ctx
@@ -84,9 +106,8 @@ func ownerMayAccess(ctx context.Context, ownerID pgtype.UUID, shared bool) bool 
 	if shared {
 		return true
 	}
-	var userID pgtype.UUID
-	userID.Scan(middleware.UserIDFromContext(ctx))
-	return ownerID == userID
+	userID, ok := callerUUID(ctx)
+	return ok && ownerID == userID
 }
 
 // isOwnerOnly reports whether the current request's user owns the resource
@@ -106,9 +127,8 @@ func ownerIsCaller(ctx context.Context, ownerID pgtype.UUID, _ bool) bool {
 	if middleware.RoleFromContext(ctx) == "admin" {
 		return true
 	}
-	var userID pgtype.UUID
-	userID.Scan(middleware.UserIDFromContext(ctx))
-	return ownerID == userID
+	userID, ok := callerUUID(ctx)
+	return ok && ownerID == userID
 }
 
 func (h *Handler) applicationOwner(applicationID pgtype.UUID) ownerLookup {

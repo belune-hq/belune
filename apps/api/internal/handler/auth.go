@@ -419,8 +419,11 @@ func (h *Handler) ChangeOwnPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var userID pgtype.UUID
-	userID.Scan(middleware.UserIDFromContext(r.Context()))
+	userID, ok := callerUUID(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 
 	user, err := h.queries.GetUserByID(r.Context(), userID)
 	if err != nil {

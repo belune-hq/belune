@@ -228,8 +228,11 @@ func (h *Handler) ResetUserPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var callerID pgtype.UUID
-	callerID.Scan(middleware.UserIDFromContext(r.Context()))
+	callerID, ok := callerUUID(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	caller, err := h.queries.GetUserByID(r.Context(), callerID)
 	if err != nil {
 		writeServerError(w, r, "failed to get caller", err)

@@ -1,0 +1,99 @@
+# Dependency updates.
+#
+# This file exists because nothing was watching. By v0.2.9 the API had drifted 30
+# of 38 direct modules behind — go-redis by sixteen minors — and the web app 43
+# of 58 packages. None of that was a decision; it was simply unobserved.
+#
+# Minor and patch updates are grouped into one pull request per ecosystem, so a
+# routine week is one review rather than forty. Majors arrive individually,
+# because each one is a judgement call and deserves its own argument.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /apps/api
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(api)"
+    groups:
+      # OpenTelemetry must move as a set — a tree holding two different OTel
+      # versions does not compile. Listed before the catch-all group so it wins
+      # the match for majors too, not only for the minors the group below sweeps.
+      opentelemetry:
+        patterns:
+          - "go.opentelemetry.io/*"
+      go-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: npm
+    directory: /apps/web
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(web)"
+    ignore:
+      # @types/node describes the runtime, so it tracks the runtime rather than
+      # the registry: the image's frontend stage and the devcontainer both build
+      # on node:24. Raising it to the latest major would type-check this code
+      # against APIs no build of it has. It moves when the Dockerfile moves.
+      - dependency-name: "@types/node"
+        update-types:
+          - version-update:semver-major
+    groups:
+      web-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: npm
+    directory: /apps/site
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(site)"
+    groups:
+      site-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "ci"
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+# ⛔ The `docker` ecosystem is deliberately NOT enabled, for two separate
+# reasons, and neither is reluctance to keep images current.
+#
+# 1. The Dockerfile's `golang:` and `node:` tags are not dependencies. They are
+#    one half of a toolchain that must stay in step with apps/api/go.mod's `go`
+#    directive, the devcontainer's features, and ci.yml's `node-version`.
+#    Dependabot would raise the image and leave the other three behind, which is
+#    exactly the drift v0.2.9 was opened to remove: CI would once again be
+#    testing a compiler that never built the artifact.
+#
+# 2. infra/docker-compose.prod.yml is not a build input — `update.sh` reconciles
+#    it onto every live install. A bump of `postgres:16-alpine` there is a
+#    database major-version migration on other people's servers, arriving as a
+#    routine-looking dependency PR. `moby/buildkit` is pinned on purpose as well.
+#
+# Those images are reviewed when a release touches them, by someone who knows
+# which of the two cases they are in.

@@ -74,6 +74,22 @@ info() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 cleanup() {
   local code=$?
   cd "$ROOT"
+  # On a red run, keep the stack's own logs beside Playwright's trace BEFORE the
+  # teardown below removes the containers. It has to happen here and not as a
+  # later CI step for exactly that reason: by then there is nothing to read.
+  #
+  # Written into apps/web/test-results, which CI already uploads as
+  # browser-drill-trace, so this needs no workflow change.
+  #
+  # Every service, not a guess at the interesting one: a browser drill fails in
+  # ways nobody predicted, and v0.2.8's one red run was an unexplained 500 from
+  # POST /domains that this would have answered. Tailed, because a BuildKit log
+  # is long and the answer is near the end.
+  if [[ $code -ne 0 && "${KEEP:-0}" != "1" ]]; then
+    mkdir -p apps/web/test-results
+    "${COMPOSE[@]}" logs --no-color --timestamps --tail=2000 \
+      > apps/web/test-results/stack-logs.txt 2>&1 || true
+  fi
   if [[ "${KEEP:-0}" == "1" ]]; then
     info "KEEP=1 — leaving the stack up. Tear down with:"
     echo "  docker compose -p $PROJECT --project-directory . -f infra/docker-compose.prod.yml -f infra/docker-compose.smoke.yml --env-file $ENV_FILE down -v"

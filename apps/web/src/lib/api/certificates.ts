@@ -44,6 +44,8 @@ export interface DomainTLSStatus {
   certificate_name?: string;
   application_id: string;
   application_name: string;
+  /** Not running means no route, and so no certificate is requested. */
+  application_status: string;
   project_id: string;
 }
 

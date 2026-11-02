@@ -36,7 +36,10 @@ type domainTLSStatus struct {
 	CertificateName string `json:"certificate_name,omitempty"`
 	ApplicationID   string `json:"application_id"`
 	ApplicationName string `json:"application_name"`
-	ProjectID       string `json:"project_id"`
+	// ApplicationStatus is why a domain can be pending with nothing wrong: an
+	// application that is not running has no route, so no certificate is asked for.
+	ApplicationStatus string `json:"application_status"`
+	ProjectID         string `json:"project_id"`
 }
 
 // ListDomainTLSStatus returns every domain's TLS state in one place — the view
@@ -83,19 +86,20 @@ func (h *Handler) ListDomainTLSStatus(w http.ResponseWriter, r *http.Request) {
 	out := make([]domainTLSStatus, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, domainTLSStatus{
-			ID:               uuidToString(row.ID),
-			Hostname:         row.Hostname,
-			SSLMode:          row.SslMode,
-			TLSStatus:        row.TlsStatus,
-			TLSIssuer:        row.TlsIssuer.String,
-			TLSNotAfter:      timestampPtr(row.TlsNotAfter),
-			TLSLastCheckedAt: timestampPtr(row.TlsLastCheckedAt),
-			TLSError:         row.TlsError.String,
-			TLSAdvisory:      row.TlsAdvisory.String,
-			CertificateName:  row.CertificateName.String,
-			ApplicationID:    uuidToString(row.ApplicationID),
-			ApplicationName:  row.ApplicationName,
-			ProjectID:        uuidToString(row.ProjectID),
+			ID:                uuidToString(row.ID),
+			Hostname:          row.Hostname,
+			SSLMode:           row.SslMode,
+			TLSStatus:         row.TlsStatus,
+			TLSIssuer:         row.TlsIssuer.String,
+			TLSNotAfter:       timestampPtr(row.TlsNotAfter),
+			TLSLastCheckedAt:  timestampPtr(row.TlsLastCheckedAt),
+			TLSError:          row.TlsError.String,
+			TLSAdvisory:       row.TlsAdvisory.String,
+			CertificateName:   row.CertificateName.String,
+			ApplicationID:     uuidToString(row.ApplicationID),
+			ApplicationName:   row.ApplicationName,
+			ApplicationStatus: row.ApplicationStatus,
+			ProjectID:         uuidToString(row.ProjectID),
 		})
 	}
 	writeJSON(w, http.StatusOK, out)

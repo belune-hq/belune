@@ -19720,6 +19720,9 @@
           "application_name": {
             "type": "string"
           },
+          "application_status": {
+            "type": "string"
+          },
           "certificate_name": {
             "type": "string"
           },

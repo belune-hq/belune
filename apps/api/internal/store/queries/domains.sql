@@ -152,12 +152,18 @@ WHERE hostname = $1;
 -- ListProjectsByUser, and for the same reason: sharing grants operational access,
 -- so a shared project's domains are as visible as an owned one's.
 --
+-- application_status rides along because a domain whose application is not running
+-- has no route and so is never asked for a certificate: without it a stopped app's
+-- domain sits at "pending" with nothing to say why. The reconciler's gate is
+-- status = running, and this is the one place the two are put side by side.
+--
 -- The certificate join is why this matters to a member at all. ListDomainsByApplication
 -- is SELECT * FROM domains, so it returns certificate_id as a bare UUID with nothing
 -- to resolve it against — this is the only query that turns that into a name.
 SELECT d.id, d.hostname, d.ssl_mode, d.tls_status, d.tls_issuer, d.tls_not_after,
        d.tls_last_checked_at, d.tls_error, d.tls_advisory, c.name AS certificate_name,
-       a.name AS application_name, a.id AS application_id, p.id AS project_id
+       a.name AS application_name, a.id AS application_id, a.status AS application_status,
+       p.id AS project_id
 FROM domains d
 JOIN applications a ON a.id = d.application_id
 JOIN projects p ON p.id = a.project_id

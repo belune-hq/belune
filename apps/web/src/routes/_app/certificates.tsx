@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { unroutedNotice } from "@/lib/domain-tls";
 import { DataTable, buildActionColumnDef } from "@/components/ui/data-table";
 import {
   Tooltip,
@@ -659,12 +660,22 @@ function CertificateDetail({ certificate }: { certificate: Certificate }) {
 // opening on a healthy domain too, rather than expanding to "nothing to report".
 function DomainTLSDetail({ domain }: { domain: DomainTLSStatus }) {
   const { tls_error: error, tls_advisory: advisory } = domain;
+  // The status comes from the row here and from useApplication on the
+  // application's Domains page, on purpose: this page spans many applications, so
+  // the list has to carry it per row, while that page is already viewing one
+  // application and has its status. Both read the same column.
+  const unrouted = unroutedNotice(domain.ssl_mode, domain.application_status);
 
   return (
     <div className="space-y-4 py-1">
       <DetailField label="Detail">
         {error ? (
           <span className="text-destructive">{error}</span>
+        ) : unrouted ? (
+          // Before the advisory: with no route nothing is waiting on a
+          // certificate, and a suspicion about how the name resolves is about
+          // a request that cannot arrive.
+          <span className="text-status-building">{unrouted}</span>
         ) : advisory ? (
           // An advisory is a suspicion, not a verdict — a hostname resolving
           // somewhere that isn't us is also just what a proxy in front of us

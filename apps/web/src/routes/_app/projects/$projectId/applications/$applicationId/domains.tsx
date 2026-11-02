@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { Globe } from "lucide-react";
 import { useDomains } from "@/lib/hooks/use-domains";
+import { useApplication } from "@/lib/hooks/use-applications";
 import { useProject } from "@/lib/hooks/use-projects";
 import { useAuthStore } from "@/lib/stores/auth";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ function DomainsPage() {
   const { projectId, applicationId } = Route.useParams();
   const { data: domains, isLoading } = useDomains(projectId, applicationId);
   const { data: project } = useProject(projectId);
+  const { data: application } = useApplication(projectId, applicationId);
   const currentUser = useAuthStore((s) => s.user);
   const canDelete =
     currentUser?.role === "admin" || currentUser?.id === project?.user_id;
@@ -86,6 +88,7 @@ function DomainsPage() {
               onEdit={openEdit}
               onEditFeatures={setFeaturesFor}
               canDelete={canDelete}
+              applicationStatus={application?.status}
             />
           )}
         </CardContent>

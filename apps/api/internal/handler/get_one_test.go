@@ -1,13 +1,17 @@
 package handler_test
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/belune-hq/belune/internal/store/generated"
 	"github.com/belune-hq/belune/internal/testutil"
 )
 
@@ -116,4 +120,68 @@ func TestGetPreview_RejectsANonPreview(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode,
 		"an unknown id must 404 rather than 500")
 	resp.Body.Close()
+}
+
+// A preview whose domain has TLS off is served over plain HTTP, so a link built
+// with a guessed "https://" is dead. The server hands back the URL because it has
+// the domain row and the client does not.
+func TestPreviews_URLFollowsTheDomainsSSLMode(t *testing.T) {
+	resetDB(t)
+	token := env.SetupAdmin(t, "admin@test.com", "password123")
+	project := env.CreateProject(t, token, "Preview URL", "preview-url")
+	projectID := extractID(project["id"])
+	parent := env.CreateApplication(t, token, projectID, map[string]any{
+		"name": "Parent", "type": "git", "build_type": "railpack",
+		"source_repo": "https://github.com/test/repo", "branch": "main",
+	})
+	parentID := extractID(parent["id"])
+
+	var projectUUID, parentUUID pgtype.UUID
+	require.NoError(t, projectUUID.Scan(projectID))
+	require.NoError(t, parentUUID.Scan(parentID))
+
+	mkPreview := func(slug, hostname, sslMode string) string {
+		row, err := env.Queries.CreatePreviewApplication(context.Background(), generated.CreatePreviewApplicationParams{
+			ProjectID: projectUUID, Name: "Parent (" + slug + ")", Slug: slug, Type: "git",
+			SourceRepo:          pgtype.Text{String: "https://github.com/test/repo", Valid: true},
+			BuildType:           "railpack",
+			ParentApplicationID: parentUUID,
+			Branch:              pgtype.Text{String: slug, Valid: true},
+		})
+		require.NoError(t, err)
+		id := row.ID.String()
+		resp := env.DoRequest(t, "POST",
+			fmt.Sprintf("/api/projects/%s/applications/%s/domains", projectID, id),
+			map[string]any{"hostname": hostname, "ssl_mode": sslMode},
+			testutil.AuthHeader(token))
+		require.Equal(t, http.StatusCreated, resp.StatusCode)
+		_ = resp.Body.Close()
+		return id
+	}
+	plain := mkPreview("plain", "plain.preview.example.com", "off")
+	mkPreview("secure", "secure.preview.example.com", "automatic")
+
+	resp := env.DoRequest(t, "GET",
+		fmt.Sprintf("/api/projects/%s/applications/%s/previews", projectID, parentID),
+		nil, testutil.AuthHeader(token))
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	var list struct {
+		Previews []struct{ ID, Hostname, URL string } `json:"previews"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&list))
+	_ = resp.Body.Close()
+	urls := map[string]string{}
+	for _, p := range list.Previews {
+		urls[p.Hostname] = p.URL
+	}
+	assert.Equal(t, "http://plain.preview.example.com", urls["plain.preview.example.com"])
+	assert.Equal(t, "https://secure.preview.example.com", urls["secure.preview.example.com"])
+
+	// The single-preview read agrees with the list: two call sites, one rule.
+	resp = env.DoRequest(t, "GET",
+		fmt.Sprintf("/api/projects/%s/applications/%s/previews/%s", projectID, parentID, plain),
+		nil, testutil.AuthHeader(token))
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	one := testutil.ReadJSON(t, resp)
+	assert.Equal(t, "http://plain.preview.example.com", one["url"])
 }

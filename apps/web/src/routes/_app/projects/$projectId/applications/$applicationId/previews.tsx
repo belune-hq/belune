@@ -136,9 +136,9 @@ function PreviewsPage() {
                         </span>
                         <StatusBadge status={preview.status} />
                       </div>
-                      {preview.hostname && (
+                      {preview.hostname && preview.url && (
                         <a
-                          href={`https://${preview.hostname}`}
+                          href={preview.url}
                           target="_blank"
                           rel="noopener noreferrer"
                           aria-label={`Open ${branchLabel} preview at ${preview.hostname} in a new tab`}

@@ -256,7 +256,7 @@ func (h *Handler) InstantiateTemplate(w http.ResponseWriter, r *http.Request) {
 		Domain:    template.DomainValues{},
 	}
 	if hostname != "" {
-		resolveCtx.Domain = template.DomainValues{URL: "https://" + hostname, Host: hostname}
+		resolveCtx.Domain = template.DomainValues{URL: domainURL(hostname, templateSSLMode), Host: hostname}
 	}
 
 	// 2. Applications (in manifest order) with resolved env + volumes.
@@ -546,6 +546,12 @@ func (h *Handler) stampSource(ctx context.Context, kind string, id pgtype.UUID, 
 	}
 }
 
+// templateSSLMode is the one TLS mode a template's domain is created with. It is
+// a constant, not a setting: the stored row, the Caddy route and the URL handed to
+// the template's env (resolveCtx.Domain.URL) all have to agree on it, and as three
+// separate literals nothing made them. This does not make the mode configurable.
+const templateSSLMode = proxy.SSLModeAutomatic
+
 // addTemplateDomain creates a domain row for the routable service and registers
 // its Caddy route (automatic TLS). Best-effort: a failure is logged, not fatal —
 // the container is not running yet anyway, and the user can re-add the domain.
@@ -556,7 +562,7 @@ func (h *Handler) addTemplateDomain(r *http.Request, project generated.Project, 
 		Hostname:      hostname,
 		SslEnabled:    true,
 		ForceHttps:    true,
-		SslMode:       "automatic",
+		SslMode:       templateSSLMode,
 		Path:          normalizeDomainPath(""),
 		StripPath:     false,
 		InternalPath:  normalizeInternalPath(""),
@@ -579,7 +585,7 @@ func (h *Handler) addTemplateDomain(r *http.Request, project generated.Project, 
 		TargetURL:  fmt.Sprintf("http://%s:%d", containerName, port),
 		TLS:        true,
 		ForceHTTPS: true,
-		SSLMode:    "automatic",
+		SSLMode:    templateSSLMode,
 		CertPEM:    cert.CertPEM,
 		KeyPEM:     cert.KeyPEM,
 	}); err != nil {

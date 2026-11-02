@@ -13,6 +13,10 @@ export interface PreviewApp {
   status: string;
   last_activity_at: string;
   hostname?: string;
+  /** Where the preview is served, scheme included. Built by the server from the
+   *  domain's ssl_mode: a client given only a hostname has to guess the scheme,
+   *  and a TLS-off domain is plain HTTP. */
+  url?: string;
 }
 
 export function updatePreviewConfig(

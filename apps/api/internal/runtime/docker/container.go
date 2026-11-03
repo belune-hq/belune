@@ -94,6 +94,7 @@ func (c *Client) CreateContainer(ctx context.Context, cfg runtime.ContainerConfi
 			Image:        cfg.Image,
 			Env:          env,
 			Cmd:          cfg.Cmd,
+			Entrypoint:   cfg.Entrypoint,
 			ExposedPorts: exposedPorts,
 			Labels:       labels,
 			Healthcheck:  healthConfig,

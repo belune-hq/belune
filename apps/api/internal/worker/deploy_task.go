@@ -761,13 +761,15 @@ func (h *TaskHandler) createAndStart(ctx context.Context, dc *deployContext) err
 
 	hc := healthCheckRuntimeConfig(dc.app, dc.health)
 
+	entrypoint, cmd := commandOverride(dc.command)
 	containerID, err := dc.runtime.CreateContainer(ctx, runtime.ContainerConfig{
-		Name:    dc.containerName,
-		Image:   dc.imageName,
-		Cmd:     commandArgv(dc.command),
-		Env:     dc.env,
-		Ports:   map[string]string{},
-		Network: naming.ProjectNetworkName(dc.appRow.ProjectSlug),
+		Name:       dc.containerName,
+		Image:      dc.imageName,
+		Entrypoint: entrypoint,
+		Cmd:        cmd,
+		Env:        dc.env,
+		Ports:      map[string]string{},
+		Network:    naming.ProjectNetworkName(dc.appRow.ProjectSlug),
 		// application-id groups all of an app's logs; deployment-id further
 		// separates them into per-run sessions so the viewer can isolate one
 		// redeploy/rebuild/rollback from the next.

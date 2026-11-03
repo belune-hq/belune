@@ -1,12 +1,19 @@
 package docker
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"io"
 	"testing"
 	"time"
 
+	"github.com/docker/docker/api/types/build"
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -113,4 +120,74 @@ func TestCreateContainerUnknownImage(t *testing.T) {
 		Image: "belune-nonexistent-image-for-testing-99999:latest",
 	})
 	assert.Error(t, err, "creating a container with an unknown image should return an error")
+}
+
+// buildEntrypointImage builds, from busybox, an image shaped like a Railpack-built
+// one: it declares an ENTRYPOINT that is a shell taking a script, plus a default CMD.
+func buildEntrypointImage(t *testing.T, c *Client, tag string) {
+	t.Helper()
+	dockerfile := "FROM " + containerTestImage + "\nENTRYPOINT [\"/bin/sh\",\"-c\"]\nCMD [\"echo IMAGE_DEFAULT_CMD\"]\n"
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	require.NoError(t, tw.WriteHeader(&tar.Header{Name: "Dockerfile", Mode: 0o644, Size: int64(len(dockerfile))}))
+	_, err := tw.Write([]byte(dockerfile))
+	require.NoError(t, err)
+	require.NoError(t, tw.Close())
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	require.NoError(t, c.PullImage(ctx, containerTestImage))
+	resp, err := c.cli.ImageBuild(ctx, &buf, build.ImageBuildOptions{Tags: []string{tag}, Remove: true, ForceRemove: true})
+	require.NoError(t, err)
+	_, err = io.Copy(io.Discard, resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	t.Cleanup(func() {
+		_, _ = c.cli.ImageRemove(context.Background(), tag, image.RemoveOptions{Force: true})
+	})
+}
+
+// runToCompletion creates the container from cfg, runs it to exit, and returns its
+// output.
+func runToCompletion(t *testing.T, c *Client, cfg runtime.ContainerConfig) string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	cfg.Name = uniqueTestContainerName(t)
+	id, err := c.CreateContainer(ctx, cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = c.RemoveContainer(context.Background(), id) })
+	require.NoError(t, c.StartContainer(ctx, id))
+	waitCh, errCh := c.cli.ContainerWait(ctx, id, container.WaitConditionNotRunning)
+	select {
+	case <-waitCh:
+	case err := <-errCh:
+		require.NoError(t, err)
+	}
+	logs, err := c.ContainerLogs(ctx, id, false)
+	require.NoError(t, err)
+	defer func() { _ = logs.Close() }()
+	var out bytes.Buffer
+	_, _ = stdcopy.StdCopy(&out, &out, logs)
+	return out.String()
+}
+
+// ⛔ MEASURED against an image shaped like a Railpack build (ENTRYPOINT is a shell
+// that takes a script). Sending `sh -c <cmd>` as Cmd while the image's entrypoint is
+// still in place runs NOTHING -- `/bin/sh -c sh -c "<cmd>"` executes `sh` and discards
+// the command -- while clearing the entrypoint runs it, and leaving both nil keeps
+// the image's own behaviour exactly.
+func TestEntrypoint_ClearedRunsTheCommandInheritedSwallowsIt(t *testing.T) {
+	c := newTestDockerClient(t)
+	tag := "belune-entrypoint-test:" + uniqueTestContainerName(t)[len("belune-test-"):]
+	buildEntrypointImage(t, c, tag)
+
+	swallowed := runToCompletion(t, c, runtime.ContainerConfig{Image: tag, Cmd: []string{"sh", "-c", "echo MARKER_RAN"}})
+	assert.NotContains(t, swallowed, "MARKER_RAN", "with the image's entrypoint intact the command never runs")
+
+	cleared := runToCompletion(t, c, runtime.ContainerConfig{Image: tag, Entrypoint: []string{}, Cmd: []string{"sh", "-c", "echo MARKER_RAN"}})
+	assert.Contains(t, cleared, "MARKER_RAN", "an empty, non-nil entrypoint clears the image's")
+
+	inherited := runToCompletion(t, c, runtime.ContainerConfig{Image: tag})
+	assert.Contains(t, inherited, "IMAGE_DEFAULT_CMD", "nil for both leaves the image exactly as built")
 }

@@ -417,6 +417,7 @@ func TestHandleDeployTask_AnEmptyProcessCommandLeavesTheImageCmdAlone(t *testing
 
 	require.Len(t, rt.CreateCalls, 1)
 	assert.Nil(t, rt.CreateCalls[0].Cmd, "a nil Cmd, not []string{\"\"} or []string{}")
+	assert.Nil(t, rt.CreateCalls[0].Entrypoint, "a nil Entrypoint inherits the image's; an empty one would clear it")
 }
 
 func TestHandleDeployTask_ACommandOnTheProcessTypeBecomesTheContainersCmd(t *testing.T) {
@@ -432,6 +433,8 @@ func TestHandleDeployTask_ACommandOnTheProcessTypeBecomesTheContainersCmd(t *tes
 
 	require.Len(t, rt.CreateCalls, 1)
 	assert.Equal(t, []string{"sh", "-c", "node server.js && echo done"}, rt.CreateCalls[0].Cmd)
+	assert.NotNil(t, rt.CreateCalls[0].Entrypoint, "the image's entrypoint must be cleared, not inherited")
+	assert.Empty(t, rt.CreateCalls[0].Entrypoint)
 }
 
 // The deploy gate must read the type's resolved check, not the application's: here

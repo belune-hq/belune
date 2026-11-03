@@ -58,10 +58,15 @@ type deployContext struct {
 	runtime       runtime.ContainerRuntime
 	containerName string
 	containerID   string
-	env           map[string]string
-	imageName     string
-	commitSHA     string
-	domains       []generated.Domain
+	// instanceID and processType identify the instance row this deploy replaces; the
+	// process type is what the container is labelled with.
+	instanceID  pgtype.UUID
+	processType string
+	instanceIdx int32
+	env         map[string]string
+	imageName   string
+	commitSHA   string
+	domains     []generated.Domain
 	// cleanedUp is set once the previous container has been torn down. Before
 	// that point a failed deploy has left the old container serving, so the
 	// application is still up and must not be flagged as errored.
@@ -304,6 +309,13 @@ func (h *TaskHandler) loadApplication(ctx context.Context, dc *deployContext) er
 		return fmt.Errorf("resolve instance: %w", err)
 	}
 	dc.containerName = inst.ContainerName
+	dc.instanceID = inst.ID
+	dc.instanceIdx = inst.Idx
+	pt, err := h.Queries.GetProcessType(ctx, inst.ProcessTypeID)
+	if err != nil {
+		return fmt.Errorf("load process type: %w", err)
+	}
+	dc.processType = pt.Name
 
 	rt, err := h.Runtimes.For(ctx, appRow.ServerID)
 	if err != nil {
@@ -754,6 +766,11 @@ func (h *TaskHandler) createAndStart(ctx context.Context, dc *deployContext) err
 		Labels: map[string]string{
 			runtime.LabelApplicationID: dc.payload.ApplicationID,
 			"deployment-id":            dc.payload.DeploymentID,
+			// Which container of the application this is. Written on create only, so
+			// an existing container has neither until it is redeployed -- readers
+			// identify those by stored container name instead.
+			runtime.LabelProcessType: dc.processType,
+			runtime.LabelInstanceIdx: strconv.Itoa(int(dc.instanceIdx)),
 		},
 		CPULimit:        dc.app.CpuLimit,
 		MemoryLimit:     dc.app.MemoryLimit,
@@ -1069,6 +1086,17 @@ func (h *TaskHandler) finalize(ctx context.Context, dc *deployContext) error {
 		}); err != nil {
 			return fmt.Errorf("mark the application running: %w", err)
 		}
+		// Alongside the application status, in the same transaction, not instead of
+		// it: the instance records which container is serving.
+		if dc.instanceID.Valid {
+			if _, err := q.UpdateInstanceContainer(ctx, generated.UpdateInstanceContainerParams{
+				ID:          dc.instanceID,
+				ContainerID: pgtype.Text{String: dc.containerID, Valid: dc.containerID != ""},
+				Status:      status.ApplicationRunning,
+			}); err != nil {
+				return fmt.Errorf("record the instance's container: %w", err)
+			}
+		}
 		// Stamp last_activity_at for preview GC. Doing this on every deploy
 		// (not just previews) keeps the column meaningful if we later extend
 		// idle cleanup to parents too.
@@ -1170,6 +1198,12 @@ func (h *TaskHandler) failDeployment(ctx context.Context, dc *deployContext, kin
 				Status: status.ApplicationError,
 			}); err != nil {
 				slog.Warn("could not mark application errored", "error", err)
+			} else if dc.instanceID.Valid {
+				if _, err := h.Queries.UpdateInstanceStatus(ctx, generated.UpdateInstanceStatusParams{
+					ID: dc.instanceID, Status: status.ApplicationError,
+				}); err != nil {
+					slog.Warn("could not mark instance errored", "error", err)
+				}
 			}
 		}
 

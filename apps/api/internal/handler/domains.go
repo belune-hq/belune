@@ -16,7 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/belune-hq/belune/internal/naming"
+	"github.com/belune-hq/belune/internal/instances"
 	"github.com/belune-hq/belune/internal/proxy"
 	"github.com/belune-hq/belune/internal/server/middleware"
 	"github.com/belune-hq/belune/internal/service"
@@ -797,10 +797,15 @@ func (h *Handler) UpdateDomain(w http.ResponseWriter, r *http.Request) {
 	features := h.loadRouteFeatures(r, domainUUID)
 	cert := h.domainCertificate(r.Context(), domain)
 
-	containerName := naming.ContainerName(row.ProjectSlug, row.Slug, uuidToString(domain.ApplicationID))
-	if err := h.proxy.AddRoute(r.Context(), proxy.RouteConfig{
+	// Resolved BEFORE touching Caddy: AddRoute removes any existing route first, so
+	// a failure after that point would leave the domain with no route at all. On a
+	// resolve failure the live route is left exactly as it is.
+	inst, resolveErr := instances.ResolveOne(r.Context(), h.queries, domain.ApplicationID)
+	if resolveErr != nil {
+		slog.Error("failed to resolve container for proxy route; live route left untouched", "hostname", req.Hostname, "error", resolveErr)
+	} else if err := h.proxy.AddRoute(r.Context(), proxy.RouteConfig{
 		Hostname:       req.Hostname,
-		TargetURL:      fmt.Sprintf("http://%s:%d", containerName, port),
+		TargetURL:      fmt.Sprintf("http://%s:%d", inst.ContainerName, port),
 		TLS:            sslEnabled,
 		ForceHTTPS:     forceHTTPS,
 		SSLMode:        sslMode,
@@ -1097,8 +1102,13 @@ func (h *Handler) rebuildDomainRoute(r *http.Request, domainID pgtype.UUID) {
 	features := h.loadRouteFeatures(r, domainID)
 	cert := h.domainCertificate(r.Context(), domain)
 
-	appIDStr := uuidToString(domain.ApplicationID)
-	containerName := naming.ContainerName(row.ProjectSlug, row.Slug, appIDStr)
+	// Resolved before the removal below, never after: remove-then-fail would leave
+	// the domain with no route at all.
+	inst, err := instances.ResolveOne(r.Context(), h.queries, domain.ApplicationID)
+	if err != nil {
+		slog.Error("rebuildDomainRoute: failed to resolve container; live route left untouched", "hostname", domain.Hostname, "path", domain.Path, "error", err)
+		return
+	}
 
 	if err := h.proxy.RemoveRoute(r.Context(), domain.Hostname, domain.Path); err != nil {
 		slog.Warn("rebuildDomainRoute: failed to remove proxy route", "hostname", domain.Hostname, "path", domain.Path, "error", err)
@@ -1107,7 +1117,7 @@ func (h *Handler) rebuildDomainRoute(r *http.Request, domainID pgtype.UUID) {
 		Hostname:       domain.Hostname,
 		Path:           domain.Path,
 		StripPath:      domain.StripPath,
-		TargetURL:      fmt.Sprintf("http://%s:%d", containerName, port),
+		TargetURL:      fmt.Sprintf("http://%s:%d", inst.ContainerName, port),
 		TLS:            domain.SslEnabled,
 		ForceHTTPS:     domain.ForceHttps,
 		SSLMode:        domain.SslMode,
@@ -1217,7 +1227,11 @@ func (h *Handler) createDomainRecord(ctx context.Context, applicationID string, 
 
 	port := proxy.ResolveUpstreamPort(params.ContainerPort, row.ContainerPort)
 	cert := h.domainCertificate(ctx, domain)
-	containerName := naming.ContainerName(row.ProjectSlug, row.Slug, applicationID)
+	inst, err := instances.ResolveOne(ctx, h.queries, applicationUUID)
+	if err != nil {
+		return generated.Domain{}, fmt.Errorf("%w: %v", errDomainResolveFailed, err)
+	}
+	containerName := inst.ContainerName
 
 	if domain.SslMode == proxy.SSLModeDNSChallenge {
 		h.syncDNSPolicies(ctx)

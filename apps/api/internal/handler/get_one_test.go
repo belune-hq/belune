@@ -149,6 +149,17 @@ func TestPreviews_URLFollowsTheDomainsSSLMode(t *testing.T) {
 			Branch:              pgtype.Text{String: slug, Valid: true},
 		})
 		require.NoError(t, err)
+		// What FindOrCreatePreview writes with every preview. Adding a domain
+		// resolves the upstream from this row, so a preview seeded through the
+		// query alone has nothing to route to.
+		pt, err := env.Queries.CreateProcessType(context.Background(), generated.CreateProcessTypeParams{
+			ApplicationID: row.ID, Name: "web", Replicas: 1, Routable: true,
+		})
+		require.NoError(t, err)
+		_, err = env.Queries.CreateInstance(context.Background(), generated.CreateInstanceParams{
+			ApplicationID: row.ID, ProcessTypeID: pt.ID, Idx: 1, ContainerName: row.Slug, Status: "pending",
+		})
+		require.NoError(t, err)
 		id := row.ID.String()
 		resp := env.DoRequest(t, "POST",
 			fmt.Sprintf("/api/projects/%s/applications/%s/domains", projectID, id),

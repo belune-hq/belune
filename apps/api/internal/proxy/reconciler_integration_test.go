@@ -131,12 +131,29 @@ func seedRunningApp(t *testing.T, ctx context.Context, queries *generated.Querie
 	})
 	require.NoError(t, err)
 
+	seedInstance(t, ctx, queries, app)
+
 	updated, err := queries.UpdateApplicationStatus(ctx, generated.UpdateApplicationStatusParams{
 		ID:     app.ID,
 		Status: status.ApplicationRunning,
 	})
 	require.NoError(t, err)
 	return updated
+}
+
+// seedInstance writes what ApplicationService.Create writes with every
+// application. The reconciler takes the upstream's name from this row, so an
+// application seeded without one has no upstream to route to.
+func seedInstance(t *testing.T, ctx context.Context, queries *generated.Queries, app generated.Application) {
+	t.Helper()
+	pt, err := queries.CreateProcessType(ctx, generated.CreateProcessTypeParams{
+		ApplicationID: app.ID, Name: "web", Replicas: 1, Routable: true,
+	})
+	require.NoError(t, err)
+	_, err = queries.CreateInstance(ctx, generated.CreateInstanceParams{
+		ApplicationID: app.ID, ProcessTypeID: pt.ID, Idx: 1, ContainerName: app.Slug, Status: "pending",
+	})
+	require.NoError(t, err)
 }
 
 func selfSignedPEM(t *testing.T, hostname string) (certPEM, keyPEM string) {

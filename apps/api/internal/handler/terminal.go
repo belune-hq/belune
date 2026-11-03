@@ -9,10 +9,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"nhooyr.io/websocket"
-	"nhooyr.io/websocket/wsjson"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"

@@ -150,6 +150,105 @@ func (q *Queries) GetInstance(ctx context.Context, id pgtype.UUID) (ApplicationI
 	return i, err
 }
 
+const getInstanceByContainerID = `-- name: GetInstanceByContainerID :one
+SELECT id, application_id, process_type_id, deployment_id, idx, container_name, container_id, status, created_at, updated_at FROM application_instances
+WHERE application_id = $1 AND container_id = $2
+ORDER BY idx, id
+LIMIT 1
+`
+
+type GetInstanceByContainerIDParams struct {
+	ApplicationID pgtype.UUID `json:"application_id"`
+	ContainerID   pgtype.Text `json:"container_id"`
+}
+
+// Resolving a Docker event to its instance row (A4). Scoped by application_id so
+// a name or id that collides across applications can never move another app's row.
+// The event watcher tries them in this order: container id, stored container name,
+// then the process-type + instance-idx labels.
+func (q *Queries) GetInstanceByContainerID(ctx context.Context, arg GetInstanceByContainerIDParams) (ApplicationInstance, error) {
+	row := q.db.QueryRow(ctx, getInstanceByContainerID, arg.ApplicationID, arg.ContainerID)
+	var i ApplicationInstance
+	err := row.Scan(
+		&i.ID,
+		&i.ApplicationID,
+		&i.ProcessTypeID,
+		&i.DeploymentID,
+		&i.Idx,
+		&i.ContainerName,
+		&i.ContainerID,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getInstanceByContainerName = `-- name: GetInstanceByContainerName :one
+SELECT id, application_id, process_type_id, deployment_id, idx, container_name, container_id, status, created_at, updated_at FROM application_instances
+WHERE application_id = $1 AND container_name = $2
+ORDER BY idx, id
+LIMIT 1
+`
+
+type GetInstanceByContainerNameParams struct {
+	ApplicationID pgtype.UUID `json:"application_id"`
+	ContainerName string      `json:"container_name"`
+}
+
+// A lookup of a stored fact, never a parse of the name: A1's backfill stored the
+// legacy name every pre-upgrade container already carries.
+func (q *Queries) GetInstanceByContainerName(ctx context.Context, arg GetInstanceByContainerNameParams) (ApplicationInstance, error) {
+	row := q.db.QueryRow(ctx, getInstanceByContainerName, arg.ApplicationID, arg.ContainerName)
+	var i ApplicationInstance
+	err := row.Scan(
+		&i.ID,
+		&i.ApplicationID,
+		&i.ProcessTypeID,
+		&i.DeploymentID,
+		&i.Idx,
+		&i.ContainerName,
+		&i.ContainerID,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getInstanceByProcessTypeAndIdx = `-- name: GetInstanceByProcessTypeAndIdx :one
+SELECT i.id, i.application_id, i.process_type_id, i.deployment_id, i.idx, i.container_name, i.container_id, i.status, i.created_at, i.updated_at
+FROM application_instances i
+JOIN application_process_types pt ON pt.id = i.process_type_id
+WHERE i.application_id = $1 AND pt.name = $2 AND i.idx = $3
+ORDER BY i.id
+LIMIT 1
+`
+
+type GetInstanceByProcessTypeAndIdxParams struct {
+	ApplicationID pgtype.UUID `json:"application_id"`
+	Name          string      `json:"name"`
+	Idx           int32       `json:"idx"`
+}
+
+func (q *Queries) GetInstanceByProcessTypeAndIdx(ctx context.Context, arg GetInstanceByProcessTypeAndIdxParams) (ApplicationInstance, error) {
+	row := q.db.QueryRow(ctx, getInstanceByProcessTypeAndIdx, arg.ApplicationID, arg.Name, arg.Idx)
+	var i ApplicationInstance
+	err := row.Scan(
+		&i.ID,
+		&i.ApplicationID,
+		&i.ProcessTypeID,
+		&i.DeploymentID,
+		&i.Idx,
+		&i.ContainerName,
+		&i.ContainerID,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getProcessType = `-- name: GetProcessType :one
 SELECT id, application_id, name, command, replicas, routable, cpu_limit, memory_limit, health_check_type, health_check_command, created_at, updated_at FROM application_process_types WHERE id = $1
 `

@@ -96,9 +96,18 @@ const LabelUpdateHelper = "belune-update"
 // them, and a constant either side could rename privately is one that will
 // drift. The orphan sweep deletes what it cannot match, so drift there is not
 // a cosmetic bug.
+//
+// LabelProcessType and LabelInstanceIdx say WHICH container of an application
+// this is. They are written on create only, so a container created before they
+// existed carries neither until its application is redeployed: any reader must
+// have a way to identify it that does not need them (the event watcher falls
+// back to the stored container name), exactly as the orphan sweep keeps the
+// legacy names as its pre-label fallback.
 const (
 	LabelApplicationID = "application-id"
 	LabelDatabaseID    = "database-id"
+	LabelProcessType   = "process-type"
+	LabelInstanceIdx   = "instance-idx"
 )
 
 // ContainerResourceStats holds resource usage stats for a single container.

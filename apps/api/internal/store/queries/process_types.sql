@@ -97,3 +97,29 @@ DELETE FROM application_instances WHERE id = $1;
 -- carry, across all applications.
 -- name: ListAllInstanceContainerNames :many
 SELECT application_id, container_name FROM application_instances;
+
+-- Resolving a Docker event to its instance row (A4). Scoped by application_id so
+-- a name or id that collides across applications can never move another app's row.
+-- The event watcher tries them in this order: container id, stored container name,
+-- then the process-type + instance-idx labels.
+-- name: GetInstanceByContainerID :one
+SELECT * FROM application_instances
+WHERE application_id = $1 AND container_id = $2
+ORDER BY idx, id
+LIMIT 1;
+
+-- A lookup of a stored fact, never a parse of the name: A1's backfill stored the
+-- legacy name every pre-upgrade container already carries.
+-- name: GetInstanceByContainerName :one
+SELECT * FROM application_instances
+WHERE application_id = $1 AND container_name = $2
+ORDER BY idx, id
+LIMIT 1;
+
+-- name: GetInstanceByProcessTypeAndIdx :one
+SELECT i.*
+FROM application_instances i
+JOIN application_process_types pt ON pt.id = i.process_type_id
+WHERE i.application_id = $1 AND pt.name = $2 AND i.idx = $3
+ORDER BY i.id
+LIMIT 1;

@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/belune-hq/belune/internal/instances"
 	"github.com/belune-hq/belune/internal/runtime"
 	"github.com/belune-hq/belune/internal/status"
 	"github.com/belune-hq/belune/internal/store/generated"
@@ -197,7 +198,9 @@ func (w *Watcher) reconcile(ctx context.Context) {
 			// recorded error is left alone.
 			if app.Status == status.ApplicationRunning || app.Status == status.ApplicationUnhealthy {
 				slog.Info("eventwatcher: reconciling stopped application", "app_id", appIDStr)
-				w.updateAppStatus(ctx, app.ID, appIDStr, status.ApplicationStopped)
+				if w.updateAppStatus(ctx, app.ID, appIDStr, status.ApplicationStopped) {
+					w.syncAllInstances(ctx, app.ID, status.ApplicationStopped)
+				}
 			}
 			continue
 		}
@@ -221,7 +224,9 @@ func (w *Watcher) reconcile(ctx context.Context) {
 				app.Status == status.ApplicationRunning ||
 				app.Status == status.ApplicationUnhealthy) {
 			slog.Info("eventwatcher: reconciling application", "app_id", appIDStr, "from", app.Status, "to", desired)
-			w.updateAppStatus(ctx, app.ID, appIDStr, desired)
+			if w.updateAppStatus(ctx, app.ID, appIDStr, desired) {
+				w.syncInstanceFromEvent(ctx, app.ID, runtime.ContainerEvent{ContainerName: containerName}, desired)
+			}
 		}
 	}
 
@@ -343,7 +348,13 @@ func (w *Watcher) handleApplicationEvent(ctx context.Context, event runtime.Cont
 		"new_status", newStatus,
 	)
 
-	w.updateAppStatus(ctx, appUUID, appID, newStatus)
+	// Everything above is the application's decision (die ambiguity, health on a
+	// stopped app). The instance is written only after the application write
+	// succeeded, so it can never contradict what was decided -- never
+	// unconditionally on a die the application write was suppressed for.
+	if w.updateAppStatus(ctx, appUUID, appID, newStatus) {
+		w.syncInstanceFromEvent(ctx, appUUID, event, newStatus)
+	}
 }
 
 // isHealthEvent reports whether a Docker event action is a health-status
@@ -523,18 +534,61 @@ func (w *Watcher) handleDatabaseEvent(ctx context.Context, event runtime.Contain
 	w.updateDatabaseStatus(ctx, dbUUID, dbID, newStatus)
 }
 
-func (w *Watcher) updateAppStatus(ctx context.Context, appUUID pgtype.UUID, appIDStr, newStatus string) {
+// updateAppStatus writes the application's status and reports whether it was
+// written, so the caller can mirror it onto the instance only when it was.
+func (w *Watcher) updateAppStatus(ctx context.Context, appUUID pgtype.UUID, appIDStr, newStatus string) bool {
 	_, err := w.queries.UpdateApplicationStatus(ctx, generated.UpdateApplicationStatusParams{
 		ID:     appUUID,
 		Status: newStatus,
 	})
 	if err != nil {
 		slog.Warn("eventwatcher: failed to update app status", "app_id", appIDStr, "error", err)
-		return
+		return false
 	}
 
 	if w.broadcaster != nil {
 		w.broadcaster.BroadcastStatus(appIDStr, newStatus)
+	}
+	return true
+}
+
+// syncInstanceFromEvent records, on the instance the container belongs to, the
+// status just written for the application. It is a mirror, written ALONGSIDE the
+// application status and not instead of it: application status stays exactly what
+// it was, and is not derived from instance rows.
+//
+// The instance is found by container id, then stored container name, then labels
+// (see instances.ResolveForContainer), because a container created before the
+// process-type labels existed has only application-id until its app is redeployed.
+// Reaching here at all means the application write passed every filter above it, so
+// the transient states and the die ambiguity were already honoured.
+func (w *Watcher) syncInstanceFromEvent(ctx context.Context, appUUID pgtype.UUID, event runtime.ContainerEvent, newStatus string) {
+	inst, found, err := instances.ResolveForContainer(ctx, w.queries, appUUID, event)
+	if err != nil {
+		slog.Warn("eventwatcher: failed to resolve instance for container event", "app_id", pgUUIDToString(appUUID), "container", event.ContainerName, "error", err)
+		return
+	}
+	if !found {
+		slog.Debug("eventwatcher: no instance row for container", "app_id", pgUUIDToString(appUUID), "container", event.ContainerName)
+		return
+	}
+	if _, err := w.queries.UpdateInstanceStatus(ctx, generated.UpdateInstanceStatusParams{ID: inst.ID, Status: newStatus}); err != nil {
+		slog.Warn("eventwatcher: failed to update instance status", "instance_id", pgUUIDToString(inst.ID), "error", err)
+	}
+}
+
+// syncAllInstances is for the reconcile case where no container exists to name:
+// every one of the application's containers is gone.
+func (w *Watcher) syncAllInstances(ctx context.Context, appUUID pgtype.UUID, newStatus string) {
+	insts, err := w.queries.ListInstancesByApplication(ctx, appUUID)
+	if err != nil {
+		slog.Warn("eventwatcher: failed to list instances", "app_id", pgUUIDToString(appUUID), "error", err)
+		return
+	}
+	for _, inst := range insts {
+		if _, err := w.queries.UpdateInstanceStatus(ctx, generated.UpdateInstanceStatusParams{ID: inst.ID, Status: newStatus}); err != nil {
+			slog.Warn("eventwatcher: failed to update instance status", "instance_id", pgUUIDToString(inst.ID), "error", err)
+		}
 	}
 }
 

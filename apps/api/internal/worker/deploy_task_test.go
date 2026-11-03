@@ -381,6 +381,31 @@ func TestHandleDeployTask_HappyPathSkipsHealthCheck(t *testing.T) {
 	assert.Equal(t, status.ApplicationRunning, appRow.Status)
 }
 
+// A4: a deploy labels the container with WHICH instance it is, and records the
+// container it created on that instance row beside the application status.
+func TestHandleDeployTask_LabelsTheContainerAndRecordsItOnTheInstance(t *testing.T) {
+	t.Cleanup(func() { _ = testutil.TruncateAll(context.Background(), testPool) })
+	ctx := context.Background()
+
+	app, dep := seedApp(t)
+	rt := &testutil.MockContainerRuntime{}
+	h := newTestHandler(rt, &testutil.MockProxyManager{})
+	require.NoError(t, h.HandleDeployTask(ctx, asynq.NewTask("deploy", mustMarshalPayload(t, app.ID, dep.ID))))
+
+	require.Len(t, rt.CreateCalls, 1)
+	labels := rt.CreateCalls[0].Labels
+	assert.Equal(t, "web", labels[runtime.LabelProcessType])
+	assert.Equal(t, "1", labels[runtime.LabelInstanceIdx])
+	assert.Equal(t, uuidString(app.ID), labels[runtime.LabelApplicationID], "the existing label must survive")
+
+	insts, err := testQueries.ListInstancesByApplication(ctx, app.ID)
+	require.NoError(t, err)
+	require.Len(t, insts, 1)
+	assert.Equal(t, "mock-container-id", insts[0].ContainerID.String, "the container the deploy created")
+	assert.Equal(t, status.ApplicationRunning, insts[0].Status)
+	assert.Equal(t, app.Slug, insts[0].ContainerName, "the name is read from the row and not changed")
+}
+
 func TestHandleDeployTask_RollbackUsesProvidedImageTag(t *testing.T) {
 	t.Cleanup(func() { _ = testutil.TruncateAll(context.Background(), testPool) })
 

@@ -144,6 +144,8 @@ func (h *Handler) parseProcessTypeIDs(w http.ResponseWriter, r *http.Request) (a
 	return app, pt, true
 }
 
+//apidoc:tag applications/resources
+//apidoc:title Get Process Types
 func (h *Handler) ListProcessTypes(w http.ResponseWriter, r *http.Request) {
 	appUUID, _, ok := h.parseProcessTypeIDs(w, r)
 	if !ok {
@@ -163,6 +165,9 @@ func (h *Handler) ListProcessTypes(w http.ResponseWriter, r *http.Request) {
 
 // CreateProcessType creates the type and its instance row. It deploys nothing: the
 // container appears on the next deploy.
+//
+//apidoc:tag applications/resources
+//apidoc:title Create Process Type
 func (h *Handler) CreateProcessType(w http.ResponseWriter, r *http.Request) {
 	appUUID, _, ok := h.parseProcessTypeIDs(w, r)
 	if !ok {
@@ -195,6 +200,8 @@ func (h *Handler) CreateProcessType(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, toProcessTypeResponse(pt, []generated.ApplicationInstance{inst}))
 }
 
+//apidoc:tag applications/resources
+//apidoc:title Update Process Type
 func (h *Handler) UpdateProcessType(w http.ResponseWriter, r *http.Request) {
 	appUUID, typeUUID, ok := h.parseProcessTypeIDs(w, r)
 	if !ok {
@@ -225,6 +232,8 @@ func (h *Handler) UpdateProcessType(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toProcessTypeResponse(pt, []generated.ApplicationInstance{inst}))
 }
 
+//apidoc:tag applications/resources
+//apidoc:title Delete Process Type
 func (h *Handler) DeleteProcessType(w http.ResponseWriter, r *http.Request) {
 	appUUID, typeUUID, ok := h.parseProcessTypeIDs(w, r)
 	if !ok {

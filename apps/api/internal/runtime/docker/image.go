@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/build"
 	"github.com/docker/docker/api/types/filters"
 	imagetypes "github.com/docker/docker/api/types/image"
 
@@ -44,7 +44,7 @@ func (c *Client) BuildImage(ctx context.Context, contextDir, dockerfile, tag str
 		return fmt.Errorf("tar context dir: %w", err)
 	}
 
-	resp, err := c.cli.ImageBuild(ctx, buf, types.ImageBuildOptions{
+	resp, err := c.cli.ImageBuild(ctx, buf, build.ImageBuildOptions{
 		Dockerfile: dockerfile,
 		Tags:       []string{tag},
 		Remove:     true,

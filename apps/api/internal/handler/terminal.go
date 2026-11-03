@@ -17,7 +17,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/belune-hq/belune/internal/naming"
+	"github.com/belune-hq/belune/internal/instances"
 	"github.com/belune-hq/belune/internal/pkg/metrics"
 	"github.com/belune-hq/belune/internal/pkg/tracing"
 	"github.com/belune-hq/belune/internal/runtime"
@@ -80,7 +80,12 @@ func (h *Handler) CreateTerminalSession(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusNotFound, "application not found")
 		return
 	}
-	containerName := naming.ContainerName(row.ProjectSlug, row.Slug, applicationID)
+	inst, err := instances.ResolveOne(r.Context(), h.queries, applicationUUID)
+	if err != nil {
+		writeServerError(w, r, "application has no container instance", err)
+		return
+	}
+	containerName := inst.ContainerName
 
 	rt, err := h.runtimes.For(r.Context(), row.ServerID)
 	if err != nil {

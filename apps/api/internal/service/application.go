@@ -6,10 +6,12 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/belune-hq/belune/internal/instances"
 	"github.com/belune-hq/belune/internal/naming"
 	"github.com/belune-hq/belune/internal/pkg/crypto"
 	"github.com/belune-hq/belune/internal/runtime"
@@ -160,9 +162,30 @@ func (s *ApplicationService) Create(ctx context.Context, p CreateApplicationPara
 			return err
 		}
 		app.Slug = finalSlug
-		return nil
+		// AFTER the slug is final: container_name is the final slug, and the bare
+		// base slug is not what Docker will be asked for.
+		return createDefaultInstance(ctx, q, app.ID, finalSlug)
 	})
 	return app, err
+}
+
+// createDefaultInstance gives a new application the one routable 'web' process
+// type and one instance at idx 1 that every application has -- exactly what the
+// 000079 backfill writes for an inactive app. It runs in the creating
+// transaction so nothing downstream ever has to cope with a missing row.
+func createDefaultInstance(ctx context.Context, q *generated.Queries, appID pgtype.UUID, containerName string) error {
+	pt, err := q.CreateProcessType(ctx, generated.CreateProcessTypeParams{
+		ApplicationID: appID, Name: "web", Replicas: 1, Routable: true,
+	})
+	if err != nil {
+		return fmt.Errorf("creating default process type: %w", err)
+	}
+	if _, err := q.CreateInstance(ctx, generated.CreateInstanceParams{
+		ApplicationID: appID, ProcessTypeID: pt.ID, Idx: 1, ContainerName: containerName, Status: "pending",
+	}); err != nil {
+		return fmt.Errorf("creating default instance: %w", err)
+	}
+	return nil
 }
 
 // UpdateApplicationParams holds parameters for updating an application.
@@ -262,7 +285,19 @@ func (s *ApplicationService) Delete(ctx context.Context, appID pgtype.UUID, proj
 	containerName := naming.ContainerName(projectSlug, appSlug, appIDStr)
 	intermediateContainerName := naming.IntermediateContainerName(projectSlug, appIDStr)
 	oldContainerName := naming.OldContainerName(appIDStr)
-	for _, name := range []string{containerName, intermediateContainerName, oldContainerName} {
+	// The names to sweep are the three legacy formats AND whatever the instance
+	// rows say: ADDED, never replacing -- this is cleanup after installs that
+	// predate each rename. A failed lookup must not block deletion, so it only
+	// narrows the sweep to the legacy names.
+	names := []string{containerName, intermediateContainerName, oldContainerName}
+	if insts, err := instances.ResolveAll(ctx, s.queries, appID); err == nil {
+		for _, inst := range insts {
+			if !slices.Contains(names, inst.ContainerName) {
+				names = append(names, inst.ContainerName)
+			}
+		}
+	}
+	for _, name := range names {
 		if err := rt.StopContainer(ctx, name); err != nil {
 			slog.Warn("could not stop container during app deletion", "container", name, "error", err)
 		}
@@ -372,7 +407,8 @@ func (s *ApplicationService) FindOrCreatePreview(
 			return txErr
 		}
 		created.Slug = finalSlug
-		return nil
+		// Previews are applications too and bypass Create; same rows, same order.
+		return createDefaultInstance(ctx, q, created.ID, finalSlug)
 	})
 	if err != nil {
 		return generated.Application{}, false, err

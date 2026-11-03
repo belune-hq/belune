@@ -131,6 +131,18 @@ func seedApp(t *testing.T, opts ...func(app *generated.CreateApplicationParams, 
 	app, err := testQueries.CreateApplication(ctx, appParams)
 	require.NoError(t, err)
 
+	// What ApplicationService.Create writes alongside every application. The
+	// worker reads the container name from this row and never derives it, so an
+	// application seeded without one has nothing to deploy to.
+	pt, err := testQueries.CreateProcessType(ctx, generated.CreateProcessTypeParams{
+		ApplicationID: app.ID, Name: "web", Replicas: 1, Routable: true,
+	})
+	require.NoError(t, err)
+	_, err = testQueries.CreateInstance(ctx, generated.CreateInstanceParams{
+		ApplicationID: app.ID, ProcessTypeID: pt.ID, Idx: 1, ContainerName: app.Slug, Status: "pending",
+	})
+	require.NoError(t, err)
+
 	depParams.ApplicationID = app.ID
 	dep, err := testQueries.CreateDeployment(ctx, depParams)
 	require.NoError(t, err)

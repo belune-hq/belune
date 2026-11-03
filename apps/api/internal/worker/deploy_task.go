@@ -20,6 +20,7 @@ import (
 
 	"github.com/belune-hq/belune/internal/build"
 	"github.com/belune-hq/belune/internal/git"
+	"github.com/belune-hq/belune/internal/instances"
 	"github.com/belune-hq/belune/internal/naming"
 	"github.com/belune-hq/belune/internal/notify"
 	"github.com/belune-hq/belune/internal/pkg/buildlog"
@@ -294,7 +295,15 @@ func (h *TaskHandler) loadApplication(ctx context.Context, dc *deployContext) er
 		ContainerPort:                 appRow.ContainerPort,
 		RootDirectory:                 appRow.RootDirectory,
 	}
-	dc.containerName = naming.ContainerName(appRow.ProjectSlug, appRow.Slug, dc.payload.ApplicationID)
+	// READ the name from the instance row; never mint one. Deploy is stop ->
+	// remove -> create, all on this one name, so minting a different name here
+	// would leave the old container beside the new one. In 0.3.0 the row holds the
+	// legacy name (applications.slug), which is what keeps Phase A invisible.
+	inst, err := instances.ResolveOne(ctx, h.Queries, appRow.ID)
+	if err != nil {
+		return fmt.Errorf("resolve instance: %w", err)
+	}
+	dc.containerName = inst.ContainerName
 
 	rt, err := h.Runtimes.For(ctx, appRow.ServerID)
 	if err != nil {

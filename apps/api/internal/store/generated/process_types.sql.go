@@ -204,6 +204,37 @@ func (q *Queries) GetProcessTypeByName(ctx context.Context, arg GetProcessTypeBy
 	return i, err
 }
 
+const listAllInstanceContainerNames = `-- name: ListAllInstanceContainerNames :many
+SELECT application_id, container_name FROM application_instances
+`
+
+type ListAllInstanceContainerNamesRow struct {
+	ApplicationID pgtype.UUID `json:"application_id"`
+	ContainerName string      `json:"container_name"`
+}
+
+// The orphan reaper's claims: every name an instance row says a container may
+// carry, across all applications.
+func (q *Queries) ListAllInstanceContainerNames(ctx context.Context) ([]ListAllInstanceContainerNamesRow, error) {
+	rows, err := q.db.Query(ctx, listAllInstanceContainerNames)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAllInstanceContainerNamesRow{}
+	for rows.Next() {
+		var i ListAllInstanceContainerNamesRow
+		if err := rows.Scan(&i.ApplicationID, &i.ContainerName); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listInstancesByApplication = `-- name: ListInstancesByApplication :many
 SELECT id, application_id, process_type_id, deployment_id, idx, container_name, container_id, status, created_at, updated_at FROM application_instances
 WHERE application_id = $1

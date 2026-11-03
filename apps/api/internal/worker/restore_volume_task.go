@@ -15,6 +15,7 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/belune-hq/belune/internal/instances"
 	"github.com/belune-hq/belune/internal/naming"
 	"github.com/belune-hq/belune/internal/notify"
 	"github.com/belune-hq/belune/internal/runtime"
@@ -63,7 +64,14 @@ func (h *TaskHandler) HandleRestoreVolumeTask(ctx context.Context, t *asynq.Task
 		return errors.Join(fmt.Errorf("get application (permanent): %w", err), asynq.SkipRetry)
 	}
 	appIDStr := formatUUID(vol.ApplicationID)
-	containerName := naming.ContainerName(appRow.ProjectSlug, appRow.Slug, appIDStr)
+	// ResolveOne, not a hardcoded idx 1: a type with volumes refuses replicas > 1
+	// in 0.3.1, so it is idx 1 by construction, but that is the resolver's
+	// business to know.
+	inst, err := instances.ResolveOne(ctx, h.Queries, vol.ApplicationID)
+	if err != nil {
+		return errors.Join(fmt.Errorf("resolve instance (permanent): %w", err), asynq.SkipRetry)
+	}
+	containerName := inst.ContainerName
 
 	rt, err := h.Runtimes.For(ctx, appRow.ServerID)
 	if err != nil {

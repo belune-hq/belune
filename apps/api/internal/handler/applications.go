@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/belune-hq/belune/internal/instances"
 	"github.com/belune-hq/belune/internal/naming"
 	"github.com/belune-hq/belune/internal/pkg/tracing"
 	"github.com/belune-hq/belune/internal/quota"
@@ -429,16 +430,26 @@ func (h *Handler) RestartApplication(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Stop and start the existing container (no rebuild)
-	containerName := naming.ContainerName(row.ProjectSlug, row.Slug, applicationID)
-	if err := rt.StopContainer(r.Context(), containerName); err != nil {
-		slog.Error("failed to stop container for restart", "container", containerName, "error", err)
-		writeError(w, http.StatusInternalServerError, "failed to stop container")
+	// Every container of the application: all stopped, then all started, which
+	// for one instance is exactly the old stop-then-start.
+	insts, err := instances.ResolveAll(r.Context(), h.queries, applicationUUID)
+	if err != nil {
+		writeServerError(w, r, "application has no container instance", err)
 		return
 	}
-	if err := rt.StartContainer(r.Context(), containerName); err != nil {
-		slog.Error("failed to start container for restart", "container", containerName, "error", err)
-		writeError(w, http.StatusInternalServerError, "failed to start container")
-		return
+	for _, inst := range insts {
+		if err := rt.StopContainer(r.Context(), inst.ContainerName); err != nil {
+			slog.Error("failed to stop container for restart", "container", inst.ContainerName, "error", err)
+			writeError(w, http.StatusInternalServerError, "failed to stop container")
+			return
+		}
+	}
+	for _, inst := range insts {
+		if err := rt.StartContainer(r.Context(), inst.ContainerName); err != nil {
+			slog.Error("failed to start container for restart", "container", inst.ContainerName, "error", err)
+			writeError(w, http.StatusInternalServerError, "failed to start container")
+			return
+		}
 	}
 
 	app, err := h.queries.UpdateApplicationStatus(r.Context(), generated.UpdateApplicationStatusParams{

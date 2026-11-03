@@ -372,3 +372,43 @@ func TestCleanupOrphanedBackups_RetentionCanBeDisabled(t *testing.T) {
 		`SELECT count(*) FROM database_backups WHERE id = $1`, ancient).Scan(&n))
 	assert.Equal(t, 1, n, "retention 0 means keep, not expire immediately")
 }
+
+// TestCleanupOrphanContainers_NameClaimsAreAddedToNotReplaced pins the property
+// the instance rows must not change: a container carrying no label is spared by
+// ANY name an application may have worn -- all three legacy formats -- and now
+// also by the name its instance row records. The reaper deletes what it cannot
+// match, so a legacy format dropped from the claims is a live container removed.
+func TestCleanupOrphanContainers_NameClaimsAreAddedToNotReplaced(t *testing.T) {
+	ctx := context.Background()
+	rt := &testutil.MockContainerRuntime{}
+	h := newTestHandler(rt, nil)
+
+	app, _ := seedApp(t)
+	row, err := testQueries.GetApplicationWithProjectSlug(ctx, app.ID)
+	require.NoError(t, err)
+	appID := uuidString(app.ID)
+
+	const recorded = "recorded-on-the-instance-row"
+	// seedApp already wrote the instance row; point it at a name no legacy format
+	// produces, so only the row can be what spares that container.
+	_, err = testPool.Exec(ctx, `UPDATE application_instances SET container_name = $2 WHERE application_id = $1`, app.ID, recorded)
+	require.NoError(t, err)
+
+	old := time.Now().Add(-24 * time.Hour)
+	legacy := []string{
+		naming.ContainerName(row.ProjectSlug, row.Slug, appID),
+		naming.IntermediateContainerName(row.ProjectSlug, appID),
+		naming.OldContainerName(appID),
+	}
+	rt.ListContainers_ = []runtime.ContainerInfo{{Name: recorded, CreatedAt: old}, {Name: "genuinely-nobodys", CreatedAt: old}}
+	for _, n := range legacy {
+		rt.ListContainers_ = append(rt.ListContainers_, runtime.ContainerInfo{Name: n, CreatedAt: old})
+	}
+
+	runFullCleanup(t, h)
+
+	for _, n := range append(legacy, recorded) {
+		assert.NotContains(t, rt.RemoveCalls, n, "%q is claimed by name and must survive", n)
+	}
+	assert.Contains(t, rt.RemoveCalls, "genuinely-nobodys", "the sweep must still delete a real orphan")
+}

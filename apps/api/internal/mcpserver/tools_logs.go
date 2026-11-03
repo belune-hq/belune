@@ -12,7 +12,7 @@ import (
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/belune-hq/belune/internal/naming"
+	"github.com/belune-hq/belune/internal/instances"
 	"github.com/belune-hq/belune/internal/runtime"
 	"github.com/belune-hq/belune/internal/store/generated"
 )
@@ -77,7 +77,11 @@ func registerLogTools(srv *mcp.Server, queries *generated.Queries, runtimes runt
 			return nil, nil, internalError("failed to reach the application's server", err)
 		}
 
-		containerName := naming.ContainerName(row.ProjectSlug, row.Slug, uuidToString(row.ID))
+		inst, err := instances.ResolveOne(ctx, queries, row.ID)
+		if err != nil {
+			return nil, nil, internalError("application has no container instance", err)
+		}
+		containerName := inst.ContainerName
 		rc, err := rt.ContainerLogsTail(ctx, containerName, tail)
 		if err != nil {
 			return nil, nil, internalError("failed to read container logs", err)

@@ -13,7 +13,7 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/belune-hq/belune/internal/naming"
+	"github.com/belune-hq/belune/internal/instances"
 	"github.com/belune-hq/belune/internal/notify"
 	"github.com/belune-hq/belune/internal/pkg/cronspec"
 	"github.com/belune-hq/belune/internal/runtime"
@@ -168,7 +168,14 @@ func (h *TaskHandler) HandleScheduledTaskRun(ctx context.Context, t *asynq.Task)
 		h.finishScheduledRun(ctx, run.ID, "failed", nil, "", fmt.Sprintf("resolve runtime: %v", err), task)
 		return nil
 	}
-	containerName := naming.ContainerName(appRow.ProjectSlug, appRow.Slug, formatUUID(task.ApplicationID))
+	// Exactly ONE instance runs the command: the lowest running idx. That is
+	// ResolveOne's rule, and a second one must not be invented here.
+	inst, err := instances.ResolveOne(ctx, h.Queries, task.ApplicationID)
+	if err != nil {
+		h.finishScheduledRun(ctx, run.ID, "failed", nil, "", fmt.Sprintf("resolve instance: %v", err), task)
+		return nil
+	}
+	containerName := inst.ContainerName
 
 	// The timeout is enforced INSIDE the container. ContainerExec blocks in
 	// stdcopy on a hijacked connection that ignores ctx, and Docker has no

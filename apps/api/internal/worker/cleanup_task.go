@@ -448,6 +448,7 @@ func (h *TaskHandler) collectClaimsByServer(ctx context.Context) (map[string]con
 	if err != nil {
 		return nil, fmt.Errorf("list applications: %w", err)
 	}
+	appClaims := make(map[pgtype.UUID]containerClaims, len(apps))
 	for _, row := range apps {
 		appID := formatUUID(row.ID)
 		if appID == "" {
@@ -461,6 +462,20 @@ func (h *TaskHandler) collectClaimsByServer(ctx context.Context) (map[string]con
 		claims.names[naming.ContainerName(row.ProjectSlug, row.Slug, appID)] = true
 		claims.names[naming.IntermediateContainerName(row.ProjectSlug, appID)] = true
 		claims.names[naming.OldContainerName(appID)] = true
+		appClaims[row.ID] = claims
+	}
+
+	// ADDED to the legacy names above, never replacing them: dropping a legacy
+	// format would leave a container whose row the reaper cannot match
+	// unclaimed, and the reaper deletes what it cannot match.
+	instNames, err := h.Queries.ListAllInstanceContainerNames(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list instance container names: %w", err)
+	}
+	for _, in := range instNames {
+		if claims, ok := appClaims[in.ApplicationID]; ok {
+			claims.names[in.ContainerName] = true
+		}
 	}
 
 	databases, err := h.Queries.ListAllDatabasesWithServerID(ctx)

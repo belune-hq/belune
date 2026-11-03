@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/belune-hq/belune/internal/instances"
 	"github.com/belune-hq/belune/internal/naming"
 	"github.com/belune-hq/belune/internal/proxy"
 	"github.com/belune-hq/belune/internal/server/middleware"
@@ -573,13 +574,13 @@ func (h *Handler) addTemplateDomain(r *http.Request, project generated.Project, 
 		return
 	}
 
-	row, err := h.queries.GetApplicationWithProjectSlug(ctx, appID)
+	cert := h.domainCertificate(ctx, domain)
+	inst, err := instances.ResolveOne(ctx, h.queries, appID)
 	if err != nil {
-		slog.Error("template: failed to resolve app for domain route", "hostname", hostname, "error", err)
+		slog.Error("template: failed to resolve container for domain route", "hostname", hostname, "error", err)
 		return
 	}
-	cert := h.domainCertificate(ctx, domain)
-	containerName := naming.ContainerName(row.ProjectSlug, row.Slug, uuidToString(appID))
+	containerName := inst.ContainerName
 	if err := h.proxy.AddRoute(ctx, proxy.RouteConfig{
 		Hostname:   hostname,
 		TargetURL:  fmt.Sprintf("http://%s:%d", containerName, port),

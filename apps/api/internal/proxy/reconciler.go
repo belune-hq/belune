@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/belune-hq/belune/internal/instances"
 	"github.com/belune-hq/belune/internal/naming"
 	"github.com/belune-hq/belune/internal/proxy/capability"
 	"github.com/belune-hq/belune/internal/status"
@@ -358,15 +359,25 @@ func (r *Reconciler) reconcile(ctx context.Context) {
 		r.mu.Unlock()
 	}()
 
-	expected, networks, err := r.buildExpected(ctx)
+	expected, held, networks, err := r.buildExpected(ctx)
 	if err != nil {
 		slog.Warn("proxy reconciler: failed to build expected routes", "error", err)
 		recordErr(err)
 		return
 	}
+	// A held route is one Caddy keeps serving although this pass could not say what
+	// it should look like (see buildExpected). It is invisible to EnsureRoute and
+	// the stale-route sweep, but it is still a route in Caddy's table, so every
+	// computation that answers "which hosts does Caddy serve" must count it:
+	// `serving` is that view. `expected` stays the set to make Caddy match.
+	heldKeys := make(map[routeKey]struct{}, len(held))
+	for _, h := range held {
+		heldKeys[keyFor(h)] = struct{}{}
+	}
+	serving := append(append([]RouteConfig{}, expected...), held...)
 
 	r.mu.Lock()
-	r.lastExpected = len(expected)
+	r.lastExpected = len(serving)
 	r.mu.Unlock()
 
 	// Degrade the feature, never drop the route. Skip and custom-cert sets below
@@ -420,8 +431,8 @@ func (r *Reconciler) reconcile(ctx context.Context) {
 	// letting whichever row was iterated last quietly decide.
 	skip := newHostSet()
 	skipCerts := newHostSet()
-	modeByHost := make(map[string]string, len(expected))
-	for _, cfg := range expected {
+	modeByHost := make(map[string]string, len(serving))
+	for _, cfg := range serving {
 		if prev, seen := modeByHost[cfg.Hostname]; seen && prev != cfg.SSLMode {
 			slog.Warn("proxy reconciler: conflicting ssl_mode for one hostname; using the first",
 				"hostname", cfg.Hostname, "using", prev, "ignoring", cfg.SSLMode)
@@ -527,6 +538,9 @@ func (r *Reconciler) reconcile(ctx context.Context) {
 		if key.hostname == dashboardHost && dashboardHost != "" {
 			continue // Belune's own dashboard: no domains row backs it.
 		}
+		if _, isHeld := heldKeys[key]; isHeld {
+			continue // Running, but its desired state is unknown this pass: never delete on a guess.
+		}
 		if _, exists := expectedSet[key]; !exists {
 			if err := r.proxy.RemoveRoute(ctx, key.hostname, key.path); err != nil {
 				slog.Warn("proxy reconciler: failed to remove stale route", "hostname", key.hostname, "path", key.path, "error", err)
@@ -547,14 +561,14 @@ func (r *Reconciler) reconcile(ctx context.Context) {
 
 	// Last, so the host list the WAF route carries is the one the application
 	// routes above now have.
-	if err := r.syncWAF(ctx, expected, dashboardHost); err != nil {
+	if err := r.syncWAF(ctx, serving, dashboardHost); err != nil {
 		slog.Warn("proxy reconciler: failed to sync the WAF route", "error", err)
 		recordErr(err)
 	}
 	// After the WAF, so a pass that creates both writes this one second and it
 	// ends up in front: a banned address should be turned away before the WAF has
 	// spent anything looking at it.
-	if err := r.syncCrowdSec(ctx, expected, dashboardHost); err != nil {
+	if err := r.syncCrowdSec(ctx, serving, dashboardHost); err != nil {
 		slog.Warn("proxy reconciler: failed to sync the CrowdSec route", "error", err)
 		recordErr(err)
 	}
@@ -564,10 +578,6 @@ func (r *Reconciler) reconcile(ctx context.Context) {
 	}
 }
 
-// buildExpected returns the full set of RouteConfigs that should exist in
-// Caddy, derived from all running applications and their domains in the DB.
-// buildExpected returns the routes the proxy should be serving, and the project
-// networks the proxy must be joined to in order to reach them.
 // hostSet is a deduplicated, deterministically ordered set of hostnames.
 //
 // Deterministic ordering is not cosmetic: these lists are written into Caddy's
@@ -609,36 +619,64 @@ func keyFor(cfg RouteConfig) routeKey {
 	return routeKey{hostname: cfg.Hostname, path: path}
 }
 
-func (r *Reconciler) buildExpected(ctx context.Context) ([]RouteConfig, []string, error) {
+// buildExpected returns the routes the proxy should be serving, the routes it
+// must LEAVE ALONE this pass, and the project networks the proxy must be on.
+//
+// ⛔ "Absent from the first list" means "delete it": the sweep removes any live
+// route that is not in it. That is right for an application that is not running,
+// and catastrophic for one that is running but whose desired state could not be
+// determined this pass -- a transient error would remove every domain of the app,
+// and again every 30 seconds. So a running application whose container could not
+// be resolved is returned as HELD, hostname, path and ssl mode only: the sweep
+// skips it, and the host-derived computations (TLS skip list, WAF, CrowdSec)
+// still count it, because Caddy is still serving it.
+//
+// A held route is neither created nor repaired. If Caddy has none (a restart),
+// it stays missing until the resolver works again, and the failure is logged on
+// every pass rather than hidden.
+func (r *Reconciler) buildExpected(ctx context.Context) (configs, held []RouteConfig, networkNames []string, err error) {
 	apps, err := r.queries.ListAllApplications(ctx)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
-	var configs []RouteConfig
 	networks := make(map[string]struct{})
 	for _, app := range apps {
 		if app.Status != status.ApplicationRunning {
 			continue
 		}
 
+		// Still needed with the container name coming from the instance row:
+		// row.ProjectSlug names the Docker network the proxy must be attached to.
 		row, err := r.queries.GetApplicationWithProjectSlug(ctx, app.ID)
 		if err != nil {
 			slog.Warn("proxy reconciler: failed to get application slug", "error", err)
 			continue
 		}
 
-		// naming.ContainerName returns appSlug directly (the DB slug is the full container name).
-		containerName := naming.ContainerName(row.ProjectSlug, row.Slug, "")
-
 		domains, err := r.queries.ListDomainsByApplication(ctx, app.ID)
 		if err != nil {
 			slog.Warn("proxy reconciler: failed to list domains", "error", err)
 			continue
 		}
+		if len(domains) == 0 {
+			continue
+		}
+
+		inst, err := instances.ResolveOne(ctx, r.queries, app.ID)
+		if err != nil {
+			slog.Error("proxy reconciler: could not resolve a running application's container; leaving its routes untouched",
+				"application_id", app.ID, "domains", len(domains), "error", err)
+			for _, domain := range domains {
+				held = append(held, RouteConfig{Hostname: domain.Hostname, Path: domain.Path, SSLMode: domain.SslMode})
+			}
+			// The proxy stays attached to its network: the route is still serving.
+			networks[naming.ProjectNetworkName(row.ProjectSlug)] = struct{}{}
+			continue
+		}
 
 		for _, domain := range domains {
-			cfg, err := BuildRouteConfigFromDB(ctx, r.queries, r.dec, domain, containerName, app.HealthCheckPath.String)
+			cfg, err := BuildRouteConfigFromDB(ctx, r.queries, r.dec, domain, inst.ContainerName, app.HealthCheckPath.String)
 			if err != nil {
 				slog.Warn("proxy reconciler: failed to build route config", "hostname", domain.Hostname, "error", err)
 				continue
@@ -653,7 +691,7 @@ func (r *Reconciler) buildExpected(ctx context.Context) ([]RouteConfig, []string
 	for n := range networks {
 		names = append(names, n)
 	}
-	return configs, names, nil
+	return configs, held, names, nil
 }
 
 // degrade removes, from the configs it returns, each enabled feature whose Caddy

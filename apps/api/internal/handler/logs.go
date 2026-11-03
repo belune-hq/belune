@@ -9,7 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/belune-hq/belune/internal/naming"
+	"github.com/belune-hq/belune/internal/instances"
 	"github.com/belune-hq/belune/internal/pkg/sse"
 	"github.com/belune-hq/belune/internal/store/generated"
 )
@@ -35,7 +35,12 @@ func (h *Handler) StreamLogs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "application not found")
 		return
 	}
-	containerName := naming.ContainerName(row.ProjectSlug, row.Slug, applicationID)
+	inst, err := instances.ResolveOne(r.Context(), h.queries, applicationUUID)
+	if err != nil {
+		writeServerError(w, r, "application has no container instance", err)
+		return
+	}
+	containerName := inst.ContainerName
 
 	writer, err := sse.NewWriter(w)
 	if err != nil {

@@ -8,7 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/belune-hq/belune/internal/naming"
+	"github.com/belune-hq/belune/internal/instances"
 	"github.com/belune-hq/belune/internal/runtime"
 	"github.com/belune-hq/belune/internal/status"
 	"github.com/belune-hq/belune/internal/store/generated"
@@ -54,7 +54,14 @@ func RunAppMetricsBroadcaster(
 					continue
 				}
 
-				containerName := naming.ContainerName(row.ProjectSlug, row.Slug, appIDStr)
+				// Resolved per tick, unlike the SSE stream: the set of channels is
+				// dynamic and the status check above already re-reads the row every
+				// tick, so there is no stable per-stream moment to resolve at.
+				inst, err := instances.ResolveOne(ctx, queries, appUUID)
+				if err != nil {
+					continue
+				}
+				containerName := inst.ContainerName
 				stats, err := rt.ContainerStats(ctx, containerName)
 				if err != nil {
 					slog.Debug("app metrics: stats fetch failed", "container", containerName, "error", err)

@@ -9,7 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/belune-hq/belune/internal/naming"
+	"github.com/belune-hq/belune/internal/instances"
 	"github.com/belune-hq/belune/internal/pkg/sse"
 	"github.com/belune-hq/belune/internal/status"
 )
@@ -89,7 +89,14 @@ func (h *Handler) StreamApplicationMetrics(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusNotFound, "application not found")
 		return
 	}
-	containerName := naming.ContainerName(appRow.ProjectSlug, appRow.Slug, applicationID)
+	// Resolved once, here, and not per tick, for the same reason as the runtime
+	// below.
+	inst, err := instances.ResolveOne(r.Context(), h.queries, appUUID)
+	if err != nil {
+		writeServerError(w, r, "application has no container instance", err)
+		return
+	}
+	containerName := inst.ContainerName
 
 	// Resolved once for the life of the stream: placement does not change under
 	// a live connection, and re-resolving every tick would be a query per tick.

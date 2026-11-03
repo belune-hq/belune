@@ -186,3 +186,62 @@ func TestApplicationService_Delete_ErasesVolumeBackupArchives(t *testing.T) {
 	assert.True(t, os.IsNotExist(statErr),
 		"the volume backup archive must be erased, not left behind once its row cascades away")
 }
+
+// The slug is finalised by a SECOND statement inside Create's transaction. The
+// instance row must be written after it and carry the FINAL slug: written before,
+// container_name would be the bare base slug, which is not what Docker will be
+// asked for, and the app would 502 with nothing in the create path complaining.
+func TestApplicationService_Create_WritesDefaultInstanceWithTheFinalSlug(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+	ctx := context.Background()
+
+	_, project := seedUserAndProject(t)
+	svc := service.NewApplicationService(testPool, testQueries, runtime.NewLocalRuntimes(&testutil.MockContainerRuntime{}), testKeyring, t.TempDir(), nil)
+
+	app, err := svc.Create(ctx, service.CreateApplicationParams{
+		ProjectID: project.ID, ProjectSlug: project.Slug, Name: "Inst", BaseSlug: "inst",
+		Type: "image", SourceImage: "nginx:alpine", BuildType: "image",
+	})
+	require.NoError(t, err)
+
+	finalSlug := project.Slug + "-inst-" + uuidString(app.ID)[:8]
+	require.NotEqual(t, "inst", finalSlug)
+
+	types, err := testQueries.ListProcessTypesByApplication(ctx, app.ID)
+	require.NoError(t, err)
+	require.Len(t, types, 1)
+	assert.Equal(t, "web", types[0].Name)
+	assert.True(t, types[0].Routable)
+	assert.Equal(t, "", types[0].Command)
+
+	insts, err := testQueries.ListInstancesByApplication(ctx, app.ID)
+	require.NoError(t, err)
+	require.Len(t, insts, 1)
+	assert.Equal(t, finalSlug, insts[0].ContainerName, "container_name must be the FINAL slug, not the base slug")
+	assert.EqualValues(t, 1, insts[0].Idx)
+	assert.Equal(t, "pending", insts[0].Status)
+}
+
+// A preview application is an application too and does not go through Create.
+func TestApplicationService_FindOrCreatePreview_WritesDefaultInstance(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+	ctx := context.Background()
+
+	_, project := seedUserAndProject(t)
+	svc := service.NewApplicationService(testPool, testQueries, runtime.NewLocalRuntimes(&testutil.MockContainerRuntime{}), testKeyring, t.TempDir(), nil)
+	parent, err := svc.Create(ctx, service.CreateApplicationParams{
+		ProjectID: project.ID, ProjectSlug: project.Slug, Name: "Parent", BaseSlug: "par",
+		Type: "image", SourceImage: "nginx:alpine", BuildType: "image",
+	})
+	require.NoError(t, err)
+
+	preview, created, err := svc.FindOrCreatePreview(ctx, parent, project.Slug, "par", "feat/x", "feat-x")
+	require.NoError(t, err)
+	require.True(t, created)
+
+	insts, err := testQueries.ListInstancesByApplication(ctx, preview.ID)
+	require.NoError(t, err)
+	require.Len(t, insts, 1)
+	assert.Equal(t, preview.Slug, insts[0].ContainerName)
+	assert.NotEqual(t, "par-feat-x", insts[0].ContainerName)
+}

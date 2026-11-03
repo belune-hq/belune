@@ -92,3 +92,8 @@ RETURNING *;
 
 -- name: DeleteInstance :exec
 DELETE FROM application_instances WHERE id = $1;
+
+-- The orphan reaper's claims: every name an instance row says a container may
+-- carry, across all applications.
+-- name: ListAllInstanceContainerNames :many
+SELECT application_id, container_name FROM application_instances;

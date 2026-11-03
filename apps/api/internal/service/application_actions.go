@@ -8,7 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/belune-hq/belune/internal/naming"
+	"github.com/belune-hq/belune/internal/instances"
 	"github.com/belune-hq/belune/internal/status"
 	"github.com/belune-hq/belune/internal/store/generated"
 )
@@ -36,9 +36,16 @@ func (s *ApplicationService) Stop(ctx context.Context, appID pgtype.UUID) (gener
 		return generated.Application{}, fmt.Errorf("%w: %v", ErrServerUnreachable, err)
 	}
 
-	containerName := naming.ContainerName(row.ProjectSlug, row.Slug, uuidToString(appID))
-	if err := rt.StopContainer(ctx, containerName); err != nil {
-		return generated.Application{}, fmt.Errorf("%w: stopping: %v", ErrContainerAction, err)
+	// Every container of the application. Written as a loop now so 0.3.1's
+	// replicas do not have to revisit it; with one instance it is the same call.
+	insts, err := instances.ResolveAll(ctx, s.queries, appID)
+	if err != nil {
+		return generated.Application{}, fmt.Errorf("%w: %v", ErrContainerAction, err)
+	}
+	for _, inst := range insts {
+		if err := rt.StopContainer(ctx, inst.ContainerName); err != nil {
+			return generated.Application{}, fmt.Errorf("%w: stopping: %v", ErrContainerAction, err)
+		}
 	}
 
 	app, err := s.queries.UpdateApplicationStatus(ctx, generated.UpdateApplicationStatusParams{
@@ -64,10 +71,15 @@ func (s *ApplicationService) Start(ctx context.Context, appID pgtype.UUID) (gene
 		return generated.Application{}, fmt.Errorf("%w: %v", ErrServerUnreachable, err)
 	}
 
-	containerName := naming.ContainerName(row.ProjectSlug, row.Slug, uuidToString(appID))
-	if err := rt.StartContainer(ctx, containerName); err != nil {
-		slog.Error("failed to start application container", "container", containerName, "error", err)
-		return generated.Application{}, fmt.Errorf("%w: starting: %v", ErrContainerAction, err)
+	insts, err := instances.ResolveAll(ctx, s.queries, appID)
+	if err != nil {
+		return generated.Application{}, fmt.Errorf("%w: %v", ErrContainerAction, err)
+	}
+	for _, inst := range insts {
+		if err := rt.StartContainer(ctx, inst.ContainerName); err != nil {
+			slog.Error("failed to start application container", "container", inst.ContainerName, "error", err)
+			return generated.Application{}, fmt.Errorf("%w: starting: %v", ErrContainerAction, err)
+		}
 	}
 
 	app, err := s.queries.UpdateApplicationStatus(ctx, generated.UpdateApplicationStatusParams{

@@ -830,16 +830,29 @@ func (h *TaskHandler) createAndStart(ctx context.Context, dc *deployContext) err
 	dc.containerID = containerID
 
 	// Compensator: stop and remove this container if a later stage fails
+	dc.addContainerCompensator(containerID)
+	return nil
+}
+
+// addContainerCompensator registers the rollback for one created container.
+//
+// ⛔ The id is passed in and captured BY VALUE, never read from dc.containerID when
+// the compensator runs. dc.containerID is a field on the shared deployContext that
+// the next createAndStart overwrites, so a closure reading it would, once a deploy
+// creates more than one container, stop and remove the LAST container twice and
+// leave every earlier one running and unreferenced. The proxy compensator in
+// wireProxy captures hostname and path by value for the same reason.
+func (dc *deployContext) addContainerCompensator(containerID string) {
+	rt := dc.runtime
 	dc.compensators = append(dc.compensators, func() {
 		cleanCtx := context.Background()
-		if err := dc.runtime.StopContainer(cleanCtx, dc.containerID); err != nil {
-			slog.Warn("compensator: failed to stop container", "container", dc.containerID, "error", err)
+		if err := rt.StopContainer(cleanCtx, containerID); err != nil {
+			slog.Warn("compensator: failed to stop container", "container", containerID, "error", err)
 		}
-		if err := dc.runtime.RemoveContainer(cleanCtx, dc.containerID); err != nil {
-			slog.Warn("compensator: failed to remove container", "container", dc.containerID, "error", err)
+		if err := rt.RemoveContainer(cleanCtx, containerID); err != nil {
+			slog.Warn("compensator: failed to remove container", "container", containerID, "error", err)
 		}
 	})
-	return nil
 }
 
 // checkDeployQuota re-verifies project + owning-user quota right before a

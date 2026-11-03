@@ -22,13 +22,13 @@ func TestHealthCheckRuntimeConfig(t *testing.T) {
 			HealthCheckType:    typ,
 			HealthCheckCommand: txt("curl -f localhost/health"),
 		}
-		if got := healthCheckRuntimeConfig(app); got.command != "" {
+		if got := healthCheckRuntimeConfig(app, inherited(app)); got.command != "" {
 			t.Errorf("type %q: expected no command, got %q", typ, got.command)
 		}
 	}
 
 	// A command type with everything NULL falls back to Docker's defaults.
-	def := healthCheckRuntimeConfig(generated.Application{
+	def := healthCheckRuntimeConfigOf(generated.Application{
 		HealthCheckType:    "command",
 		HealthCheckCommand: txt("pg_isready"),
 	})
@@ -44,12 +44,12 @@ func TestHealthCheckRuntimeConfig(t *testing.T) {
 
 	// A command type with 'command' selected but no command string is a no-op,
 	// so a misconfigured row cannot set an empty HEALTHCHECK.
-	if got := healthCheckRuntimeConfig(generated.Application{HealthCheckType: "command"}); got.command != "" {
+	if got := healthCheckRuntimeConfigOf(generated.Application{HealthCheckType: "command"}); got.command != "" {
 		t.Errorf("empty command should yield no config, got %q", got.command)
 	}
 
 	// Explicit values win over the defaults.
-	custom := healthCheckRuntimeConfig(generated.Application{
+	custom := healthCheckRuntimeConfigOf(generated.Application{
 		HealthCheckType:               "command",
 		HealthCheckCommand:            txt("redis-cli ping"),
 		HealthCheckIntervalSeconds:    i4(10),
@@ -118,4 +118,15 @@ func TestDeployFailureErrorsApp(t *testing.T) {
 			}
 		})
 	}
+}
+
+// inherited is what a routable type with no health fields of its own resolves to.
+func inherited(app generated.Application) resolvedHealth {
+	return resolvedHealth{typ: app.HealthCheckType, command: app.HealthCheckCommand}
+}
+
+// healthCheckRuntimeConfigOf keeps the existing table readable: these cases are about
+// the application's timing and command handling, with the application's own check.
+func healthCheckRuntimeConfigOf(app generated.Application) healthRuntimeConfig {
+	return healthCheckRuntimeConfig(app, inherited(app))
 }

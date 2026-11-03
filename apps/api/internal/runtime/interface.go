@@ -21,15 +21,20 @@ type BindMount struct {
 }
 
 type ContainerConfig struct {
-	Name            string
-	Image           string
-	Env             map[string]string
-	Ports           map[string]string // host:container
-	HostBindIP      string            // host IP for port bindings (empty = 0.0.0.0; "127.0.0.1" = loopback only)
-	Volumes         map[string]string // host:container
-	ReadOnlyBinds   []BindMount       // host-file → container-path, mounted read-only (file/config mounts)
-	Network         string
-	Cmd             []string
+	Name          string
+	Image         string
+	Env           map[string]string
+	Ports         map[string]string // host:container
+	HostBindIP    string            // host IP for port bindings (empty = 0.0.0.0; "127.0.0.1" = loopback only)
+	Volumes       map[string]string // host:container
+	ReadOnlyBinds []BindMount       // host-file → container-path, mounted read-only (file/config mounts)
+	Network       string
+	Cmd           []string
+	// Entrypoint overrides the image's ENTRYPOINT. ⚠️ nil and empty are DIFFERENT
+	// here, and must never be conflated on the way to Docker: nil inherits the
+	// image's entrypoint, while an empty non-nil slice CLEARS it. Leave it nil
+	// unless something must be run regardless of how the image was built.
+	Entrypoint      []string
 	Labels          map[string]string
 	CPULimit        float64 // CPU cores (0 = unlimited, e.g. 0.5 = half a core)
 	MemoryLimit     int64   // bytes (0 = unlimited, e.g. 536870912 = 512 MB)

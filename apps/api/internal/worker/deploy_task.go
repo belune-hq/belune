@@ -63,10 +63,15 @@ type deployContext struct {
 	instanceID  pgtype.UUID
 	processType string
 	instanceIdx int32
-	env         map[string]string
-	imageName   string
-	commitSHA   string
-	domains     []generated.Domain
+	// health is the check this process type runs with, resolved once in
+	// loadApplication by resolveHealthCheck; no stage reads app.HealthCheckType.
+	health resolvedHealth
+	// command is the process type's command string; "" leaves the image's CMD alone.
+	command   string
+	env       map[string]string
+	imageName string
+	commitSHA string
+	domains   []generated.Domain
 	// cleanedUp is set once the previous container has been torn down. Before
 	// that point a failed deploy has left the old container serving, so the
 	// application is still up and must not be flagged as errored.
@@ -316,6 +321,8 @@ func (h *TaskHandler) loadApplication(ctx context.Context, dc *deployContext) er
 		return fmt.Errorf("load process type: %w", err)
 	}
 	dc.processType = pt.Name
+	dc.command = pt.Command
+	dc.health = resolveHealthCheck(dc.app, pt)
 
 	rt, err := h.Runtimes.For(ctx, appRow.ServerID)
 	if err != nil {
@@ -752,14 +759,17 @@ func (h *TaskHandler) createAndStart(ctx context.Context, dc *deployContext) err
 		tmpfs = map[string]string{"/tmp": "", "/run": ""}
 	}
 
-	hc := healthCheckRuntimeConfig(dc.app)
+	hc := healthCheckRuntimeConfig(dc.app, dc.health)
 
+	entrypoint, cmd := commandOverride(dc.command)
 	containerID, err := dc.runtime.CreateContainer(ctx, runtime.ContainerConfig{
-		Name:    dc.containerName,
-		Image:   dc.imageName,
-		Env:     dc.env,
-		Ports:   map[string]string{},
-		Network: naming.ProjectNetworkName(dc.appRow.ProjectSlug),
+		Name:       dc.containerName,
+		Image:      dc.imageName,
+		Entrypoint: entrypoint,
+		Cmd:        cmd,
+		Env:        dc.env,
+		Ports:      map[string]string{},
+		Network:    naming.ProjectNetworkName(dc.appRow.ProjectSlug),
 		// application-id groups all of an app's logs; deployment-id further
 		// separates them into per-run sessions so the viewer can isolate one
 		// redeploy/rebuild/rollback from the next.
@@ -875,12 +885,15 @@ type healthRuntimeConfig struct {
 // Docker HEALTHCHECK values, filling NULLs with the defaults. It returns an
 // empty command for any type other than "command", which is what tells the
 // runtime to leave the image's own HEALTHCHECK alone.
-func healthCheckRuntimeConfig(app generated.Application) healthRuntimeConfig {
-	if app.HealthCheckType != "command" || !app.HealthCheckCommand.Valid || app.HealthCheckCommand.String == "" {
+//
+// The type and command come from resolveHealthCheck, not from the application: the
+// timing knobs stay application-level, the check itself is per process type.
+func healthCheckRuntimeConfig(app generated.Application, health resolvedHealth) healthRuntimeConfig {
+	if health.typ != "command" || !health.command.Valid || health.command.String == "" {
 		return healthRuntimeConfig{}
 	}
 	cfg := healthRuntimeConfig{
-		command:     app.HealthCheckCommand.String,
+		command:     health.command.String,
 		interval:    defaultHealthInterval,
 		timeout:     defaultHealthTimeout,
 		retries:     defaultHealthRetries,
@@ -907,7 +920,7 @@ func healthCheckRuntimeConfig(app generated.Application) healthRuntimeConfig {
 // timing — a check that never leaves "starting" is treated as a failure so a
 // misconfigured command cannot let a broken deploy through.
 func (h *TaskHandler) verifyCommandHealth(ctx context.Context, dc *deployContext) error {
-	hc := healthCheckRuntimeConfig(dc.app)
+	hc := healthCheckRuntimeConfig(dc.app, dc.health)
 
 	// Enough time for the start period plus a full run of retries, floored so a
 	// fast check still gets a fair chance and capped so a hung deploy cannot
@@ -975,13 +988,13 @@ func (h *TaskHandler) verifyHealth(ctx context.Context, dc *deployContext) error
 	// command fails the deploy, exactly as a failing HTTP probe does; after
 	// that the check keeps running and the eventwatcher turns later verdicts
 	// into status changes.
-	if dc.app.HealthCheckType == "command" {
+	if dc.health.typ == "command" {
 		return h.verifyCommandHealth(ctx, dc)
 	}
 
 	// 'none', or 'http' with no path, is not an error — there is simply nothing
 	// to verify.
-	if dc.app.HealthCheckType == "none" ||
+	if dc.health.typ == "none" ||
 		!dc.app.HealthCheckPath.Valid || dc.app.HealthCheckPath.String == "" {
 		h.recordHealth(ctx, dc.deploymentID, healthStatusSkipped, "no health check configured")
 		return nil

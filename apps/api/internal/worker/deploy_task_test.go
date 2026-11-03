@@ -406,6 +406,56 @@ func TestHandleDeployTask_LabelsTheContainerAndRecordsItOnTheInstance(t *testing
 	assert.Equal(t, app.Slug, insts[0].ContainerName, "the name is read from the row and not changed")
 }
 
+// B1 invisibility: the backfilled web type has command ”, and ” must leave the
+// image's own CMD alone -- a container config with NO Cmd, byte-identical to before.
+func TestHandleDeployTask_AnEmptyProcessCommandLeavesTheImageCmdAlone(t *testing.T) {
+	t.Cleanup(func() { _ = testutil.TruncateAll(context.Background(), testPool) })
+	app, dep := seedApp(t)
+	rt := &testutil.MockContainerRuntime{}
+	h := newTestHandler(rt, &testutil.MockProxyManager{})
+	require.NoError(t, h.HandleDeployTask(context.Background(), asynq.NewTask("deploy", mustMarshalPayload(t, app.ID, dep.ID))))
+
+	require.Len(t, rt.CreateCalls, 1)
+	assert.Nil(t, rt.CreateCalls[0].Cmd, "a nil Cmd, not []string{\"\"} or []string{}")
+	assert.Nil(t, rt.CreateCalls[0].Entrypoint, "a nil Entrypoint inherits the image's; an empty one would clear it")
+}
+
+func TestHandleDeployTask_ACommandOnTheProcessTypeBecomesTheContainersCmd(t *testing.T) {
+	t.Cleanup(func() { _ = testutil.TruncateAll(context.Background(), testPool) })
+	ctx := context.Background()
+	app, dep := seedApp(t)
+	_, err := testPool.Exec(ctx, `UPDATE application_process_types SET command = $2 WHERE application_id = $1`, app.ID, "node server.js && echo done")
+	require.NoError(t, err)
+
+	rt := &testutil.MockContainerRuntime{}
+	h := newTestHandler(rt, &testutil.MockProxyManager{})
+	require.NoError(t, h.HandleDeployTask(ctx, asynq.NewTask("deploy", mustMarshalPayload(t, app.ID, dep.ID))))
+
+	require.Len(t, rt.CreateCalls, 1)
+	assert.Equal(t, []string{"sh", "-c", "node server.js && echo done"}, rt.CreateCalls[0].Cmd)
+	assert.NotNil(t, rt.CreateCalls[0].Entrypoint, "the image's entrypoint must be cleared, not inherited")
+	assert.Empty(t, rt.CreateCalls[0].Entrypoint)
+}
+
+// The deploy gate must read the type's resolved check, not the application's: here
+// the application asks for an http probe, but its process type sets 'none'.
+func TestHandleDeployTask_TheProcessTypesHealthCheckOverridesTheApplications(t *testing.T) {
+	t.Cleanup(func() { _ = testutil.TruncateAll(context.Background(), testPool) })
+	ctx := context.Background()
+	app, dep := seedApp(t, func(a *generated.CreateApplicationParams, _ *generated.CreateDeploymentParams) {
+		a.HealthCheckPath = pgtype.Text{String: "/up", Valid: true}
+	})
+	_, err := testPool.Exec(ctx, `UPDATE application_process_types SET health_check_type = 'none' WHERE application_id = $1`, app.ID)
+	require.NoError(t, err)
+
+	h := newTestHandler(&testutil.MockContainerRuntime{}, &testutil.MockProxyManager{})
+	require.NoError(t, h.HandleDeployTask(ctx, asynq.NewTask("deploy", mustMarshalPayload(t, app.ID, dep.ID))))
+
+	final, err := testQueries.GetDeployment(ctx, dep.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "skipped", final.HealthStatus.String, "no http probe: the type resolved to none")
+}
+
 func TestHandleDeployTask_RollbackUsesProvidedImageTag(t *testing.T) {
 	t.Cleanup(func() { _ = testutil.TruncateAll(context.Background(), testPool) })
 

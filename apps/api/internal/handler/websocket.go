@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"strings"
 
-	"nhooyr.io/websocket"
+	"github.com/coder/websocket"
 
 	"github.com/belune-hq/belune/internal/server/middleware"
 	"github.com/belune-hq/belune/internal/ws"

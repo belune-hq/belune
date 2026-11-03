@@ -470,6 +470,13 @@ func registerRoutes(r chi.Router, h *handler.Handler, auth *service.AuthService,
 				r.Put("/api/projects/{projectId}/applications/{applicationId}/domains/{domainId}/features", h.UpsertRouteFeature)
 				r.Delete("/api/projects/{projectId}/applications/{applicationId}/domains/{domainId}/features/{featureId}", h.DeleteRouteFeature)
 
+				// Process types: one container per type from the application's image.
+				// Creating one deploys nothing; the container appears on the next deploy.
+				r.Get("/api/projects/{projectId}/applications/{applicationId}/process-types", h.ListProcessTypes)
+				r.Post("/api/projects/{projectId}/applications/{applicationId}/process-types", h.CreateProcessType)
+				r.Put("/api/projects/{projectId}/applications/{applicationId}/process-types/{processTypeId}", h.UpdateProcessType)
+				r.With(middleware.RequireSession()).Delete("/api/projects/{projectId}/applications/{applicationId}/process-types/{processTypeId}", h.DeleteProcessType)
+
 				// Application persistent volumes
 				r.Get("/api/projects/{projectId}/applications/{applicationId}/volumes", h.ListApplicationVolumes)
 				r.Post("/api/projects/{projectId}/applications/{applicationId}/volumes", h.CreateApplicationVolume)

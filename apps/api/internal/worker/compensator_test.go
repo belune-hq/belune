@@ -26,19 +26,19 @@ func (r *recordingRuntime) RemoveContainer(_ context.Context, id string) error {
 	return nil
 }
 
-// A deploy that creates two containers shares ONE deployContext, and each
-// createAndStart overwrites dc.containerID. The rollback must still remove BOTH
+// A deploy that creates two containers shares ONE deployContext, and any field on
+// it is one the next create overwrites. The rollback must still remove BOTH
 // containers, each by its own id: a closure that read dc.containerID when it ran
 // would remove the second twice and orphan the first. Asserting WHICH ids, not how
 // many calls, is the point -- "removes one twice" and "removes two once" are the same
 // count.
 func TestContainerCompensators_EachRemovesItsOwnContainer(t *testing.T) {
 	rt := &recordingRuntime{}
-	dc := &deployContext{runtime: rt}
+	dc := &deployContext{runtime: rt, routable: &deployTarget{}}
 	h := &TaskHandler{}
 
 	for _, id := range []string{"worker-container", "web-container"} {
-		dc.containerID = id // what createAndStart does after each create
+		dc.routable.containerID = id // state a later create overwrites
 		dc.addContainerCompensator(id)
 	}
 	h.runCompensators(dc)

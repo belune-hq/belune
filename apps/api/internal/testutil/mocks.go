@@ -18,17 +18,21 @@ import (
 
 // MockContainerRuntime implements runtime.ContainerRuntime for testing.
 type MockContainerRuntime struct {
-	mu                sync.Mutex
-	StopCalls         []string
-	RemoveCalls       []string
-	RestartCalls      []string
-	RestartErr        error
-	StartCalls        []string
-	StartErr          error // when set, StartContainer returns it
-	StopErr           error // when set, StopContainer returns it
-	CreateCalls       []runtime.ContainerConfig
+	mu           sync.Mutex
+	StopCalls    []string
+	RemoveCalls  []string
+	RestartCalls []string
+	RestartErr   error
+	StartCalls   []string
+	StartErr     error // when set, StartContainer returns it
+	StopErr      error // when set, StopContainer returns it
+	CreateCalls  []runtime.ContainerConfig
+	// CreateFunc, when set, backs CreateContainer: lets a test return a distinct id
+	// per container, or fail one by name. Nil keeps the single fixed id.
+	CreateFunc        func(cfg runtime.ContainerConfig) (string, error)
 	PullCalls         []string // image tags passed to PullImage
 	HealthStatus_     string   // returned by ContainerHealth (empty → "healthy")
+	HealthCalls       []string // container names ContainerHealth was asked about
 	ImageMissing_     bool     // when true, ImageExists reports false
 	ContainerMissing_ bool     // when true, ContainerExists reports false
 	ListContainers_   []runtime.ContainerInfo
@@ -79,6 +83,9 @@ func (m *MockContainerRuntime) CreateContainer(_ context.Context, cfg runtime.Co
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.CreateCalls = append(m.CreateCalls, cfg)
+	if m.CreateFunc != nil {
+		return m.CreateFunc(cfg)
+	}
 	return "mock-container-id", nil
 }
 
@@ -269,7 +276,10 @@ func (m *MockContainerRuntime) ContainerExists(_ context.Context, _ string) (boo
 
 // ContainerHealth returns HealthStatus_, defaulting to "healthy" so the deploy
 // gate passes in tests that do not exercise it. Set HealthStatus_ to drive it.
-func (m *MockContainerRuntime) ContainerHealth(_ context.Context, _ string) (string, error) {
+func (m *MockContainerRuntime) ContainerHealth(_ context.Context, name string) (string, error) {
+	m.mu.Lock()
+	m.HealthCalls = append(m.HealthCalls, name)
+	m.mu.Unlock()
 	if m.HealthStatus_ == "" {
 		return "healthy", nil
 	}
@@ -332,6 +342,8 @@ type MockProxyManager struct {
 	mu            sync.Mutex
 	AddedRoutes   []proxy.RouteConfig
 	RemovedRoutes []string
+	// AddRouteErr, when set, makes AddRoute fail (after recording nothing).
+	AddRouteErr error
 	// DNSPolicies is the last set SyncDNSPolicies received.
 	DNSPolicies []proxy.DNSPolicy
 	// WAFSyncs is every config SyncWAF received, in order.
@@ -345,6 +357,9 @@ type MockProxyManager struct {
 func (m *MockProxyManager) AddRoute(_ context.Context, cfg proxy.RouteConfig) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.AddRouteErr != nil {
+		return m.AddRouteErr
+	}
 	m.AddedRoutes = append(m.AddedRoutes, cfg)
 	return nil
 }

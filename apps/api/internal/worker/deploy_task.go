@@ -42,6 +42,25 @@ type deployPayload struct {
 	TraceCarrier     map[string]string `json:"trace_carrier,omitempty"`      // W3C trace context for span linking across the queue
 }
 
+// deployTarget is one container this deploy creates: one process type's single
+// instance. Everything that varies per type lives here, so no stage reads a shared
+// field that the next container's create would overwrite (the compensator bug).
+type deployTarget struct {
+	typeName      string
+	command       string         // "" leaves the image's CMD alone
+	health        resolvedHealth // resolved by resolveHealthCheck; nothing reads app.HealthCheckType
+	instanceID    pgtype.UUID
+	instanceIdx   int32
+	containerName string // read from the instance row, never minted
+	containerID   string // set once the container is created
+}
+
+// all returns every target, workers first and the routable one last: the order
+// they are deployed in.
+func (dc *deployContext) all() []*deployTarget {
+	return append(append([]*deployTarget{}, dc.workers...), dc.routable)
+}
+
 // deployContext holds all state accumulated across deploy stages.
 type deployContext struct {
 	payload       deployPayload
@@ -55,19 +74,13 @@ type deployContext struct {
 	// Docker client, so a git-source app placed on a remote host would build
 	// its image here and then fail to find that tag there. Offloading the
 	// build is its own piece of work (BUILDKIT_HOST), not this refactor.
-	runtime       runtime.ContainerRuntime
-	containerName string
-	containerID   string
-	// instanceID and processType identify the instance row this deploy replaces; the
-	// process type is what the container is labelled with.
-	instanceID  pgtype.UUID
-	processType string
-	instanceIdx int32
-	// health is the check this process type runs with, resolved once in
-	// loadApplication by resolveHealthCheck; no stage reads app.HealthCheckType.
-	health resolvedHealth
-	// command is the process type's command string; "" leaves the image's CMD alone.
-	command   string
+	runtime runtime.ContainerRuntime
+	// routable is the ONE container the proxy routes to; workers are every other
+	// process type, in deterministic (name) order. All run the SAME image. The
+	// routable path -- create, wire proxy, verify, finalize -- is the sequence proven
+	// on a real install, so workers are wrapped around it and never mixed into it.
+	routable  *deployTarget
+	workers   []*deployTarget
 	env       map[string]string
 	imageName string
 	commitSHA string
@@ -177,23 +190,55 @@ func (h *TaskHandler) HandleDeployTask(ctx context.Context, t *asynq.Task) error
 		return err
 	}
 
-	// Stage 3 & 4: the new image is ready — now tear down the previous container
-	// and set up networking. This is the point of no return: from here a failure
-	// leaves nothing serving, so the app is flagged errored. Both are idempotent
-	// and log-only on error.
-	_ = runStage(ctx, "deploy.cleanup_existing", func(ctx context.Context) error {
-		h.cleanupExisting(ctx, dc)
-		dc.cleanedUp = true
-		return nil
-	})
+	// Stage 3: networking. Idempotent and log-only on error. Shared by every
+	// process type: they all live on the application's one project network.
 	_ = runStage(ctx, "deploy.ensure_networks", func(ctx context.Context) error {
 		h.ensureNetworks(ctx, dc)
 		return nil
 	})
 
-	// Stage 5: create and start container — appends a compensator on success
+	// Stage 4: the NON-ROUTABLE process types, one at a time, in name order, BEFORE
+	// the routable one is touched. They all run the same image, so if a worker cannot
+	// start on it the web type almost certainly cannot either, and because web's
+	// container has not been torn down yet the app is still serving the old version
+	// when the deploy fails. That is a canary, not an accident of ordering.
+	//
+	// Failure policy for 0.3.0 (there is no rolling infrastructure until Phase D):
+	// the deployment is marked failed, and the compensators remove the containers
+	// THIS deploy created. A worker whose old container was already removed before
+	// its new one failed is DOWN, not old-generation-serving, exactly as a
+	// single-container deploy has always behaved.
+	for _, w := range dc.workers {
+		if err := runStage(ctx, "deploy.worker_"+w.typeName, func(ctx context.Context) error {
+			removeContainer(ctx, dc, w.containerName)
+			if err := h.createAndStart(ctx, dc, w); err != nil {
+				return fmt.Errorf("create container: %w", err)
+			}
+			return h.verifyWorker(ctx, dc, w)
+		}); err != nil {
+			h.runCompensators(dc)
+			h.failDeployment(ctx, dc, "deploy", fmt.Sprintf("process type %q: %v", w.typeName, err))
+			recordSpanErr(rootSpan, err)
+			return fmt.Errorf("process type %q: %w", w.typeName, err)
+		}
+	}
+
+	// Stage 5: the routable type -- the sequence proven on a real install, unchanged.
+	// This is the point of no return for the application: tearing down the previous
+	// container leaves nothing serving, so from here a failure flags the app errored.
+	// The application-scoped legacy names are swept once, here, with the container
+	// they belong to; sweeping them earlier would take that container down before
+	// the workers had proven the image.
+	_ = runStage(ctx, "deploy.cleanup_existing", func(ctx context.Context) error {
+		h.cleanupLegacyNames(ctx, dc)
+		removeContainer(ctx, dc, dc.routable.containerName)
+		dc.cleanedUp = true
+		return nil
+	})
+
+	// create and start container — appends a compensator on success
 	if err := runStage(ctx, "deploy.create_and_start", func(ctx context.Context) error {
-		return h.createAndStart(ctx, dc)
+		return h.createAndStart(ctx, dc, dc.routable)
 	}); err != nil {
 		h.runCompensators(dc)
 		h.failDeployment(ctx, dc, "deploy", fmt.Sprintf("create container: %v", err))
@@ -236,7 +281,7 @@ func (h *TaskHandler) HandleDeployTask(ctx context.Context, t *asynq.Task) error
 	}
 
 	rootSpan.SetAttributes(
-		attribute.String("container.id", dc.containerID),
+		attribute.String("container.id", dc.routable.containerID),
 		attribute.String("deploy.commit_sha", dc.commitSHA),
 	)
 	rootSpan.SetStatus(codes.Ok, "deploy completed")
@@ -244,7 +289,7 @@ func (h *TaskHandler) HandleDeployTask(ctx context.Context, t *asynq.Task) error
 	slog.Info("deploy completed",
 		"application_id", payload.ApplicationID,
 		"deployment_id", payload.DeploymentID,
-		"container", dc.containerID,
+		"container", dc.routable.containerID,
 		"commit", dc.commitSHA,
 	)
 	return nil
@@ -313,16 +358,47 @@ func (h *TaskHandler) loadApplication(ctx context.Context, dc *deployContext) er
 	if err != nil {
 		return fmt.Errorf("resolve instance: %w", err)
 	}
-	dc.containerName = inst.ContainerName
-	dc.instanceID = inst.ID
-	dc.instanceIdx = inst.Idx
 	pt, err := h.Queries.GetProcessType(ctx, inst.ProcessTypeID)
 	if err != nil {
 		return fmt.Errorf("load process type: %w", err)
 	}
-	dc.processType = pt.Name
-	dc.command = pt.Command
-	dc.health = resolveHealthCheck(dc.app, pt)
+	dc.routable = &deployTarget{
+		typeName:      pt.Name,
+		command:       pt.Command,
+		health:        resolveHealthCheck(dc.app, pt),
+		instanceID:    inst.ID,
+		instanceIdx:   inst.Idx,
+		containerName: inst.ContainerName,
+	}
+
+	// Every other process type, from the same image. Resolved HERE, before anything
+	// is torn down, so a type with no instance row fails the deploy while the old
+	// generation is still serving. No instance row is ever created by a deploy.
+	types, err := h.Queries.ListProcessTypesByApplication(ctx, dc.applicationID)
+	if err != nil {
+		return fmt.Errorf("list process types: %w", err)
+	}
+	for _, t := range types { // ORDER BY routable DESC, name: workers come out by name
+		if t.ID == pt.ID {
+			continue
+		}
+		rows, err := h.Queries.ListInstancesByProcessType(ctx, t.ID)
+		if err != nil {
+			return fmt.Errorf("list instances of process type %q: %w", t.Name, err)
+		}
+		if len(rows) == 0 {
+			return fmt.Errorf("process type %q has no instance row", t.Name)
+		}
+		// Replicas are fixed at 1 in 0.3.0: the first (lowest idx) is the instance.
+		dc.workers = append(dc.workers, &deployTarget{
+			typeName:      t.Name,
+			command:       t.Command,
+			health:        resolveHealthCheck(dc.app, t),
+			instanceID:    rows[0].ID,
+			instanceIdx:   rows[0].Idx,
+			containerName: rows[0].ContainerName,
+		})
+	}
 
 	rt, err := h.Runtimes.For(ctx, appRow.ServerID)
 	if err != nil {
@@ -361,18 +437,24 @@ func (h *TaskHandler) loadApplication(ctx context.Context, dc *deployContext) er
 	return nil
 }
 
-// cleanupExisting stops and removes any pre-existing containers (all naming formats).
-func (h *TaskHandler) cleanupExisting(ctx context.Context, dc *deployContext) {
-	intermediateContainerName := naming.IntermediateContainerName(dc.appRow.ProjectSlug, dc.payload.ApplicationID)
-	oldContainerName := naming.OldContainerName(dc.payload.ApplicationID)
-	for _, name := range []string{oldContainerName, intermediateContainerName, dc.containerName} {
-		if err := dc.runtime.StopContainer(ctx, name); err != nil {
-			slog.Debug("could not stop container before deploy (may not exist)", "container", name, "error", err)
-		}
-		if err := dc.runtime.RemoveContainer(ctx, name); err != nil {
-			slog.Debug("could not remove container before deploy (may not exist)", "container", name, "error", err)
-		}
+// removeContainer stops and removes one container by name; log-only on error,
+// because it may not exist.
+func removeContainer(ctx context.Context, dc *deployContext, name string) {
+	if err := dc.runtime.StopContainer(ctx, name); err != nil {
+		slog.Debug("could not stop container before deploy (may not exist)", "container", name, "error", err)
 	}
+	if err := dc.runtime.RemoveContainer(ctx, name); err != nil {
+		slog.Debug("could not remove container before deploy (may not exist)", "container", name, "error", err)
+	}
+}
+
+// cleanupLegacyNames sweeps the two pre-rename container names. They are scoped to
+// the APPLICATION, not to a process type: they name the single container that
+// existed before the renames, which the routable type now owns. So it runs once,
+// with the routable type's own cleanup, and is not repeated per type.
+func (h *TaskHandler) cleanupLegacyNames(ctx context.Context, dc *deployContext) {
+	removeContainer(ctx, dc, naming.OldContainerName(dc.payload.ApplicationID))
+	removeContainer(ctx, dc, naming.IntermediateContainerName(dc.appRow.ProjectSlug, dc.payload.ApplicationID))
 }
 
 // ensureNetworks creates the project-scoped network and attaches Caddy to it
@@ -716,7 +798,7 @@ func parseFileMode(mode string) os.FileMode {
 
 // createAndStart creates the container, starts it, and connects it to belune-infra.
 // On success it appends a compensator that stops and removes the container.
-func (h *TaskHandler) createAndStart(ctx context.Context, dc *deployContext) error {
+func (h *TaskHandler) createAndStart(ctx context.Context, dc *deployContext, t *deployTarget) error {
 	// Load persistent volumes and ensure the backing Docker volumes exist
 	// before creating the container. Volumes are keyed by application ID + name
 	// (naming.AppVolumeName) so every redeploy reattaches the same data. The
@@ -759,11 +841,11 @@ func (h *TaskHandler) createAndStart(ctx context.Context, dc *deployContext) err
 		tmpfs = map[string]string{"/tmp": "", "/run": ""}
 	}
 
-	hc := healthCheckRuntimeConfig(dc.app, dc.health)
+	hc := healthCheckRuntimeConfig(dc.app, t.health)
 
-	entrypoint, cmd := commandOverride(dc.command)
+	entrypoint, cmd := commandOverride(t.command)
 	containerID, err := dc.runtime.CreateContainer(ctx, runtime.ContainerConfig{
-		Name:       dc.containerName,
+		Name:       t.containerName,
 		Image:      dc.imageName,
 		Entrypoint: entrypoint,
 		Cmd:        cmd,
@@ -779,8 +861,8 @@ func (h *TaskHandler) createAndStart(ctx context.Context, dc *deployContext) err
 			// Which container of the application this is. Written on create only, so
 			// an existing container has neither until it is redeployed -- readers
 			// identify those by stored container name instead.
-			runtime.LabelProcessType: dc.processType,
-			runtime.LabelInstanceIdx: strconv.Itoa(int(dc.instanceIdx)),
+			runtime.LabelProcessType: t.typeName,
+			runtime.LabelInstanceIdx: strconv.Itoa(int(t.instanceIdx)),
 		},
 		CPULimit:        dc.app.CpuLimit,
 		MemoryLimit:     dc.app.MemoryLimit,
@@ -827,19 +909,32 @@ func (h *TaskHandler) createAndStart(ctx context.Context, dc *deployContext) err
 	// Caddy was attached to the project network in ensureNetworks above so
 	// it can already reach this container by hostname.
 
-	dc.containerID = containerID
+	t.containerID = containerID
 
 	// Compensator: stop and remove this container if a later stage fails
+	dc.addContainerCompensator(containerID)
+	return nil
+}
+
+// addContainerCompensator registers the rollback for one created container.
+//
+// ⛔ The id is passed in and captured BY VALUE, never read from a shared field when
+// the compensator runs. A field on the shared deployContext is one the next
+// createAndStart overwrites, so a closure reading it would, once a deploy
+// creates more than one container, stop and remove the LAST container twice and
+// leave every earlier one running and unreferenced. The proxy compensator in
+// wireProxy captures hostname and path by value for the same reason.
+func (dc *deployContext) addContainerCompensator(containerID string) {
+	rt := dc.runtime
 	dc.compensators = append(dc.compensators, func() {
 		cleanCtx := context.Background()
-		if err := dc.runtime.StopContainer(cleanCtx, dc.containerID); err != nil {
-			slog.Warn("compensator: failed to stop container", "container", dc.containerID, "error", err)
+		if err := rt.StopContainer(cleanCtx, containerID); err != nil {
+			slog.Warn("compensator: failed to stop container", "container", containerID, "error", err)
 		}
-		if err := dc.runtime.RemoveContainer(cleanCtx, dc.containerID); err != nil {
-			slog.Warn("compensator: failed to remove container", "container", dc.containerID, "error", err)
+		if err := rt.RemoveContainer(cleanCtx, containerID); err != nil {
+			slog.Warn("compensator: failed to remove container", "container", containerID, "error", err)
 		}
 	})
-	return nil
 }
 
 // checkDeployQuota re-verifies project + owning-user quota right before a
@@ -919,8 +1014,8 @@ func healthCheckRuntimeConfig(app generated.Application, health resolvedHealth) 
 // unhealthy (fail), giving up after a budget derived from the check's own
 // timing — a check that never leaves "starting" is treated as a failure so a
 // misconfigured command cannot let a broken deploy through.
-func (h *TaskHandler) verifyCommandHealth(ctx context.Context, dc *deployContext) error {
-	hc := healthCheckRuntimeConfig(dc.app, dc.health)
+func (h *TaskHandler) verifyCommandHealth(ctx context.Context, dc *deployContext, t *deployTarget) error {
+	hc := healthCheckRuntimeConfig(dc.app, t.health)
 
 	// Enough time for the start period plus a full run of retries, floored so a
 	// fast check still gets a fair chance and capped so a hung deploy cannot
@@ -932,20 +1027,20 @@ func (h *TaskHandler) verifyCommandHealth(ctx context.Context, dc *deployContext
 	if budget > healthVerifyTimeout {
 		budget = healthVerifyTimeout
 	}
-	slog.Info("verifying container health (command)", "container", dc.containerName, "budget", budget)
+	slog.Info("verifying container health (command)", "container", t.containerName, "budget", budget)
 
 	deadline := time.Now().Add(budget)
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
 	for {
-		switch st, err := dc.runtime.ContainerHealth(ctx, dc.containerName); {
+		switch st, err := dc.runtime.ContainerHealth(ctx, t.containerName); {
 		case err != nil:
 			// Transient inspect failure — keep trying until the budget runs out.
-			slog.Debug("verifyCommandHealth: inspect failed", "container", dc.containerName, "error", err)
+			slog.Debug("verifyCommandHealth: inspect failed", "container", t.containerName, "error", err)
 		case st == "healthy":
 			h.recordHealth(ctx, dc.deploymentID, healthStatusPassing, "")
-			slog.Info("container health verified", "container", dc.containerName)
+			slog.Info("container health verified", "container", t.containerName)
 			return nil
 		case st == "unhealthy":
 			msg := "container reported unhealthy"
@@ -982,19 +1077,23 @@ const (
 // the latest probe outcome without re-running it. A failed probe is fatal:
 // the caller invokes compensators so the bad container/route do not replace
 // the working ones.
+//
+// This is the ROUTABLE type's gate only: it is the one with a port and domains, and
+// the only one that records the deployment's health. Workers go through verifyWorker.
 func (h *TaskHandler) verifyHealth(ctx context.Context, dc *deployContext) error {
+	t := dc.routable
 	// The command type does not probe over HTTP — Docker runs the check inside
 	// the container. The gate here waits for Docker's own verdict so a broken
 	// command fails the deploy, exactly as a failing HTTP probe does; after
 	// that the check keeps running and the eventwatcher turns later verdicts
 	// into status changes.
-	if dc.health.typ == "command" {
-		return h.verifyCommandHealth(ctx, dc)
+	if t.health.typ == "command" {
+		return h.verifyCommandHealth(ctx, dc, t)
 	}
 
 	// 'none', or 'http' with no path, is not an error — there is simply nothing
 	// to verify.
-	if dc.health.typ == "none" ||
+	if t.health.typ == "none" ||
 		!dc.app.HealthCheckPath.Valid || dc.app.HealthCheckPath.String == "" {
 		h.recordHealth(ctx, dc.deploymentID, healthStatusSkipped, "no health check configured")
 		return nil
@@ -1021,7 +1120,7 @@ func (h *TaskHandler) verifyHealth(ctx context.Context, dc *deployContext) error
 		expectStatus = int(dc.app.HealthCheckExpectStatus.Int32)
 	}
 
-	healthURL := fmt.Sprintf("http://%s:%d%s", dc.containerName, resolveContainerPort(dc.app, domains), dc.app.HealthCheckPath.String)
+	healthURL := fmt.Sprintf("http://%s:%d%s", t.containerName, resolveContainerPort(dc.app, domains), dc.app.HealthCheckPath.String)
 	slog.Info("verifying container health", "url", healthURL, "timeout", timeout, "expect_status", expectStatus)
 
 	if err := pollHealthCheck(ctx, healthURL, timeout, expectStatus); err != nil {
@@ -1029,8 +1128,22 @@ func (h *TaskHandler) verifyHealth(ctx context.Context, dc *deployContext) error
 		return err
 	}
 	h.recordHealth(ctx, dc.deploymentID, healthStatusPassing, "")
-	slog.Info("container health verified", "container", dc.containerName)
+	slog.Info("container health verified", "container", t.containerName)
 	return nil
+}
+
+// verifyWorker is the deploy gate for a non-routable process type. A worker listens
+// on nothing, so it must NEVER be probed over HTTP: only a command check, which
+// Docker runs inside the container, gates it, and anything else (the resolved 'none',
+// or an explicit type that makes no sense without a port) verifies nothing. It
+// deliberately does not touch deployments.health_status, which describes the
+// routable type; a worker whose command check fails still fails the deploy.
+func (h *TaskHandler) verifyWorker(ctx context.Context, dc *deployContext, t *deployTarget) error {
+	if t.health.typ != "command" {
+		slog.Info("no health gate for worker", "process_type", t.typeName, "container", t.containerName)
+		return nil
+	}
+	return h.verifyCommandHealth(ctx, dc, t)
 }
 
 // recordHealth writes the probe result to the deployments row. Failures are
@@ -1059,7 +1172,7 @@ func (h *TaskHandler) wireProxy(ctx context.Context, dc *deployContext) error {
 	}
 
 	for _, domain := range dc.domains {
-		cfg, err := proxy.BuildRouteConfigFromDB(ctx, h.Queries, h.Keyring, domain, dc.containerName, dc.app.HealthCheckPath.String)
+		cfg, err := proxy.BuildRouteConfigFromDB(ctx, h.Queries, h.Keyring, domain, dc.routable.containerName, dc.app.HealthCheckPath.String)
 		if err != nil {
 			return fmt.Errorf("build route config for %s: %w", domain.Hostname, err)
 		}
@@ -1100,14 +1213,18 @@ func (h *TaskHandler) finalize(ctx context.Context, dc *deployContext) error {
 			return fmt.Errorf("mark the application running: %w", err)
 		}
 		// Alongside the application status, in the same transaction, not instead of
-		// it: the instance records which container is serving.
-		if dc.instanceID.Valid {
+		// it: each instance records which container is serving. The application
+		// status stays ONE write and is not derived from the instances.
+		for _, t := range dc.all() {
+			if !t.instanceID.Valid {
+				continue
+			}
 			if _, err := q.UpdateInstanceContainer(ctx, generated.UpdateInstanceContainerParams{
-				ID:          dc.instanceID,
-				ContainerID: pgtype.Text{String: dc.containerID, Valid: dc.containerID != ""},
+				ID:          t.instanceID,
+				ContainerID: pgtype.Text{String: t.containerID, Valid: t.containerID != ""},
 				Status:      status.ApplicationRunning,
 			}); err != nil {
-				return fmt.Errorf("record the instance's container: %w", err)
+				return fmt.Errorf("record the container of process type %q: %w", t.typeName, err)
 			}
 		}
 		// Stamp last_activity_at for preview GC. Doing this on every deploy
@@ -1211,9 +1328,9 @@ func (h *TaskHandler) failDeployment(ctx context.Context, dc *deployContext, kin
 				Status: status.ApplicationError,
 			}); err != nil {
 				slog.Warn("could not mark application errored", "error", err)
-			} else if dc.instanceID.Valid {
+			} else if dc.routable != nil && dc.routable.instanceID.Valid {
 				if _, err := h.Queries.UpdateInstanceStatus(ctx, generated.UpdateInstanceStatusParams{
-					ID: dc.instanceID, Status: status.ApplicationError,
+					ID: dc.routable.instanceID, Status: status.ApplicationError,
 				}); err != nil {
 					slog.Warn("could not mark instance errored", "error", err)
 				}

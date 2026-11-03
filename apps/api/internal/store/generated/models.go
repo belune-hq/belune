@@ -100,6 +100,34 @@ type ApplicationFileMount struct {
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
 }
 
+type ApplicationInstance struct {
+	ID            pgtype.UUID        `json:"id"`
+	ApplicationID pgtype.UUID        `json:"application_id"`
+	ProcessTypeID pgtype.UUID        `json:"process_type_id"`
+	DeploymentID  pgtype.UUID        `json:"deployment_id"`
+	Idx           int32              `json:"idx"`
+	ContainerName string             `json:"container_name"`
+	ContainerID   pgtype.Text        `json:"container_id"`
+	Status        string             `json:"status"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
+type ApplicationProcessType struct {
+	ID                 pgtype.UUID        `json:"id"`
+	ApplicationID      pgtype.UUID        `json:"application_id"`
+	Name               string             `json:"name"`
+	Command            string             `json:"command"`
+	Replicas           int32              `json:"replicas"`
+	Routable           bool               `json:"routable"`
+	CpuLimit           pgtype.Float8      `json:"cpu_limit"`
+	MemoryLimit        pgtype.Int8        `json:"memory_limit"`
+	HealthCheckType    pgtype.Text        `json:"health_check_type"`
+	HealthCheckCommand pgtype.Text        `json:"health_check_command"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+}
+
 type ApplicationScheduledTask struct {
 	ID             pgtype.UUID        `json:"id"`
 	ApplicationID  pgtype.UUID        `json:"application_id"`

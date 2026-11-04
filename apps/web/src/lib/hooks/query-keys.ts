@@ -57,6 +57,16 @@ export const queryKeys = {
         "volumes",
       ] as const,
   },
+  processTypes: {
+    all: (projectId: string, applicationId: string) =>
+      [
+        "projects",
+        projectId,
+        "applications",
+        applicationId,
+        "process-types",
+      ] as const,
+  },
   scheduledTasks: {
     all: (projectId: string, applicationId: string) =>
       [

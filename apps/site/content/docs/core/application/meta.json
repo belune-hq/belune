@@ -8,6 +8,7 @@
     "environment-variables",
     "domains",
     "mounts",
+    "process-types",
     "logs-metrics",
     "terminal",
     "scheduled-tasks",

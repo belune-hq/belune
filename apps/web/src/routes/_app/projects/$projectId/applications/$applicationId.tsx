@@ -47,6 +47,7 @@ import {
   Activity,
   SquareTerminal,
   HardDrive,
+  Boxes,
   CalendarClock,
   Settings,
 } from "lucide-react";
@@ -170,6 +171,7 @@ function ApplicationLayout() {
     { to: `${basePath}/logs`, label: "Logs", icon: ScrollText },
     { to: `${basePath}/metrics`, label: "Metrics", icon: Activity },
     { to: `${basePath}/terminal`, label: "Terminal", icon: SquareTerminal },
+    { to: `${basePath}/processes`, label: "Processes", icon: Boxes },
     { to: `${basePath}/mounts`, label: "Mounts", icon: HardDrive },
     { to: `${basePath}/tasks`, label: "Tasks", icon: CalendarClock },
     { to: `${basePath}/settings`, label: "Settings", icon: Settings },

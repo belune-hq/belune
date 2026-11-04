@@ -64,6 +64,9 @@
       "name": "Application Resources"
     },
     {
+      "name": "Application Process Types"
+    },
+    {
       "name": "Databases"
     },
     {
@@ -8526,7 +8529,7 @@
         "summary": "Get Process Types",
         "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
         "tags": [
-          "Application Resources"
+          "Application Process Types"
         ],
         "parameters": [
           {
@@ -8587,7 +8590,7 @@
         "summary": "Create Process Type",
         "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
         "tags": [
-          "Application Resources"
+          "Application Process Types"
         ],
         "parameters": [
           {
@@ -8646,7 +8649,7 @@
         "operationId": "DeleteProcessType",
         "summary": "Delete Process Type",
         "tags": [
-          "Application Resources"
+          "Application Process Types"
         ],
         "parameters": [
           {
@@ -8713,7 +8716,7 @@
         "summary": "Update Process Type",
         "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
         "tags": [
-          "Application Resources"
+          "Application Process Types"
         ],
         "parameters": [
           {

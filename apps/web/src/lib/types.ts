@@ -133,6 +133,29 @@ export interface ApplicationVolume {
   created_at: string;
 }
 
+export interface ProcessInstance {
+  id: string;
+  idx: number;
+  container_name: string;
+  container_id: string | null;
+  status: string;
+}
+
+// replicas and the per-type CPU/memory limits are deliberately absent: nothing
+// reads them in 0.3.0, so the API neither accepts nor returns them.
+export interface ProcessType {
+  id: string;
+  name: string;
+  command: string;
+  routable: boolean;
+  // null = resolve by the rule (routable inherits the application's, else none).
+  health_check_type: "http" | "command" | "none" | null;
+  health_check_command: string | null;
+  instances: ProcessInstance[];
+  created_at: string;
+  updated_at: string;
+}
+
 export interface VolumeBackupConfig {
   id: string;
   application_volume_id: string;

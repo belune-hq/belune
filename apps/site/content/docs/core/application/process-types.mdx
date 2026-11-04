@@ -1,0 +1,89 @@
+---
+title: Process Types
+description: Run a different command from the same built image — a worker or scheduler beside your web process.
+---
+
+A **process type** is a different command run from the **same built image**, in its own container. Most applications need only one — the web process — but many need a queue worker, a scheduler or a mailer running beside it: `bundle exec sidekiq`, `php artisan queue:work`, `node worker.js`. Process types let you run those from the image you already build, without a second application.
+
+Find them on an application's **Processes** tab.
+
+Every application starts with exactly one process type, **web**. It is the **routable** type: the one your domains send traffic to. Any type you add is a worker — it runs, and it receives no traffic.
+
+## Adding a Process Type
+
+**Add Process Type** opens a form with these fields:
+
+- **Name** — lowercase letters, digits and hyphens, starting with a letter, up to 20 characters. It becomes part of the container name (`<application>-<name>-1`) and cannot be changed afterwards.
+- **Command** — what the container runs. Leave it empty to run the image's own command.
+- **Health check** — `None` or `Command` for a worker (`HTTP` is offered only on the routable type). See [Health Checks](#health-checks).
+- **Health check command** — only for a command check.
+
+Each type runs exactly one container. Replicas and per-type CPU and memory limits are not available: every type uses the application's limits.
+
+## The Routable Type
+
+Exactly one process type is routable, and that is **web**. It is the type domains route to, so it **cannot be deleted** — removing it would leave every domain of the application with nothing to send traffic to. You can edit its command and health check.
+
+You cannot add a second routable type, and a worker is never an upstream of the proxy: nothing reaches it from outside.
+
+## Commands
+
+A command is run as `sh -c <command>`, so pipes, `&&`, environment expansion and `FOO=bar cmd` all work as you would type them in a shell.
+
+Two things follow from that:
+
+- **The image needs a `/bin/sh`.** A distroless or `scratch` image has none, and a command cannot run on it.
+- **The image's `ENTRYPOINT` is cleared when a command is set**, so your command runs exactly as written whichever way the image was built. This matters more than it sounds: Railpack images declare an entrypoint, and without clearing it the command would be handed to the entrypoint as arguments and silently run nothing.
+
+A type with an **empty command** is left alone — the container runs whatever the image does by default, including its entrypoint.
+
+## Stopping Gracefully
+
+<Callout type="warn">
+  A command that is a **pipeline or an `&&` chain will not stop gracefully.**
+  When you stop the container, it is not asked to finish: it is killed after the
+  grace period. A queue worker written that way is killed mid-job.
+</Callout>
+
+This is measured, not a guess. With a compound command the shell stays PID 1 and does not forward the stop signal to the program it started, so `docker stop` waits out its full grace period (10 seconds) and then kills the container — exit code 137, not the 143 of a clean shutdown.
+
+A simple command is different: most shells hand over to it directly, so it becomes PID 1 and receives the signal. For a worker that must finish its current job, use a **single command**, or have the command handle signals itself.
+
+## Health Checks
+
+A worker listens on nothing, so a type that is **not routable never gets an HTTP health check**. Its health check is:
+
+1. whatever you set on it, `Command` or `None`; otherwise
+2. **None**.
+
+The routable type works the other way round: if it sets nothing, it inherits the application's own health check.
+
+| Type         | Health check set          | Result                        |
+| ------------ | ------------------------- | ----------------------------- |
+| Routable     | none set                  | The application's own check   |
+| Routable     | `HTTP`, `Command`, `None` | What you set                  |
+| Not routable | none set                  | **None**                      |
+| Not routable | `Command`, `None`         | What you set                  |
+| Not routable | `HTTP`                    | Not allowed — it needs a port |
+
+A **command** check runs inside the container and exits `0` when healthy. The deploy waits for its verdict, so a worker that cannot become healthy fails the deploy. With **None**, the deploy does not gate on that type at all.
+
+The **Health check** column on the tab shows the check each type actually resolves to.
+
+## Volumes and File Mounts
+
+<Callout type="warn">
+  **Volumes and file mounts are mounted into every process type's container.**
+  Two different types can therefore write the same volume.
+</Callout>
+
+That is deliberate. A web process and a worker sharing an uploads directory is a normal shape, and read-only file mounts are safe to share. The risk is two types writing the **same file** — a SQLite database or a lock file opened by both the web process and a worker can be corrupted. If two types must not touch the same data, keep that data out of a shared volume.
+
+## When Changes Take Effect
+
+- **Adding or editing a type takes effect on the next deploy.** A container needs a built image to start from, so creating a type does not start anything by itself.
+- **Removing a type stops and removes its container immediately.** There is nothing to wait for, and anything it was running stops with it.
+
+On every deploy, the worker types are started first and the routable type last. They all run the same image, so a worker that cannot start on it is an early sign the web process could not either — and because the routable container has not been touched yet, your application is still serving the previous version when the deploy fails.
+
+If a deploy fails, the containers it created are removed. A worker whose previous container had already been removed is left **without a running container** rather than running the old version.

@@ -6,9 +6,6 @@
     "set-health-check",
     "update-application-runtime",
     "get-build-cache",
-    "clear-build-cache",
-    "list-process-types",
-    "create-process-type",
-    "update-process-type"
+    "clear-build-cache"
   ]
 }

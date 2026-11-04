@@ -1,0 +1,8 @@
+{
+  "title": "Process Types",
+  "pages": [
+    "list-process-types",
+    "create-process-type",
+    "update-process-type"
+  ]
+}

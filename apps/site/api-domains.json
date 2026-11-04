@@ -77,6 +77,11 @@
         "slug": "resources",
         "tag": "Application Resources",
         "title": "Resources"
+      },
+      {
+        "slug": "process-types",
+        "tag": "Application Process Types",
+        "title": "Process Types"
       }
     ]
   },

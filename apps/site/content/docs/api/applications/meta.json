@@ -15,6 +15,7 @@
     "volumes-backups",
     "scheduled-tasks",
     "file-mounts",
-    "resources"
+    "resources",
+    "process-types"
   ]
 }

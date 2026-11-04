@@ -181,14 +181,18 @@ func (w *Watcher) reconcile(ctx context.Context) {
 
 	for _, app := range apps {
 		appIDStr := pgUUIDToString(app.ID)
-		containerName, isRunning := idx.runningApps[appIDStr]
+		// The application is running when its ROUTABLE container is. runningApps maps
+		// an application to ONE container, last writer wins across all of its
+		// containers, so reading it would let a worker decide the application's status
+		// and, with a command health check, be the container the probe below asks.
+		containerName, isRunning, isTransient := routableContainerState(ctx, w.queries, app.ID, appIDStr, idx)
 
 		if !isRunning {
 			// Mid-restart, mid-removal, or created-not-yet-started proves
 			// nothing: reconciliation samples only at startup and on event
 			// stream reconnect, so it must not turn a passing phase into a
 			// stored verdict. The start/die events settle it a moment later.
-			if idx.transientApps[appIDStr] {
+			if isTransient {
 				slog.Debug("eventwatcher: skipping application in a transient container state",
 					"app_id", appIDStr, "status", app.Status)
 				continue
@@ -199,7 +203,7 @@ func (w *Watcher) reconcile(ctx context.Context) {
 			if app.Status == status.ApplicationRunning || app.Status == status.ApplicationUnhealthy {
 				slog.Info("eventwatcher: reconciling stopped application", "app_id", appIDStr)
 				if w.updateAppStatus(ctx, app.ID, appIDStr, status.ApplicationStopped) {
-					w.syncAllInstances(ctx, app.ID, status.ApplicationStopped)
+					w.syncGoneInstances(ctx, app.ID, idx)
 				}
 			}
 			continue
@@ -316,6 +320,18 @@ func (w *Watcher) handleApplicationEvent(ctx context.Context, event runtime.Cont
 		slog.Warn("eventwatcher: container killed by OOM", "app_id", appID, "container", event.ContainerName)
 	}
 
+	// ⛔ ONLY THE ROUTABLE CONTAINER MAY CHANGE THE APPLICATION'S STATUS. Every
+	// container of an application carries application-id, workers included, so a
+	// worker stopping used to mark the WHOLE application stopped; buildExpected then
+	// skipped it, the reconciler's sweep deleted its routes, and every domain fell
+	// through to the dashboard. A worker's lifecycle is recorded on its own instance
+	// and nowhere else. Resolve which container this is first, then decide.
+	owns, inst, found := w.ownsApplicationStatus(ctx, appUUID, event)
+	if !owns {
+		w.recordWorkerEvent(ctx, event, inst, found, newStatus)
+		return
+	}
+
 	// Two events need the current status to be interpreted; the rest stand on
 	// their own, so the read is skipped for them.
 	if event.Status == "die" {
@@ -354,6 +370,72 @@ func (w *Watcher) handleApplicationEvent(ctx context.Context, event runtime.Cont
 	// unconditionally on a die the application write was suppressed for.
 	if w.updateAppStatus(ctx, appUUID, appID, newStatus) {
 		w.syncInstanceFromEvent(ctx, appUUID, event, newStatus)
+	}
+}
+
+// ownsApplicationStatus reports whether the event's container is the one whose
+// lifecycle IS the application's: the instance of the routable process type. It
+// also returns the instance it resolved, so a worker's event need not resolve twice.
+//
+// Not-found is decided by whether the container declares a process type:
+//   - No process-type label: a container created before the labels existed
+//     (application-id only). It is the pre-upgrade single container, so today's
+//     behaviour is kept: it drives the application. An application whose rows are
+//     somehow missing must not stop reporting its status.
+//   - A process-type label but no row: an instance that has been removed (deleting
+//     a type deletes its row BEFORE its container stops, so the stop event arrives
+//     rowless), or an orphan. It is not the routable container, and acting on it
+//     would stop an application that is serving. Left alone.
+//
+// A failed lookup is also treated as "does not own": an application status that lags
+// a transition is corrected by the next reconcile, while a wrongly stopped
+// application loses its routes.
+func (w *Watcher) ownsApplicationStatus(ctx context.Context, appUUID pgtype.UUID, event runtime.ContainerEvent) (owns bool, inst generated.ApplicationInstance, found bool) {
+	inst, found, err := instances.ResolveForContainer(ctx, w.queries, appUUID, event)
+	if err != nil {
+		slog.Warn("eventwatcher: could not resolve the container's instance; leaving the application's status alone",
+			"app_id", pgUUIDToString(appUUID), "container", event.ContainerName, "error", err)
+		return false, inst, false
+	}
+	if !found {
+		return event.Labels[runtime.LabelProcessType] == "", inst, false
+	}
+	pt, err := w.queries.GetProcessType(ctx, inst.ProcessTypeID)
+	if err != nil {
+		slog.Warn("eventwatcher: could not load the instance's process type; leaving the application's status alone",
+			"app_id", pgUUIDToString(appUUID), "container", event.ContainerName, "error", err)
+		return false, inst, true
+	}
+	return pt.Routable, inst, true
+}
+
+// recordWorkerEvent applies a non-routable container's event to its own instance
+// only. The application's status is never touched.
+//
+// The same filters that protect the application protect the instance, against the
+// INSTANCE's own current status: a die the instance's recorded stop already explains
+// is not an error (ApplyDieStatus), and a health verdict only means something while
+// the container is meant to be up.
+func (w *Watcher) recordWorkerEvent(ctx context.Context, event runtime.ContainerEvent, inst generated.ApplicationInstance, found bool, newStatus string) {
+	if !found {
+		slog.Debug("eventwatcher: event for a container with no instance row; nothing to record",
+			"container", event.ContainerName, "event", event.Status)
+		return
+	}
+	if event.Status == "die" && !ApplyDieStatus(newStatus, inst.Status) {
+		slog.Debug("eventwatcher: keeping existing instance status",
+			"instance_id", pgUUIDToString(inst.ID), "keeping", inst.Status, "ignored", newStatus)
+		return
+	}
+	if isHealthEvent(event.Status) &&
+		inst.Status != status.ApplicationRunning && inst.Status != status.ApplicationUnhealthy {
+		return
+	}
+	slog.Info("eventwatcher: worker container event",
+		"instance_id", pgUUIDToString(inst.ID), "event", event.Status,
+		"container", event.ContainerName, "new_status", newStatus)
+	if _, err := w.queries.UpdateInstanceStatus(ctx, generated.UpdateInstanceStatusParams{ID: inst.ID, Status: newStatus}); err != nil {
+		slog.Warn("eventwatcher: failed to update instance status", "instance_id", pgUUIDToString(inst.ID), "error", err)
 	}
 }
 
@@ -577,16 +659,35 @@ func (w *Watcher) syncInstanceFromEvent(ctx context.Context, appUUID pgtype.UUID
 	}
 }
 
-// syncAllInstances is for the reconcile case where no container exists to name:
-// every one of the application's containers is gone.
-func (w *Watcher) syncAllInstances(ctx context.Context, appUUID pgtype.UUID, newStatus string) {
+// routableContainerState reports the state of the application's routable container.
+//
+// If the application has no resolvable routable instance (rows missing, or a lookup
+// failure), it falls back to the old label index so such an application keeps
+// reporting a status rather than silently freezing.
+func routableContainerState(ctx context.Context, q instances.Querier, appID pgtype.UUID, appIDStr string, idx *containerIndex) (name string, running, transient bool) {
+	inst, err := instances.ResolveOne(ctx, q, appID)
+	if err != nil {
+		name, running = idx.runningApps[appIDStr]
+		return name, running, idx.transientApps[appIDStr]
+	}
+	return inst.ContainerName, idx.runningNames[inst.ContainerName], idx.transientNames[inst.ContainerName]
+}
+
+// syncGoneInstances marks as stopped the instances whose containers are actually
+// gone. It must NOT mark them all: with the application stopped because its routable
+// container is, a worker can still be running, and writing "stopped" on it would be
+// false. A container in a transient state proves nothing either way, so it is left.
+func (w *Watcher) syncGoneInstances(ctx context.Context, appUUID pgtype.UUID, idx *containerIndex) {
 	insts, err := w.queries.ListInstancesByApplication(ctx, appUUID)
 	if err != nil {
 		slog.Warn("eventwatcher: failed to list instances", "app_id", pgUUIDToString(appUUID), "error", err)
 		return
 	}
 	for _, inst := range insts {
-		if _, err := w.queries.UpdateInstanceStatus(ctx, generated.UpdateInstanceStatusParams{ID: inst.ID, Status: newStatus}); err != nil {
+		if idx.runningNames[inst.ContainerName] || idx.transientNames[inst.ContainerName] {
+			continue
+		}
+		if _, err := w.queries.UpdateInstanceStatus(ctx, generated.UpdateInstanceStatusParams{ID: inst.ID, Status: status.ApplicationStopped}); err != nil {
 			slog.Warn("eventwatcher: failed to update instance status", "instance_id", pgUUIDToString(inst.ID), "error", err)
 		}
 	}

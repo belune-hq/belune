@@ -61,7 +61,11 @@ test("the Processes tab shows the routable type, adds a worker, and offers no wa
   await page.goto(`/projects/${project.id}/applications/${app.id}/processes`);
 
   // The tab exists and the page is really on screen.
-  await expect(page.getByRole("link", { name: "Processes" })).toBeVisible();
+  // exact: the project is named "Processes <stamp>", so its breadcrumb link
+  // would otherwise match too.
+  await expect(
+    page.getByRole("link", { name: "Processes", exact: true }),
+  ).toBeVisible();
   const heading = page.getByText("Process Types", { exact: true }).first();
   await expect(heading).toBeVisible();
   expect((await settled(heading)).height).toBeGreaterThan(10);
@@ -103,7 +107,9 @@ test("the Processes tab shows the routable type, adds a worker, and offers no wa
   await dialog.getByLabel("Command").fill("echo hello && sleep 3600");
   await dialog.getByRole("button", { name: "Add Process Type" }).click();
 
-  const workerRow = page.getByRole("listitem").filter({ hasText: "worker" });
+  // Anchored: the web row's container name contains "worker" (the application is
+  // "Worker Host"), so a bare substring would match both rows.
+  const workerRow = page.getByRole("listitem").filter({ hasText: /^worker/ });
   await expect(workerRow).toBeVisible();
   // A worker with nothing set resolves to none, never the application's http.
   await expect(workerRow.getByText("None (default)")).toBeVisible();

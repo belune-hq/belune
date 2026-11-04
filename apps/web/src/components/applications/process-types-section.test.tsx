@@ -3,6 +3,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ProcessType } from "@/lib/types";
 
 const createMutate = vi.fn();
+const deleteMutate = vi.fn();
+const toastWarning = vi.fn();
 let types: ProcessType[] = [];
 
 vi.mock("@/lib/hooks/use-process-types", () => ({
@@ -12,10 +14,14 @@ vi.mock("@/lib/hooks/use-process-types", () => ({
     isPending: false,
   }),
   useUpdateProcessType: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useDeleteProcessType: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDeleteProcessType: () => ({ mutateAsync: deleteMutate, isPending: false }),
 }));
 vi.mock("sonner", () => ({
-  toast: { promise: vi.fn(), warning: vi.fn(), error: vi.fn() },
+  toast: {
+    promise: vi.fn(),
+    warning: (m: string) => toastWarning(m),
+    error: vi.fn(),
+  },
 }));
 
 import { ProcessTypesSection } from "./process-types-section";
@@ -49,6 +55,8 @@ const renderIt = () =>
 describe("ProcessTypesSection", () => {
   beforeEach(() => {
     createMutate.mockReset().mockResolvedValue({});
+    deleteMutate.mockReset().mockResolvedValue({ status: "deleted" });
+    toastWarning.mockReset();
     types = [
       pt({
         id: "w",
@@ -157,5 +165,26 @@ describe("ProcessTypesSection", () => {
       health_check_type: "",
       health_check_command: "",
     });
+  });
+
+  // The removal can fail after the row is gone, and the server reports that as a
+  // warning on a 200. It must reach the operator: a container left running while the
+  // row says it is gone is exactly what this exists to surface.
+  it("surfaces a removal warning instead of swallowing it", async () => {
+    deleteMutate.mockResolvedValue({
+      status: "deleted",
+      warning: "its container could not be removed yet",
+    });
+    renderIt();
+    fireEvent.click(screen.getByRole("button", { name: "Remove worker" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Remove process type" }),
+    );
+    await waitFor(() =>
+      expect(toastWarning).toHaveBeenCalledWith(
+        "its container could not be removed yet",
+      ),
+    );
+    expect(deleteMutate).toHaveBeenCalledWith("k");
   });
 });

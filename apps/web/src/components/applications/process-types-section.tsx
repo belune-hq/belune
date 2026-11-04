@@ -156,7 +156,8 @@ export function ProcessTypesSection({
             <AlertDialogTitle>Remove {removeTarget?.name}?</AlertDialogTitle>
             <AlertDialogDescription>
               Its container is stopped and removed right away, not on the next
-              deploy. Anything it is running stops with it.
+              deploy. It gets a few seconds to finish what it is doing, then it
+              is killed, so anything still running stops with it.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

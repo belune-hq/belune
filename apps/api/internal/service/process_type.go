@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -292,22 +293,45 @@ func (s *ApplicationService) DeleteProcessType(ctx context.Context, appID, typeI
 	}
 	s.MarkConfigChanged(ctx, appID)
 
-	rt, rtErr := RuntimeForApplication(ctx, s.queries, s.runtimes, appID)
+	// ⛔ The stop and the removal run on a context DETACHED from the request. The
+	// request is under the 15s handler timeout, and a stop is slow whenever the command
+	// ignores SIGTERM (a pipeline or && chain leaves the shell as PID 1, so Docker waits
+	// out its grace period and then kills it). The timeout cancelled the request
+	// mid-stop, and the removal that followed ran on the dead context and silently did
+	// nothing: the container was left behind as Exited (137) with its rows already gone.
+	bg := context.WithoutCancel(ctx)
+	rt, rtErr := RuntimeForApplication(bg, s.queries, s.runtimes, appID)
 	if rtErr != nil {
 		slog.Warn("delete process type: could not reach the application's server", "process_type", cur.Name, "error", rtErr)
 		return "process type deleted, but its container could not be removed yet (its server was unreachable); it will be reclaimed by the orphan sweep", nil
 	}
 	for _, in := range insts {
-		if err := rt.StopContainer(ctx, in.ContainerName); err != nil {
-			slog.Debug("delete process type: could not stop container (may not exist)", "container", in.ContainerName, "error", err)
+		// A bounded polite stop, so a worker that handles SIGTERM can finish what it
+		// is doing, then a forced removal: the stop alone is not allowed to decide
+		// whether the container goes away.
+		stopCtx, cancelStop := context.WithTimeout(bg, processTypeStopGrace)
+		if err := rt.StopContainer(stopCtx, in.ContainerName); err != nil {
+			slog.Debug("delete process type: stop did not complete (forcing removal)", "container", in.ContainerName, "error", err)
 		}
-		if err := rt.RemoveContainer(ctx, in.ContainerName); err != nil {
+		cancelStop()
+
+		rmCtx, cancelRm := context.WithTimeout(bg, processTypeRemoveTimeout)
+		if err := rt.RemoveContainer(rmCtx, in.ContainerName); err != nil {
 			slog.Warn("delete process type: could not remove container", "container", in.ContainerName, "error", err)
 			warning = "process type deleted, but its container could not be removed yet; it will be reclaimed by the orphan sweep"
 		}
+		cancelRm()
 	}
 	return warning, nil
 }
+
+// The two together stay under the 15s handler timeout, so a client is not told the
+// request timed out for work that succeeded. RemoveContainer forces (SIGKILL), so it
+// does not wait out a grace period of its own.
+const (
+	processTypeStopGrace     = 5 * time.Second
+	processTypeRemoveTimeout = 8 * time.Second
+)
 
 // mapProcessTypeUniqueViolation turns a unique-index violation into the error for
 // the index that fired. ConstraintName is what tells "this name is taken" from "this

@@ -117,7 +117,7 @@ func TestStreamLogs_ProcessTypeSelectsTheContainer(t *testing.T) {
 	}
 	stream := func(query string) string {
 		resp := env.DoRequest(t, "GET", fmt.Sprintf("/api/projects/%s/applications/%s/logs%s", projectID, appID, query), nil, testutil.AuthHeader(token))
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		b, _ := io.ReadAll(resp.Body)
 		return string(b)
 	}
@@ -125,6 +125,6 @@ func TestStreamLogs_ProcessTypeSelectsTheContainer(t *testing.T) {
 	assert.Contains(t, stream(""), "web output", "absent param keeps the routable type")
 
 	resp := env.DoRequest(t, "GET", fmt.Sprintf("/api/projects/%s/applications/%s/logs?process_type=nope", projectID, appID), nil, testutil.AuthHeader(token))
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 }

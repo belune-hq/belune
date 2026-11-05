@@ -138,12 +138,16 @@ info "Driving the dashboard in a real browser"
   # Idempotent and fast once cached. CI installs the system libraries too
   # (--with-deps), which needs root and is not this script's business.
   npx playwright install chromium >/dev/null
+  # ⛔ No comment may sit between two lines of the assignment chain below: the
+  # backslashes hold it together and a comment eats one, which turns the variables
+  # into unexported shell variables and runs Playwright without them.
+  #
+  # ${COMPOSE[*]} flattens the array into one string, so BELUNE_E2E_PSQL would break
+  # on a path containing a space; neither $ROOT nor the env file has one.
   BELUNE_E2E_URL="$BELUNE_URL" \
   BELUNE_E2E_EMAIL="$SMOKE_ADMIN_EMAIL" \
   BELUNE_E2E_PASSWORD="$SMOKE_ADMIN_PASSWORD" \
   BELUNE_E2E_TARGET="$TARGET" \
-  # ${COMPOSE[*]} flattens the array into one string, so this would break on a path
-  # containing a space; neither $ROOT nor the env file has one.
   BELUNE_E2E_PSQL="cd '$ROOT' && ${COMPOSE[*]} exec -T postgres psql -U belune -d belune -v ON_ERROR_STOP=1 -q" \
   BELUNE_E2E_BUDGET="${BELUNE_E2E_BUDGET:-}" \
     npx playwright test "$@"

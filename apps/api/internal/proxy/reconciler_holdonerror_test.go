@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/belune-hq/belune/internal/proxy"
-	"github.com/belune-hq/belune/internal/proxy/capability"
 	"github.com/belune-hq/belune/internal/status"
 	"github.com/belune-hq/belune/internal/store/generated"
 	"github.com/belune-hq/belune/internal/testutil"
@@ -101,8 +100,12 @@ func ensuredHosts(m *mockProxy) []string {
 
 func reconcileWith(t *testing.T, ctx context.Context, db generated.DBTX, mock *mockProxy) {
 	t.Helper()
+	// CrowdSec is switched on and ready, with its module present, so the bouncer
+	// DOES push: without that, syncCrowdSec returns early and an assertion about it
+	// would pass on any code.
 	r := proxy.NewReconciler(generated.New(db), mock, nil, time.Second).
-		WithCapabilities(&countingProvider{set: capability.NewSet()})
+		WithCapabilities(&countingProvider{set: caddyWithCrowdSec}).
+		WithCrowdSec(&fakeCrowdSec{desire: proxy.CrowdSecDesire{Enabled: true, Ready: true, APIURL: "http://crowdsec:8080", APIKey: "k"}})
 	require.NoError(t, r.ReconcileNow(ctx))
 }
 
@@ -224,4 +227,6 @@ func TestReconcile_DomainsQueryFails_DoesNotNarrowTheFullSetSyncs(t *testing.T) 
 	reconcileWith(t, ctx, pool, mock)
 	assert.ElementsMatch(t, previous, mock.skip)
 	assert.NotEmpty(t, mock.waf, "a complete pass pushes the WAF set")
+	require.NotEmpty(t, mock.crowdsec, "a complete pass pushes the CrowdSec set: the assertion above is not vacuous")
+	assert.ElementsMatch(t, previous, mock.crowdsec[len(mock.crowdsec)-1].Hosts)
 }

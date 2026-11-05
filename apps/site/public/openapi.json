@@ -16814,7 +16814,9 @@
           "line_count": {
             "type": "integer"
           },
-          "process_type": {},
+          "process_type": {
+            "type": "string"
+          },
           "started_at": {
             "format": "date-time",
             "type": [

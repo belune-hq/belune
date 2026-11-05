@@ -60,10 +60,13 @@ LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
 -- deployments" still reads every line regardless of what the picker lists.
 SELECT cl.container_id,
        cl.deployment_id,
+       -- '' means unknown here, because the ::text cast has to be honest (sqlc reads
+       -- a cast as non-null, and scanning NULL into a string fails). The live
+       -- payload carries null for the same fact; both are falsy to the client.
        -- MAX, not a GROUP BY key: a container whose first lines predate the column
        -- has NULL and non-NULL rows under one container_id, and grouping on the
        -- type would split that one session in two.
-       MAX(cl.process_type)             AS process_type,
+       COALESCE(MAX(cl.process_type), '')::text AS process_type,
        MIN(cl.recorded_at)::timestamptz AS first_at,
        MAX(cl.recorded_at)::timestamptz AS last_at,
        COUNT(*)                         AS line_count,

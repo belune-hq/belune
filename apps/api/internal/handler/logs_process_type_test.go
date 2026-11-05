@@ -66,7 +66,8 @@ func insertTypedLog(t *testing.T, appUUID, dep pgtype.UUID, container, processTy
 	}))
 }
 
-// The picker defect: three containers of ONE deployment must come back as three
+// Unknown comes back as "" on the sessions row (the cast must be honest); the live
+// payload uses null. The picker defect: three containers of ONE deployment must come back as three
 // sessions that say what they are, not three identical rows.
 func TestLogSessions_CarryTheProcessType(t *testing.T) {
 	token, projectID, appID, appUUID, dep, _ := seedTypedLogApp(t)
@@ -82,7 +83,7 @@ func TestLogSessions_CarryTheProcessType(t *testing.T) {
 		row := s.(map[string]any)
 		byContainer[row["container_id"].(string)] = row["process_type"]
 	}
-	assert.Equal(t, map[string]any{"ctr-web": "web", "ctr-queue": "queue", "ctr-sched": "scheduler", "ctr-old": nil}, byContainer)
+	assert.Equal(t, map[string]any{"ctr-web": "web", "ctr-queue": "queue", "ctr-sched": "scheduler", "ctr-old": ""}, byContainer)
 }
 
 // The reason the type is a column: filtering by it reaches lines from container

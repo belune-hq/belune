@@ -84,10 +84,13 @@ func (q *Queries) InsertContainerLog(ctx context.Context, arg InsertContainerLog
 const listContainerLogSessions = `-- name: ListContainerLogSessions :many
 SELECT cl.container_id,
        cl.deployment_id,
+       -- '' means unknown here, because the ::text cast has to be honest (sqlc reads
+       -- a cast as non-null, and scanning NULL into a string fails). The live
+       -- payload carries null for the same fact; both are falsy to the client.
        -- MAX, not a GROUP BY key: a container whose first lines predate the column
        -- has NULL and non-NULL rows under one container_id, and grouping on the
        -- type would split that one session in two.
-       MAX(cl.process_type)             AS process_type,
+       COALESCE(MAX(cl.process_type), '')::text AS process_type,
        MIN(cl.recorded_at)::timestamptz AS first_at,
        MAX(cl.recorded_at)::timestamptz AS last_at,
        COUNT(*)                         AS line_count,
@@ -112,7 +115,7 @@ type ListContainerLogSessionsParams struct {
 type ListContainerLogSessionsRow struct {
 	ContainerID  pgtype.Text        `json:"container_id"`
 	DeploymentID pgtype.UUID        `json:"deployment_id"`
-	ProcessType  interface{}        `json:"process_type"`
+	ProcessType  string             `json:"process_type"`
 	FirstAt      pgtype.Timestamptz `json:"first_at"`
 	LastAt       pgtype.Timestamptz `json:"last_at"`
 	LineCount    int64              `json:"line_count"`

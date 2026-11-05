@@ -45,6 +45,8 @@ The command runs inside the application's **already-running** container, not a f
 
 It also means a stopped application does not fire its cron. That is deliberate rather than a limitation: a stopped app is either deliberately stopped or broken, and neither wants `schedule:run` firing into it. The run is still recorded, as **Skipped**, with the reason — an invisible skip would be indistinguishable from a cron that never fired at all.
 
+A scheduled task always runs in the **routable** container, whatever other [process types](/docs/core/application/process-types) the application has. There is no way yet to point a task at a worker's container.
+
 Preview applications do not inherit their parent's tasks, so a pull request cannot double-process a queue or send a second copy of a nightly email.
 
 ## Run History

@@ -58,3 +58,15 @@ export function useDeleteProcessType(projectId: string, applicationId: string) {
     onSuccess: refresh,
   });
 }
+
+// Invalidates through the process-types key: the instance pill then updates because
+// the data refetched, with no new transport. A crash the operator did not cause shows
+// on the next refetch, not instantly.
+export function useRestartInstance(projectId: string, applicationId: string) {
+  const refresh = useRefresh(projectId, applicationId);
+  return useMutation({
+    mutationFn: (instanceId: string) =>
+      api.restartInstance(projectId, applicationId, instanceId),
+    onSuccess: refresh,
+  });
+}

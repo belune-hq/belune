@@ -5,6 +5,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "xterm/css/xterm.css";
 import { createTerminalSession } from "@/lib/api/terminal";
+import { useProcessTypes } from "@/lib/hooks/use-process-types";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -13,13 +14,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { RefreshCw, TerminalSquare } from "lucide-react";
+import { BoxesIcon, RefreshCw, TerminalSquare } from "lucide-react";
 
 export const Route = createFileRoute(
   "/_app/projects/$projectId/applications/$applicationId/terminal",
 )({
   component: TerminalPage,
 });
+
+// Sentinel for the routable type: it is addressed by sending no process_type at all,
+// so the server keeps today's behaviour. Contains an underscore, which a real type
+// name (^[a-z][a-z0-9-]{0,19}$) never can.
+const ROUTABLE = "__routable__";
 
 type ConnState = "idle" | "connecting" | "connected" | "disconnected" | "error";
 
@@ -31,6 +37,10 @@ function getWsUrl(sessionId: string) {
 function TerminalPage() {
   const { projectId, applicationId } = Route.useParams();
   const [shell, setShell] = useState("sh");
+  // "" = the routable container, as before. The selector only appears once there is
+  // a second process type to choose.
+  const [processType, setProcessType] = useState("");
+  const { data: processTypes } = useProcessTypes(projectId, applicationId);
   const [connState, setConnState] = useState<ConnState>("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -60,7 +70,12 @@ function TerminalPage() {
 
     let sessionId: string;
     try {
-      const res = await createTerminalSession(projectId, applicationId, shell);
+      const res = await createTerminalSession(
+        projectId,
+        applicationId,
+        shell,
+        processType || undefined,
+      );
       sessionId = res.session_id;
     } catch (err: unknown) {
       setConnState("error");
@@ -175,7 +190,7 @@ function TerminalPage() {
     return () => {
       resizeObserver.disconnect();
     };
-  }, [projectId, applicationId, shell, cleanup, connState]);
+  }, [projectId, applicationId, shell, processType, cleanup, connState]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -219,6 +234,32 @@ function TerminalPage() {
             </SelectItem>
           </SelectContent>
         </Select>
+
+        {processTypes && processTypes.length > 1 && (
+          <Select
+            value={processType === "" ? ROUTABLE : processType}
+            onValueChange={(v) => v && setProcessType(v === ROUTABLE ? "" : v)}
+            disabled={isConnected || isConnecting}
+          >
+            <SelectTrigger
+              className="h-8 w-44 text-sm"
+              aria-label="Process type"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {processTypes.map((t) => (
+                <SelectItem
+                  key={t.id}
+                  value={t.routable ? ROUTABLE : t.name}
+                  icon={<BoxesIcon />}
+                >
+                  {t.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
 
         {!isConnected && !isConnecting && (
           <Button size="sm" onClick={connect} disabled={isConnecting}>

@@ -142,6 +142,7 @@ info "Driving the dashboard in a real browser"
   BELUNE_E2E_EMAIL="$SMOKE_ADMIN_EMAIL" \
   BELUNE_E2E_PASSWORD="$SMOKE_ADMIN_PASSWORD" \
   BELUNE_E2E_TARGET="$TARGET" \
+  BELUNE_E2E_PSQL="cd '$ROOT' && ${COMPOSE[*]} exec -T postgres psql -U belune -d belune -v ON_ERROR_STOP=1 -q" \
   BELUNE_E2E_BUDGET="${BELUNE_E2E_BUDGET:-}" \
     npx playwright test "$@"
 )

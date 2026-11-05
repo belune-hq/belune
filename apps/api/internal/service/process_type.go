@@ -359,12 +359,23 @@ func optText(s string) pgtype.Text { return pgtype.Text{String: s, Valid: s != "
 var ErrInstanceNotFound = errors.New("instance not found")
 
 // The stop and start each get their own deadline, both detached from the request.
-// Docker's polite stop waits 10s before it kills, so the stop needs more than the
-// 15s handler timeout would leave.
+//
+// ⛔ instanceStopTimeout must stay ABOVE Docker's stop grace, which StopContainer
+// hardcodes at 30s (SIGTERM, wait 30s, SIGKILL). Below it, a worker that ignores
+// SIGTERM -- the compound command or pipeline this feature exists for -- outlives
+// its own stop context, the stop returns a context error, and the container is left
+// down. Delete uses a 5s stop on purpose, because it FORCES removal afterwards and
+// needs no grace; restart has no forcing step (there is no kill on the runtime
+// interface), so its only lever is to outwait the grace. Do not "align" the two.
+// Nothing is waiting on it: the handler answers 202 after 10s.
 const (
-	instanceStopTimeout  = 25 * time.Second
+	instanceStopTimeout  = 40 * time.Second
 	instanceStartTimeout = 15 * time.Second
 )
+
+// ErrInstanceContainerGone means the instance's container no longer exists (reaped
+// or removed), so there is nothing to restart: the answer is a redeploy.
+var ErrInstanceContainerGone = errors.New("the container no longer exists; redeploy to recreate it")
 
 // RestartInstance stops and starts ONE container, leaving the application's other
 // containers and its status alone. The application-level Restart acts on every
@@ -388,16 +399,27 @@ func (s *ApplicationService) RestartInstance(ctx context.Context, appID, instanc
 		return generated.ApplicationInstance{}, fmt.Errorf("%w: %v", ErrServerUnreachable, err)
 	}
 
+	// ⛔ The start is ALWAYS attempted, whatever the stop did. The invariant is that the
+	// container ends up running, so a stop that failed or timed out must not skip it
+	// (DeleteProcessType learned the same: a failed stop does not skip the removal).
+	// Starting a running container is a no-op at the Docker API, so this is safe in
+	// every branch. The stop's failure is reported only if the start fails too.
 	stopCtx, cancelStop := context.WithTimeout(bg, instanceStopTimeout)
-	err = rt.StopContainer(stopCtx, inst.ContainerName)
+	stopErr := rt.StopContainer(stopCtx, inst.ContainerName)
 	cancelStop()
-	if err != nil {
-		return generated.ApplicationInstance{}, fmt.Errorf("%w: stopping: %v", ErrContainerAction, err)
+	if stopErr != nil {
+		slog.Warn("restart instance: stop did not complete cleanly (starting anyway)", "container", inst.ContainerName, "error", stopErr)
 	}
 
 	startCtx, cancelStart := context.WithTimeout(bg, instanceStartTimeout)
 	defer cancelStart()
 	if err := rt.StartContainer(startCtx, inst.ContainerName); err != nil {
+		if exists, xerr := rt.ContainerExists(bg, inst.ContainerName); xerr == nil && !exists {
+			return generated.ApplicationInstance{}, ErrInstanceContainerGone
+		}
+		if stopErr != nil {
+			return generated.ApplicationInstance{}, fmt.Errorf("%w: stopping: %v; starting: %v", ErrContainerAction, stopErr, err)
+		}
 		return generated.ApplicationInstance{}, fmt.Errorf("%w: starting: %v", ErrContainerAction, err)
 	}
 	return inst, nil

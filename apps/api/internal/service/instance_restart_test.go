@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -68,4 +69,55 @@ func TestRestartInstance_AnInstanceOfAnotherApplicationIsNotFound(t *testing.T) 
 	_, err = svc.RestartInstance(context.Background(), a.ID, bInst.ID)
 	assert.ErrorIs(t, err, service.ErrInstanceNotFound)
 	assert.Empty(t, rt.StopCalls)
+}
+
+// The stop ITSELF outliving its own context: Docker's grace is 30s, and a worker that
+// ignores SIGTERM takes all of it. If the stop's deadline is below that, the stop
+// returns a context error -- and the container used to be left down. The start must
+// follow regardless, and the result must be a running container with no error.
+func TestRestartInstance_StillStartsWhenTheStopFailsOrTimesOut(t *testing.T) {
+	for name, stop := range map[string]func(context.Context, string) error{
+		"deadline exceeded": func(context.Context, string) error { return context.DeadlineExceeded },
+		"daemon error":      func(context.Context, string) error { return errors.New("docker: stop failed") },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Cleanup(func() { truncate(t) })
+			_, project := seedUserAndProject(t)
+			rt := &testutil.MockContainerRuntime{StopFunc: stop}
+			svc := service.NewApplicationService(testPool, testQueries, runtime.NewLocalRuntimes(rt), testKeyring, t.TempDir(), nil)
+			app, err := svc.Create(context.Background(), service.CreateApplicationParams{
+				ProjectID: project.ID, ProjectSlug: project.Slug, Name: "A", BaseSlug: "a",
+				Type: "image", SourceImage: "nginx:alpine", BuildType: "image",
+			})
+			require.NoError(t, err)
+			_, worker, err := svc.CreateProcessType(context.Background(), app.ID, service.ProcessTypeInput{Name: "worker", Command: "a && b"})
+			require.NoError(t, err)
+
+			_, err = svc.RestartInstance(context.Background(), app.ID, worker.ID)
+
+			require.NoError(t, err, "the operator got what they asked for: the container is running")
+			assert.Equal(t, []string{worker.ContainerName}, rt.StartCalls, "the start follows a stop that failed")
+		})
+	}
+}
+
+// A container that no longer exists cannot be restarted; that is a redeploy, not a
+// generic failure.
+func TestRestartInstance_ARemovedContainerSaysSo(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+	_, project := seedUserAndProject(t)
+	rt := &testutil.MockContainerRuntime{
+		StopErr: errors.New("No such container"), StartErr: errors.New("No such container"), ContainerMissing_: true,
+	}
+	svc := service.NewApplicationService(testPool, testQueries, runtime.NewLocalRuntimes(rt), testKeyring, t.TempDir(), nil)
+	app, err := svc.Create(context.Background(), service.CreateApplicationParams{
+		ProjectID: project.ID, ProjectSlug: project.Slug, Name: "A", BaseSlug: "a",
+		Type: "image", SourceImage: "nginx:alpine", BuildType: "image",
+	})
+	require.NoError(t, err)
+	_, worker, err := svc.CreateProcessType(context.Background(), app.ID, service.ProcessTypeInput{Name: "worker", Command: "run"})
+	require.NoError(t, err)
+
+	_, err = svc.RestartInstance(context.Background(), app.ID, worker.ID)
+	assert.ErrorIs(t, err, service.ErrInstanceContainerGone)
 }

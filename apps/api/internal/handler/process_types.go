@@ -326,6 +326,9 @@ func (h *Handler) RestartInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Audited BEFORE the work, as a choice: the operator's intent is the fact worth
+	// recording, and the outcome (which may be a 202 that finishes later) is logged by
+	// the goroutine below rather than known here.
 	h.audit(r, "restart_instance", "application", uuidToString(appUUID), map[string]any{
 		"instance_id":    uuidToString(instUUID),
 		"container_name": inst.ContainerName,
@@ -345,6 +348,8 @@ func (h *Handler) RestartInstance(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case err == nil:
 			writeJSON(w, http.StatusOK, map[string]string{"status": "restarted"})
+		case errors.Is(err, service.ErrInstanceContainerGone):
+			writeError(w, http.StatusConflict, err.Error())
 		case errors.Is(err, service.ErrServerUnreachable):
 			writeError(w, http.StatusBadGateway, "failed to reach the application's server")
 		default:

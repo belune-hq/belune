@@ -354,3 +354,51 @@ func mapProcessTypeUniqueViolation(err error) error {
 }
 
 func optText(s string) pgtype.Text { return pgtype.Text{String: s, Valid: s != ""} }
+
+// ErrInstanceNotFound means no such instance on this application.
+var ErrInstanceNotFound = errors.New("instance not found")
+
+// The stop and start each get their own deadline, both detached from the request.
+// Docker's polite stop waits 10s before it kills, so the stop needs more than the
+// 15s handler timeout would leave.
+const (
+	instanceStopTimeout  = 25 * time.Second
+	instanceStartTimeout = 15 * time.Second
+)
+
+// RestartInstance stops and starts ONE container, leaving the application's other
+// containers and its status alone. The application-level Restart acts on every
+// container and is untouched.
+//
+// ⛔ Both steps run on a context DETACHED from the request. This is the trap
+// DeleteProcessType fell into: the request is under the 15s handler timeout, a stop
+// outlives it whenever the command ignores SIGTERM (a compound command leaves the
+// shell as PID 1, so Docker waits out its grace and then kills), and a start issued on
+// the cancelled request context silently does nothing -- the container stays down.
+// The caller decides how long to WAIT; this always runs to completion.
+func (s *ApplicationService) RestartInstance(ctx context.Context, appID, instanceID pgtype.UUID) (generated.ApplicationInstance, error) {
+	inst, err := s.queries.GetInstance(ctx, instanceID)
+	if err != nil || inst.ApplicationID != appID {
+		return generated.ApplicationInstance{}, ErrInstanceNotFound
+	}
+
+	bg := context.WithoutCancel(ctx)
+	rt, err := RuntimeForApplication(bg, s.queries, s.runtimes, appID)
+	if err != nil {
+		return generated.ApplicationInstance{}, fmt.Errorf("%w: %v", ErrServerUnreachable, err)
+	}
+
+	stopCtx, cancelStop := context.WithTimeout(bg, instanceStopTimeout)
+	err = rt.StopContainer(stopCtx, inst.ContainerName)
+	cancelStop()
+	if err != nil {
+		return generated.ApplicationInstance{}, fmt.Errorf("%w: stopping: %v", ErrContainerAction, err)
+	}
+
+	startCtx, cancelStart := context.WithTimeout(bg, instanceStartTimeout)
+	defer cancelStart()
+	if err := rt.StartContainer(startCtx, inst.ContainerName); err != nil {
+		return generated.ApplicationInstance{}, fmt.Errorf("%w: starting: %v", ErrContainerAction, err)
+	}
+	return inst, nil
+}

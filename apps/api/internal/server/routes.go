@@ -557,6 +557,7 @@ func registerRoutes(r chi.Router, h *handler.Handler, auth *service.AuthService,
 				r.Post("/api/projects/{projectId}/applications/{applicationId}/stop", h.StopApplication)
 				r.Post("/api/projects/{projectId}/applications/{applicationId}/start", h.StartApplication)
 				r.Post("/api/projects/{projectId}/applications/{applicationId}/restart", h.RestartApplication)
+				r.Post("/api/projects/{projectId}/applications/{applicationId}/instances/{instanceId}/restart", h.RestartInstance)
 				r.Post("/api/projects/{projectId}/applications/{applicationId}/reload", h.ReloadApplication)
 				r.Post("/api/projects/{projectId}/applications/{applicationId}/rebuild", h.RebuildApplication)
 				r.Post("/api/projects/{projectId}/applications/{applicationId}/build", h.BuildApplication)

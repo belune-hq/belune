@@ -189,3 +189,39 @@ func TestReconcile_NoFailure_StillRemovesAStaleRoute(t *testing.T) {
 	assert.Equal(t, []string{"stale.belune.local"}, mock.removed)
 	assert.Equal(t, []string{"live.belune.local"}, ensuredHosts(mock))
 }
+
+// The same blind pass must not narrow any full-set sync either: the route is kept
+// by the sweep guard, but a skip list, WAF list or CrowdSec list computed from the
+// incomplete view would drop a host Caddy is still serving. Sentinels stand for
+// what Caddy already holds; "not pushed" is asserted by their surviving intact.
+func TestReconcile_DomainsQueryFails_DoesNotNarrowTheFullSetSyncs(t *testing.T) {
+	ctx := context.Background()
+	pool, queries, teardown := testutil.SetupTestDB()
+	defer teardown()
+	t.Cleanup(func() { _ = testutil.TruncateAll(ctx, pool) })
+
+	flaky := seedRunningApp(t, ctx, queries)
+	addDomain(t, ctx, queries, flaky, "flaky.belune.local") // ssl_mode off
+	other := addRunningApp(t, ctx, queries, flaky, "reconcile-project-other")
+	addDomain(t, ctx, queries, other, "other.belune.local") // ssl_mode off
+	_, err := pool.Exec(ctx, `UPDATE applications SET waf_blocking = true WHERE id = ANY($1)`, []pgtype.UUID{flaky.ID, other.ID})
+	require.NoError(t, err)
+
+	previous := []string{"flaky.belune.local", "other.belune.local"}
+	mock := &mockProxy{
+		routes: liveRoutes("flaky.belune.local", "other.belune.local"),
+		skip:   previous,
+	}
+	reconcileWith(t, ctx, failingDB{pool, failOn("ListDomainsByApplication", flaky.ID)}, mock)
+
+	assert.Equal(t, previous, mock.skip, "the auto-HTTPS lists must not be replaced from an incomplete view")
+	assert.Empty(t, mock.waf, "the WAF host list must not be replaced from an incomplete view")
+	assert.Empty(t, mock.crowdsec, "the CrowdSec host list must not be replaced from an incomplete view")
+	assert.Empty(t, mock.removed)
+	assert.Contains(t, ensuredHosts(mock), "other.belune.local", "create and repair still run")
+
+	// Control: the next pass, with the query healthy, pushes the full set again.
+	reconcileWith(t, ctx, pool, mock)
+	assert.ElementsMatch(t, previous, mock.skip)
+	assert.NotEmpty(t, mock.waf, "a complete pass pushes the WAF set")
+}

@@ -371,6 +371,50 @@ func (q *Queries) ListInstancesByApplication(ctx context.Context, applicationID 
 	return items, nil
 }
 
+const listInstancesByApplicationAndProcessType = `-- name: ListInstancesByApplicationAndProcessType :many
+SELECT i.id, i.application_id, i.process_type_id, i.deployment_id, i.idx, i.container_name, i.container_id, i.status, i.created_at, i.updated_at
+FROM application_instances i
+JOIN application_process_types pt ON pt.id = i.process_type_id
+WHERE i.application_id = $1 AND pt.name = $2
+ORDER BY i.idx, i.id
+`
+
+type ListInstancesByApplicationAndProcessTypeParams struct {
+	ApplicationID pgtype.UUID `json:"application_id"`
+	Name          string      `json:"name"`
+}
+
+func (q *Queries) ListInstancesByApplicationAndProcessType(ctx context.Context, arg ListInstancesByApplicationAndProcessTypeParams) ([]ApplicationInstance, error) {
+	rows, err := q.db.Query(ctx, listInstancesByApplicationAndProcessType, arg.ApplicationID, arg.Name)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ApplicationInstance{}
+	for rows.Next() {
+		var i ApplicationInstance
+		if err := rows.Scan(
+			&i.ID,
+			&i.ApplicationID,
+			&i.ProcessTypeID,
+			&i.DeploymentID,
+			&i.Idx,
+			&i.ContainerName,
+			&i.ContainerID,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listInstancesByProcessType = `-- name: ListInstancesByProcessType :many
 SELECT id, application_id, process_type_id, deployment_id, idx, container_name, container_id, status, created_at, updated_at FROM application_instances
 WHERE process_type_id = $1

@@ -1,4 +1,4 @@
-import { ClockIcon, LayersIcon, ListIcon } from "lucide-react";
+import { BoxesIcon, ClockIcon, LayersIcon, ListIcon } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   LevelFilter,
@@ -30,6 +30,9 @@ import { formatRelativeTime } from "@/lib/utils/format";
 // Sentinel session-selector values distinct from any deployment UUID.
 const SESSION_ALL = "all";
 const SESSION_NONE = "none"; // the unassigned / "earlier logs" bucket
+// Sentinel for the process-type selector. It contains an underscore, which a real
+// name (^[a-z][a-z0-9-]{0,19}$) can never, so no type can collide with it.
+const TYPE_ALL = "__all__";
 
 // Identity of a session is the container generation. Rows collected before
 // sessions existed have none and fall into the unassigned bucket.
@@ -40,11 +43,15 @@ function sessionKey(s: ContainerLogSession): string {
 // A short, human-readable label. An application session is named by the deploy
 // that produced it ("#a1b2c3d · rollback · 2h ago"); a database has no
 // deployment, so its runs are named by when they started ("Run · 2h ago").
+//
+// All of an application's process types come from ONE deployment, so the deploy
+// alone labels three containers identically; the type is what tells them apart.
 function sessionLabel(s: ContainerLogSession): string {
   if (!s.container_id) return "Earlier logs";
   const when = s.started_at ?? s.first_at ?? s.last_at;
   if (s.deployment_id) {
     const parts = [`#${s.deployment_id.slice(0, 7)}`];
+    if (s.process_type) parts.push(s.process_type);
     if (s.triggered_by) parts.push(s.triggered_by);
     if (when) parts.push(formatRelativeTime(when));
     return parts.join(" · ");
@@ -96,6 +103,7 @@ export function ContainerLogViewer({
   const [limit, setLimit] = useState(500);
   const [timeRange, setTimeRange] = useState("all");
   const [session, setSession] = useState<string>(SESSION_ALL);
+  const [processType, setProcessType] = useState<string>(TYPE_ALL);
   const [wrap, setWrap] = useState(false);
   const [follow, setFollow] = useState(true);
   const [liveLogs, setLiveLogs] = useState<LogEntry[]>([]);
@@ -111,6 +119,26 @@ export function ContainerLogViewer({
   // Server-side session filter: one container generation, the "none" bucket, or
   // (for SESSION_ALL) nothing.
   const sessionParam = session === SESSION_ALL ? undefined : session;
+  const processTypeParam = processType === TYPE_ALL ? undefined : processType;
+
+  // The selector offers the types the sessions actually contain, so it needs no
+  // query of its own and cannot list a type that has produced no output. It is
+  // hidden unless there is a choice to make, which keeps databases and
+  // single-type applications exactly as they were.
+  const processTypes = useMemo(() => {
+    const names = new Set<string>();
+    for (const s of sessions ?? [])
+      if (s.process_type) names.add(s.process_type);
+    return [...names].sort();
+  }, [sessions]);
+  const visibleSessions = useMemo(
+    () =>
+      (sessions ?? []).filter(
+        (s) =>
+          processTypeParam === undefined || s.process_type === processTypeParam,
+      ),
+    [sessions, processTypeParam],
+  );
 
   function handleSearchChange(value: string) {
     setInputValue(value);
@@ -134,6 +162,7 @@ export function ContainerLogViewer({
     level: level || undefined,
     since,
     session: sessionParam,
+    processType: processTypeParam,
   });
 
   // Capture every live line unfiltered; filters are applied at render time so
@@ -146,6 +175,7 @@ export function ContainerLogViewer({
       message?: string;
       recorded_at?: string;
       container_id?: string;
+      process_type?: string | null;
     };
     if (typeof obj.message !== "string") return;
 
@@ -161,6 +191,7 @@ export function ContainerLogViewer({
           recordedAt: obj.recorded_at ?? new Date().toISOString(),
           // Empty string from the collector means no session → unassigned.
           sessionId: obj.container_id ? obj.container_id : null,
+          processType: obj.process_type ?? null,
         },
       ].slice(-MAX_LIVE),
     );
@@ -192,11 +223,14 @@ export function ContainerLogViewer({
           message: stripAnsi(e.message),
           recordedAt: e.recorded_at,
           sessionId: e.container_id,
+          processType: e.process_type,
         }))
       : [];
     const live = liveLogs.filter((e) => {
       if (level && e.level !== level) return false;
       if (q && !e.message.toLowerCase().includes(q.toLowerCase())) return false;
+      if (processTypeParam !== undefined && e.processType !== processTypeParam)
+        return false;
       if (session === SESSION_ALL) return true;
       const key = e.sessionId ?? null;
       if (session === SESSION_NONE) return key === null;
@@ -234,9 +268,14 @@ export function ContainerLogViewer({
       withDividers.push(e);
     }
     return withDividers;
-  }, [history, liveLogs, level, q, session, sessionLabels]);
+  }, [history, liveLogs, level, q, session, processTypeParam, sessionLabels]);
 
-  const filtered = q || level || timeRange !== "all" || session !== SESSION_ALL;
+  const filtered =
+    q ||
+    level ||
+    timeRange !== "all" ||
+    session !== SESSION_ALL ||
+    processType !== TYPE_ALL;
   const lineCount = entries.reduce(
     (n, e) => (e.divider === undefined ? n + 1 : n),
     0,
@@ -303,6 +342,33 @@ export function ContainerLogViewer({
             </SelectContent>
           </Select>
 
+          {processTypes.length > 1 && (
+            <Select
+              value={processType}
+              onValueChange={(v) => {
+                if (!v) return;
+                setProcessType(v);
+                // A session belongs to one type; keeping a stale one selected
+                // would show an empty pane for a combination that cannot match.
+                setSession(SESSION_ALL);
+              }}
+            >
+              <SelectTrigger className="h-8 w-44" aria-label="Process type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={TYPE_ALL} icon={<BoxesIcon />}>
+                  All process types
+                </SelectItem>
+                {processTypes.map((name) => (
+                  <SelectItem key={name} value={name} icon={<BoxesIcon />}>
+                    {name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
           {sessions && sessions.length > 1 && (
             <Select value={session} onValueChange={(v) => v && setSession(v)}>
               <SelectTrigger className="h-8 w-56" aria-label="Session">
@@ -312,7 +378,7 @@ export function ContainerLogViewer({
                 <SelectItem value={SESSION_ALL} icon={<LayersIcon />}>
                   All sessions
                 </SelectItem>
-                {sessions.map((s) => (
+                {visibleSessions.map((s) => (
                   <SelectItem
                     key={sessionKey(s)}
                     value={sessionKey(s)}

@@ -13,6 +13,8 @@ export interface LogEntry {
   // sessions. Keyed by container rather than deployment so databases — which
   // have no deployment but are replaced on upgrade — get sessions too.
   sessionId?: string | null;
+  // The process type that produced the line; null/undefined = unknown.
+  processType?: string | null;
   // When set, this entry is a session divider rather than a log line; the string
   // is the label to render. Used to separate deployments in the merged view.
   divider?: string;

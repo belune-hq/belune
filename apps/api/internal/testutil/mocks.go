@@ -42,6 +42,11 @@ type MockContainerRuntime struct {
 	ImageMissing_     bool     // when true, ImageExists reports false
 	ContainerMissing_ bool     // when true, ContainerExists reports false
 	ListContainers_   []runtime.ContainerInfo
+	// LogsRequested records the container names ContainerLogs was asked for, and
+	// ContainerLogsBody_ (by name) is what it returns, so a test can tell WHICH
+	// container a stream was attached to.
+	LogsRequested      []string
+	ContainerLogsBody_ map[string]string
 	// StatsFunc, when set, backs ContainerStats (called outside the lock so a
 	// test can prove concurrent callers overlap). Nil → zeroed stats.
 	StatsFunc func(ctx context.Context, name string) (*runtime.ContainerResourceStats, error)
@@ -132,8 +137,11 @@ func (m *MockContainerRuntime) UpdateContainerResources(_ context.Context, _ str
 	return nil
 }
 
-func (m *MockContainerRuntime) ContainerLogs(_ context.Context, _ string, _ bool) (io.ReadCloser, error) {
-	return io.NopCloser(strings.NewReader("")), nil
+func (m *MockContainerRuntime) ContainerLogs(_ context.Context, name string, _ bool) (io.ReadCloser, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.LogsRequested = append(m.LogsRequested, name)
+	return io.NopCloser(strings.NewReader(m.ContainerLogsBody_[name])), nil
 }
 
 func (m *MockContainerRuntime) ContainerLogsSince(_ context.Context, _ string, _ time.Time) (io.ReadCloser, error) {

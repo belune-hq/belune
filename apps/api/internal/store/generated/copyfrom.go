@@ -37,6 +37,7 @@ func (r iteratorForBulkInsertContainerLogs) Values() ([]interface{}, error) {
 		r.rows[0].RecordedAt,
 		r.rows[0].DeploymentID,
 		r.rows[0].ContainerID,
+		r.rows[0].ProcessType,
 	}, nil
 }
 
@@ -53,7 +54,7 @@ func (r iteratorForBulkInsertContainerLogs) Err() error {
 // the line and its own clock only when that is missing. That is closer to when
 // the line was actually observed than evaluating NOW() at flush time anyway.
 func (q *Queries) BulkInsertContainerLogs(ctx context.Context, arg []BulkInsertContainerLogsParams) (int64, error) {
-	return q.db.CopyFrom(ctx, []string{"container_logs"}, []string{"source_type", "source_id", "level", "stream", "message", "recorded_at", "deployment_id", "container_id"}, &iteratorForBulkInsertContainerLogs{rows: arg})
+	return q.db.CopyFrom(ctx, []string{"container_logs"}, []string{"source_type", "source_id", "level", "stream", "message", "recorded_at", "deployment_id", "container_id", "process_type"}, &iteratorForBulkInsertContainerLogs{rows: arg})
 }
 
 // iteratorForBulkInsertWAFEvents implements pgx.CopyFromSource.

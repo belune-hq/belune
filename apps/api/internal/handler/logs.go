@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -35,7 +36,18 @@ func (h *Handler) StreamLogs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "application not found")
 		return
 	}
-	inst, err := instances.ResolveOne(r.Context(), h.queries, applicationUUID)
+	// ?process_type=<name> tails that type's container; absent keeps the routable
+	// type, so nothing existing changes.
+	var inst generated.ApplicationInstance
+	if pt := r.URL.Query().Get("process_type"); pt != "" {
+		inst, err = instances.ResolveType(r.Context(), h.queries, applicationUUID, pt)
+		if errors.Is(err, instances.ErrNoSuchProcessType) {
+			writeError(w, http.StatusNotFound, "no such process type")
+			return
+		}
+	} else {
+		inst, err = instances.ResolveOne(r.Context(), h.queries, applicationUUID)
+	}
 	if err != nil {
 		writeServerError(w, r, "application has no container instance", err)
 		return
@@ -185,6 +197,7 @@ func (h *Handler) listContainerLogSessions(w http.ResponseWriter, r *http.Reques
 //	q      — keyword search (case-insensitive substring match on message)
 //	level  — filter by level: "debug" | "info" | "warning" | "error"
 //	stream — filter by stream: "stdout" or "stderr"
+//	process_type — only lines from that process type, across container generations
 //	since  — RFC3339 timestamp lower bound (inclusive)
 //	until  — RFC3339 timestamp upper bound (inclusive)
 //	limit  — page size (default 500, max 1000)
@@ -228,6 +241,13 @@ func (h *Handler) listContainerLogs(w http.ResponseWriter, r *http.Request, sour
 		params.Unassigned = pgtype.Bool{Bool: true, Valid: true}
 	} else if v != "" {
 		params.ContainerID = pgtype.Text{String: v, Valid: true}
+	}
+
+	// Exact, not best-effort: the type is stored on the row, so this reaches lines
+	// from earlier container generations. An invalid name matches nothing, which
+	// is the truthful answer, rather than being an error.
+	if v := q.Get("process_type"); v != "" {
+		params.ProcessType = pgtype.Text{String: v, Valid: true}
 	}
 
 	logs, err := h.queries.SearchContainerLogs(r.Context(), params)

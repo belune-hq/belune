@@ -7967,6 +7967,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "process_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -8040,6 +8048,14 @@
           },
           {
             "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "process_type",
             "in": "query",
             "required": false,
             "schema": {
@@ -12485,6 +12501,14 @@
             }
           },
           {
+            "name": "process_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "q",
             "in": "query",
             "required": false,
@@ -15776,6 +15800,12 @@
           "message": {
             "type": "string"
           },
+          "process_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "recorded_at": {
             "format": "date-time",
             "type": [
@@ -16783,6 +16813,9 @@
           },
           "line_count": {
             "type": "integer"
+          },
+          "process_type": {
+            "type": "string"
           },
           "started_at": {
             "format": "date-time",

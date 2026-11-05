@@ -32,7 +32,14 @@ function dedupeKey(entry: LogEntry): string | null {
   if (!entry.recordedAt) return null;
   const ms = Date.parse(entry.recordedAt);
   if (Number.isNaN(ms)) return null;
-  return `${ms}|${entry.stream ?? ""}|${entry.message}`;
+  // The container is part of a line's identity: two containers (a web and a
+  // queue worker, or two replicas) can print the same text in the same
+  // millisecond, and those are two lines. `sessionId` is the container id on both
+  // sides -- history carries the row's, live carries the payload's, and the
+  // collector sets it from Docker's own container id, so it is present on every
+  // collected line. A line with none (the unassigned bucket) keeps the previous
+  // key, so it gains no protection and loses none.
+  return `${ms}|${entry.stream ?? ""}|${entry.sessionId ?? ""}|${entry.message}`;
 }
 
 export function mergeLogEntries(

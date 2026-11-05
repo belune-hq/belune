@@ -20,6 +20,7 @@ type BulkInsertContainerLogsParams struct {
 	RecordedAt   pgtype.Timestamptz `json:"recorded_at"`
 	DeploymentID pgtype.UUID        `json:"deployment_id"`
 	ContainerID  pgtype.Text        `json:"container_id"`
+	ProcessType  pgtype.Text        `json:"process_type"`
 }
 
 const deleteOldContainerLogs = `-- name: DeleteOldContainerLogs :exec
@@ -49,8 +50,8 @@ func (q *Queries) GetLatestContainerLogTime(ctx context.Context, arg GetLatestCo
 }
 
 const insertContainerLog = `-- name: InsertContainerLog :exec
-INSERT INTO container_logs (source_type, source_id, level, stream, message, recorded_at, deployment_id, container_id)
-VALUES ($1, $2, $3, $4, $5, COALESCE($6::timestamptz, NOW()), $7, $8)
+INSERT INTO container_logs (source_type, source_id, level, stream, message, recorded_at, deployment_id, container_id, process_type)
+VALUES ($1, $2, $3, $4, $5, COALESCE($6::timestamptz, NOW()), $7, $8, $9)
 `
 
 type InsertContainerLogParams struct {
@@ -62,6 +63,7 @@ type InsertContainerLogParams struct {
 	RecordedAt   pgtype.Timestamptz `json:"recorded_at"`
 	DeploymentID pgtype.UUID        `json:"deployment_id"`
 	ContainerID  pgtype.Text        `json:"container_id"`
+	ProcessType  pgtype.Text        `json:"process_type"`
 }
 
 func (q *Queries) InsertContainerLog(ctx context.Context, arg InsertContainerLogParams) error {
@@ -74,6 +76,7 @@ func (q *Queries) InsertContainerLog(ctx context.Context, arg InsertContainerLog
 		arg.RecordedAt,
 		arg.DeploymentID,
 		arg.ContainerID,
+		arg.ProcessType,
 	)
 	return err
 }
@@ -81,6 +84,13 @@ func (q *Queries) InsertContainerLog(ctx context.Context, arg InsertContainerLog
 const listContainerLogSessions = `-- name: ListContainerLogSessions :many
 SELECT cl.container_id,
        cl.deployment_id,
+       -- '' means unknown here, because the ::text cast has to be honest (sqlc reads
+       -- a cast as non-null, and scanning NULL into a string fails). The live
+       -- payload carries null for the same fact; both are falsy to the client.
+       -- MAX, not a GROUP BY key: a container whose first lines predate the column
+       -- has NULL and non-NULL rows under one container_id, and grouping on the
+       -- type would split that one session in two.
+       COALESCE(MAX(cl.process_type), '')::text AS process_type,
        MIN(cl.recorded_at)::timestamptz AS first_at,
        MAX(cl.recorded_at)::timestamptz AS last_at,
        COUNT(*)                         AS line_count,
@@ -105,6 +115,7 @@ type ListContainerLogSessionsParams struct {
 type ListContainerLogSessionsRow struct {
 	ContainerID  pgtype.Text        `json:"container_id"`
 	DeploymentID pgtype.UUID        `json:"deployment_id"`
+	ProcessType  string             `json:"process_type"`
 	FirstAt      pgtype.Timestamptz `json:"first_at"`
 	LastAt       pgtype.Timestamptz `json:"last_at"`
 	LineCount    int64              `json:"line_count"`
@@ -145,6 +156,7 @@ func (q *Queries) ListContainerLogSessions(ctx context.Context, arg ListContaine
 		if err := rows.Scan(
 			&i.ContainerID,
 			&i.DeploymentID,
+			&i.ProcessType,
 			&i.FirstAt,
 			&i.LastAt,
 			&i.LineCount,
@@ -164,7 +176,7 @@ func (q *Queries) ListContainerLogSessions(ctx context.Context, arg ListContaine
 }
 
 const searchContainerLogs = `-- name: SearchContainerLogs :many
-SELECT id, source_type, source_id, level, stream, message, recorded_at, deployment_id, container_id FROM container_logs
+SELECT id, source_type, source_id, level, stream, message, recorded_at, deployment_id, container_id, process_type FROM container_logs
 WHERE source_type = $1
   AND source_id = $2
   AND ($3::text IS NULL OR level = $3::text)
@@ -181,8 +193,11 @@ WHERE source_type = $1
     WHEN $9::boolean THEN container_id IS NULL
     ELSE TRUE
   END)
+  -- Process type filter. Matches the column, so it reaches lines from earlier
+  -- container generations too; NULL rows (unknown) never match a named type.
+  AND ($10::text IS NULL OR process_type = $10::text)
 ORDER BY recorded_at DESC
-LIMIT $11 OFFSET $10
+LIMIT $12 OFFSET $11
 `
 
 type SearchContainerLogsParams struct {
@@ -195,6 +210,7 @@ type SearchContainerLogsParams struct {
 	Until       pgtype.Timestamptz `json:"until"`
 	ContainerID pgtype.Text        `json:"container_id"`
 	Unassigned  pgtype.Bool        `json:"unassigned"`
+	ProcessType pgtype.Text        `json:"process_type"`
 	Offset      int32              `json:"offset"`
 	Limit       int32              `json:"limit"`
 }
@@ -210,6 +226,7 @@ func (q *Queries) SearchContainerLogs(ctx context.Context, arg SearchContainerLo
 		arg.Until,
 		arg.ContainerID,
 		arg.Unassigned,
+		arg.ProcessType,
 		arg.Offset,
 		arg.Limit,
 	)
@@ -230,6 +247,7 @@ func (q *Queries) SearchContainerLogs(ctx context.Context, arg SearchContainerLo
 			&i.RecordedAt,
 			&i.DeploymentID,
 			&i.ContainerID,
+			&i.ProcessType,
 		); err != nil {
 			return nil, err
 		}

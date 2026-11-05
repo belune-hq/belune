@@ -79,6 +79,38 @@ func ResolveAll(ctx context.Context, q Querier, appID pgtype.UUID) ([]generated.
 	return rows, nil
 }
 
+// TypeQuerier is the slice of generated.Queries ResolveType reads. Its own
+// interface so adding it does not widen Querier for every existing fake.
+type TypeQuerier interface {
+	ListInstancesByApplicationAndProcessType(ctx context.Context, arg generated.ListInstancesByApplicationAndProcessTypeParams) ([]generated.ApplicationInstance, error)
+}
+
+// ErrNoSuchProcessType means the application has no instance of the named type.
+// Unlike ErrNoInstance it is the caller's mistake (an unknown name), not a missing
+// row that should be impossible, so it is not logged here.
+var ErrNoSuchProcessType = errors.New("application has no such process type")
+
+// ResolveType is ResolveOne for a named process type: the lowest idx among the
+// running instances of that type, else the lowest idx of any, for the same reason
+// ResolveOne falls back (a stopped or crashed container's logs must stay readable).
+func ResolveType(ctx context.Context, q TypeQuerier, appID pgtype.UUID, processType string) (generated.ApplicationInstance, error) {
+	rows, err := q.ListInstancesByApplicationAndProcessType(ctx, generated.ListInstancesByApplicationAndProcessTypeParams{
+		ApplicationID: appID, Name: processType,
+	})
+	if err != nil {
+		return generated.ApplicationInstance{}, fmt.Errorf("listing %q instances: %w", processType, err)
+	}
+	if len(rows) == 0 {
+		return generated.ApplicationInstance{}, ErrNoSuchProcessType
+	}
+	for _, r := range rows {
+		if r.Status == "running" {
+			return r, nil
+		}
+	}
+	return rows[0], nil
+}
+
 func uuidString(u pgtype.UUID) string {
 	if !u.Valid {
 		return ""

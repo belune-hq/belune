@@ -64,7 +64,9 @@ func TestResolveAll_KeepsTheQueryOrder(t *testing.T) {
 	assert.Equal(t, "b", got[1].ContainerName)
 }
 
-type typeFake struct{ rows []generated.ApplicationInstance }
+type typeFake struct {
+	rows []generated.ApplicationInstance
+}
 
 func (f typeFake) ListInstancesByApplicationAndProcessType(context.Context, generated.ListInstancesByApplicationAndProcessTypeParams) ([]generated.ApplicationInstance, error) {
 	return f.rows, nil
@@ -85,4 +87,24 @@ func TestResolveType_UnknownTypeIsItsOwnError(t *testing.T) {
 	_, err := instances.ResolveType(context.Background(), typeFake{}, pgtype.UUID{}, "nope")
 	assert.True(t, errors.Is(err, instances.ErrNoSuchProcessType))
 	assert.False(t, errors.Is(err, instances.ErrNoInstance))
+}
+
+// The health rule's four cases, which the API now reports and the deploy worker runs.
+func TestResolveHealth_FourCases(t *testing.T) {
+	app := generated.Application{HealthCheckType: "http"}
+	set := func(kind string) pgtype.Text { return pgtype.Text{String: kind, Valid: true} }
+
+	got := instances.ResolveHealth(app, generated.ApplicationProcessType{Routable: true})
+	assert.Equal(t, instances.Health{Type: "http", Source: instances.HealthSourceInherited}, got, "routable, unset: inherits the application's")
+
+	got = instances.ResolveHealth(app, generated.ApplicationProcessType{Routable: true, HealthCheckType: set("none")})
+	assert.Equal(t, "none", got.Type)
+	assert.Equal(t, instances.HealthSourceSet, got.Source, "routable, set: the type's own")
+
+	got = instances.ResolveHealth(app, generated.ApplicationProcessType{})
+	assert.Equal(t, instances.Health{Type: "none", Source: instances.HealthSourceDefault}, got, "⚠️ a non-routable type must never inherit http")
+
+	got = instances.ResolveHealth(app, generated.ApplicationProcessType{HealthCheckType: set("command")})
+	assert.Equal(t, "command", got.Type)
+	assert.Equal(t, instances.HealthSourceSet, got.Source, "non-routable, set: the type's own")
 }

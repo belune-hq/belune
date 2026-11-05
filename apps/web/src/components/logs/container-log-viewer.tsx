@@ -56,9 +56,10 @@ function sessionLabel(s: ContainerLogSession): string {
     if (when) parts.push(formatRelativeTime(when));
     return parts.join(" · ");
   }
-  return when
-    ? `Run · ${formatRelativeTime(when)}`
-    : `Run · ${s.container_id.slice(0, 12)}`;
+  const run = ["Run"];
+  if (s.process_type) run.push(s.process_type);
+  run.push(when ? formatRelativeTime(when) : s.container_id.slice(0, 12));
+  return run.join(" · ");
 }
 
 const MAX_LIVE = 5000;

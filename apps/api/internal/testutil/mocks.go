@@ -24,6 +24,8 @@ type MockContainerRuntime struct {
 	RestartCalls []string
 	RestartErr   error
 	StartCalls   []string
+	// StartCtxErrs records ctx.Err() at each StartContainer, like RemoveCtxErrs.
+	StartCtxErrs []error
 	StartErr     error // when set, StartContainer returns it
 	StopErr      error // when set, StopContainer returns it
 	// StopFunc, when set, runs inside StopContainer (outside the lock): lets a test
@@ -45,6 +47,7 @@ type MockContainerRuntime struct {
 	// LogsRequested records the container names ContainerLogs was asked for, and
 	// ContainerLogsBody_ (by name) is what it returns, so a test can tell WHICH
 	// container a stream was attached to.
+	ExecTTYRequested   []string // container names ContainerExecTTY was asked for
 	LogsRequested      []string
 	ContainerLogsBody_ map[string]string
 	// StatsFunc, when set, backs ContainerStats (called outside the lock so a
@@ -100,10 +103,11 @@ func (m *MockContainerRuntime) CreateContainer(_ context.Context, cfg runtime.Co
 	return "mock-container-id", nil
 }
 
-func (m *MockContainerRuntime) StartContainer(_ context.Context, id string) error {
+func (m *MockContainerRuntime) StartContainer(ctx context.Context, id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.StartCalls = append(m.StartCalls, id)
+	m.StartCtxErrs = append(m.StartCtxErrs, ctx.Err())
 	return m.StartErr
 }
 
@@ -313,8 +317,13 @@ func (m *MockContainerRuntime) ContainerEvents(_ context.Context, _ map[string][
 	return ch, errCh
 }
 
-func (m *MockContainerRuntime) ContainerExecTTY(_ context.Context, _ string, _ []string) (*runtime.TerminalExecSession, error) {
-	return nil, nil
+// ContainerExecTTY records which container a shell was opened in and returns a
+// no-op session, so a handler test can tell WHICH container was targeted.
+func (m *MockContainerRuntime) ContainerExecTTY(_ context.Context, name string, _ []string) (*runtime.TerminalExecSession, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.ExecTTYRequested = append(m.ExecTTYRequested, name)
+	return &runtime.TerminalExecSession{ExecID: "mock-exec-" + name, RWC: nopRWC{}}, nil
 }
 
 func (m *MockContainerRuntime) HostShellSession(_ context.Context, _ string) (*runtime.TerminalExecSession, error) {

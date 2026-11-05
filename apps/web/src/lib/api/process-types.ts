@@ -54,3 +54,15 @@ export function deleteProcessType(
     `${base(projectId, applicationId)}/${processTypeId}`,
   );
 }
+
+// Restarts ONE container. 200 when it finished, 202 when it is still going (the
+// restart completes either way).
+export function restartInstance(
+  projectId: string,
+  applicationId: string,
+  instanceId: string,
+) {
+  return api.post<{ status: "restarted" | "restarting" }>(
+    `/projects/${projectId}/applications/${applicationId}/instances/${instanceId}/restart`,
+  );
+}

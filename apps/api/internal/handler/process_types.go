@@ -1,13 +1,17 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/belune-hq/belune/internal/instances"
 	"github.com/belune-hq/belune/internal/service"
 	"github.com/belune-hq/belune/internal/store/generated"
 )
@@ -24,26 +28,38 @@ type processInstanceResponse struct {
 // nothing reads them in 0.3.0, so showing them would imply a control that does not
 // exist.
 type processTypeResponse struct {
-	ID                 string                    `json:"id"`
-	Name               string                    `json:"name"`
-	Command            string                    `json:"command"`
-	Routable           bool                      `json:"routable"`
-	HealthCheckType    *string                   `json:"health_check_type"`
-	HealthCheckCommand *string                   `json:"health_check_command"`
-	Instances          []processInstanceResponse `json:"instances"`
-	CreatedAt          string                    `json:"created_at"`
-	UpdatedAt          string                    `json:"updated_at"`
+	ID                 string  `json:"id"`
+	Name               string  `json:"name"`
+	Command            string  `json:"command"`
+	Routable           bool    `json:"routable"`
+	HealthCheckType    *string `json:"health_check_type"`
+	HealthCheckCommand *string `json:"health_check_command"`
+	// ResolvedHealth is what the type ACTUALLY runs with, computed by the one
+	// server-side rule (instances.ResolveHealth). The UI renders from it rather than
+	// mirroring the rule, because a copy that drifts would tell the operator the wrong
+	// thing about what is running.
+	ResolvedHealth resolvedHealthResponse    `json:"resolved_health"`
+	Instances      []processInstanceResponse `json:"instances"`
+	CreatedAt      string                    `json:"created_at"`
+	UpdatedAt      string                    `json:"updated_at"`
 }
 
-func toProcessTypeResponse(pt generated.ApplicationProcessType, insts []generated.ApplicationInstance) processTypeResponse {
+type resolvedHealthResponse struct {
+	Kind   string `json:"kind"`   // http | command | none
+	Source string `json:"source"` // set | inherited | default
+}
+
+func toProcessTypeResponse(app generated.Application, pt generated.ApplicationProcessType, insts []generated.ApplicationInstance) processTypeResponse {
+	rh := instances.ResolveHealth(app, pt)
 	out := processTypeResponse{
-		ID:        uuidToString(pt.ID),
-		Name:      pt.Name,
-		Command:   pt.Command,
-		Routable:  pt.Routable,
-		Instances: make([]processInstanceResponse, 0, len(insts)),
-		CreatedAt: pt.CreatedAt.Time.Format("2006-01-02T15:04:05Z07:00"),
-		UpdatedAt: pt.UpdatedAt.Time.Format("2006-01-02T15:04:05Z07:00"),
+		ResolvedHealth: resolvedHealthResponse{Kind: rh.Type, Source: rh.Source},
+		ID:             uuidToString(pt.ID),
+		Name:           pt.Name,
+		Command:        pt.Command,
+		Routable:       pt.Routable,
+		Instances:      make([]processInstanceResponse, 0, len(insts)),
+		CreatedAt:      pt.CreatedAt.Time.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:      pt.UpdatedAt.Time.Format("2006-01-02T15:04:05Z07:00"),
 	}
 	if pt.HealthCheckType.Valid {
 		v := pt.HealthCheckType.String
@@ -156,9 +172,14 @@ func (h *Handler) ListProcessTypes(w http.ResponseWriter, r *http.Request) {
 		writeServerError(w, r, "failed to list process types", err)
 		return
 	}
+	app, err := h.queries.GetApplication(r.Context(), appUUID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "application not found")
+		return
+	}
 	out := make([]processTypeResponse, 0, len(types))
 	for _, pt := range types {
-		out = append(out, toProcessTypeResponse(pt, byType[pt.ID]))
+		out = append(out, toProcessTypeResponse(app, pt, byType[pt.ID]))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -192,12 +213,17 @@ func (h *Handler) CreateProcessType(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	app, err := h.queries.GetApplication(r.Context(), appUUID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "application not found")
+		return
+	}
 	h.audit(r, "create_process_type", "process_type", uuidToString(pt.ID), map[string]any{
 		"application_id": uuidToString(appUUID),
 		"name":           pt.Name,
 		"routable":       pt.Routable,
 	})
-	writeJSON(w, http.StatusCreated, toProcessTypeResponse(pt, []generated.ApplicationInstance{inst}))
+	writeJSON(w, http.StatusCreated, toProcessTypeResponse(app, pt, []generated.ApplicationInstance{inst}))
 }
 
 //apidoc:tag applications/process-types
@@ -225,11 +251,16 @@ func (h *Handler) UpdateProcessType(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	app, err := h.queries.GetApplication(r.Context(), appUUID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "application not found")
+		return
+	}
 	h.audit(r, "update_process_type", "process_type", uuidToString(pt.ID), map[string]any{
 		"application_id": uuidToString(appUUID),
 		"name":           pt.Name,
 	})
-	writeJSON(w, http.StatusOK, toProcessTypeResponse(pt, []generated.ApplicationInstance{inst}))
+	writeJSON(w, http.StatusOK, toProcessTypeResponse(app, pt, []generated.ApplicationInstance{inst}))
 }
 
 //apidoc:tag applications/process-types
@@ -258,4 +289,76 @@ func (h *Handler) DeleteProcessType(w http.ResponseWriter, r *http.Request) {
 		resp["warning"] = warning
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// instanceRestartWait is how long the request waits for a restart before answering
+// 202. It is shorter than the 15s handler timeout on purpose: past that, the
+// TimeoutHandler answers 503 for work that is still succeeding, and the UI never
+// shows its result. The restart itself is not bounded by it.
+var instanceRestartWait = 10 * time.Second
+
+// RestartInstance restarts one container of an application, not the others.
+// POST /api/projects/{projectId}/applications/{applicationId}/instances/{instanceId}/restart
+//
+// 200 when it finished inside the wait, 202 when it is still going (it completes
+// regardless). The application-level restart is unchanged.
+//
+//apidoc:tag applications/process-types
+//apidoc:title Restart Instance
+//apidoc:order 5
+func (h *Handler) RestartInstance(w http.ResponseWriter, r *http.Request) {
+	var appUUID, instUUID pgtype.UUID
+	if err := appUUID.Scan(chi.URLParam(r, "applicationId")); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid application id")
+		return
+	}
+	if err := instUUID.Scan(chi.URLParam(r, "instanceId")); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid instance id")
+		return
+	}
+	if !h.canAccessApplication(r, appUUID) {
+		writeError(w, http.StatusForbidden, "access denied")
+		return
+	}
+	inst, err := h.queries.GetInstance(r.Context(), instUUID)
+	if err != nil || inst.ApplicationID != appUUID {
+		writeError(w, http.StatusNotFound, service.ErrInstanceNotFound.Error())
+		return
+	}
+
+	// Audited BEFORE the work, as a choice: the operator's intent is the fact worth
+	// recording, and the outcome (which may be a 202 that finishes later) is logged by
+	// the goroutine below rather than known here.
+	h.audit(r, "restart_instance", "application", uuidToString(appUUID), map[string]any{
+		"instance_id":    uuidToString(instUUID),
+		"container_name": inst.ContainerName,
+	})
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := h.appService.RestartInstance(context.WithoutCancel(r.Context()), appUUID, instUUID)
+		if err != nil {
+			slog.Error("restart instance failed", "instance_id", uuidToString(instUUID), "container", inst.ContainerName, "error", err)
+		}
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		switch {
+		case err == nil:
+			writeJSON(w, http.StatusOK, map[string]string{"status": "restarted"})
+		case errors.Is(err, service.ErrInstanceContainerGone):
+			writeError(w, http.StatusConflict, err.Error())
+		case errors.Is(err, service.ErrServerUnreachable):
+			writeError(w, http.StatusBadGateway, "failed to reach the application's server")
+		default:
+			writeError(w, http.StatusInternalServerError, "failed to restart the instance")
+		}
+	case <-time.After(instanceRestartWait):
+		writeJSON(w, http.StatusAccepted, map[string]string{"status": "restarting"})
+	case <-r.Context().Done():
+		// Nothing to write to: the client or the timeout handler has gone. The
+		// restart carries on in its own context.
+	}
 }

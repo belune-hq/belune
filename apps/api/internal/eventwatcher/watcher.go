@@ -181,6 +181,13 @@ func (w *Watcher) reconcile(ctx context.Context) {
 
 	for _, app := range apps {
 		appIDStr := pgUUIDToString(app.ID)
+		// Unconditional, and BEFORE the application's own status logic: it answers
+		// "is each instance's container there", which does not depend on whether the
+		// application's status changed or on that write succeeding. It used to hang
+		// off the app-stopped transition alone, so a worker that died while the
+		// control plane was down read "running" for ever on a running application.
+		w.syncInstancePresence(ctx, app.ID, idx)
+
 		// The application is running when its ROUTABLE container is. runningApps maps
 		// an application to ONE container, last writer wins across all of its
 		// containers, so reading it would let a worker decide the application's status
@@ -202,9 +209,7 @@ func (w *Watcher) reconcile(ctx context.Context) {
 			// recorded error is left alone.
 			if app.Status == status.ApplicationRunning || app.Status == status.ApplicationUnhealthy {
 				slog.Info("eventwatcher: reconciling stopped application", "app_id", appIDStr)
-				if w.updateAppStatus(ctx, app.ID, appIDStr, status.ApplicationStopped) {
-					w.syncGoneInstances(ctx, app.ID, idx)
-				}
+				w.updateAppStatus(ctx, app.ID, appIDStr, status.ApplicationStopped)
 			}
 			continue
 		}
@@ -673,21 +678,56 @@ func routableContainerState(ctx context.Context, q instances.Querier, appID pgty
 	return inst.ContainerName, idx.runningNames[inst.ContainerName], idx.transientNames[inst.ContainerName]
 }
 
-// syncGoneInstances marks as stopped the instances whose containers are actually
-// gone. It must NOT mark them all: with the application stopped because its routable
-// container is, a worker can still be running, and writing "stopped" on it would be
-// false. A container in a transient state proves nothing either way, so it is left.
-func (w *Watcher) syncGoneInstances(ctx context.Context, appUUID pgtype.UUID, idx *containerIndex) {
+// syncInstancePresence reconciles each instance row of an application against the
+// containers that actually exist, in BOTH directions:
+//
+//	row running/unhealthy, container absent  -> stopped
+//	row stopped/pending/error, container up  -> running
+//
+// and leaves everything else alone:
+//
+//   - pending + absent: a type added to a running application has no container until
+//     the next deploy. Absence is consistent with pending, and "stopped" means
+//     deliberate in this vocabulary, so writing it would tell the operator a type
+//     that never ran was stopped.
+//   - stopped/error + absent: consistent, or a verdict worth keeping (as for the
+//     application itself). error + UP is corrected, for the same reason the
+//     application is: the container is ground truth.
+//   - unhealthy + up, running + up: nothing to correct.
+//   - a container in a transient state proves nothing either way (see
+//     isTransientState), so the row is untouched.
+//
+// Health is deliberately NOT probed here. Presence is a map lookup in the index;
+// ContainerHealth would be a Docker call per instance for a question the event stream
+// already answers, and reconcile only runs at startup and on reconnect. This also
+// never touches the APPLICATION's status: a worker going missing must not stop the
+// application (that was the 0.3.0 blocker).
+func (w *Watcher) syncInstancePresence(ctx context.Context, appUUID pgtype.UUID, idx *containerIndex) {
 	insts, err := w.queries.ListInstancesByApplication(ctx, appUUID)
 	if err != nil {
 		slog.Warn("eventwatcher: failed to list instances", "app_id", pgUUIDToString(appUUID), "error", err)
 		return
 	}
 	for _, inst := range insts {
-		if idx.runningNames[inst.ContainerName] || idx.transientNames[inst.ContainerName] {
+		if idx.transientNames[inst.ContainerName] {
 			continue
 		}
-		if _, err := w.queries.UpdateInstanceStatus(ctx, generated.UpdateInstanceStatusParams{ID: inst.ID, Status: status.ApplicationStopped}); err != nil {
+		var target string
+		if idx.runningNames[inst.ContainerName] {
+			switch inst.Status {
+			case status.ApplicationStopped, status.ApplicationError, "pending":
+				target = status.ApplicationRunning
+			}
+		} else {
+			switch inst.Status {
+			case status.ApplicationRunning, status.ApplicationUnhealthy:
+				target = status.ApplicationStopped
+			}
+		}
+		if target == "" {
+			continue
+		}
+		if _, err := w.queries.UpdateInstanceStatus(ctx, generated.UpdateInstanceStatusParams{ID: inst.ID, Status: target}); err != nil {
 			slog.Warn("eventwatcher: failed to update instance status", "instance_id", pgUUIDToString(inst.ID), "error", err)
 		}
 	}

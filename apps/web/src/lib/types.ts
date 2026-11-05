@@ -350,6 +350,9 @@ export interface ContainerLog {
   recorded_at: string;
   container_id: string | null;
   deployment_id: string | null;
+  // The process type that produced the line; null = unknown (rows from before
+  // the column existed, databases).
+  process_type: string | null;
 }
 
 // A log "session": one container generation that produced log lines, or the
@@ -359,6 +362,7 @@ export interface ContainerLog {
 export interface ContainerLogSession {
   container_id: string | null;
   deployment_id: string | null;
+  process_type: string | null;
   first_at: string;
   last_at: string;
   line_count: number;

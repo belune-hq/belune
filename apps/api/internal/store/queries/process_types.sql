@@ -78,6 +78,13 @@ JOIN application_process_types pt ON pt.id = i.process_type_id
 WHERE i.application_id = $1 AND pt.routable
 ORDER BY i.idx, i.id;
 
+-- name: ListInstancesByApplicationAndProcessType :many
+SELECT i.*
+FROM application_instances i
+JOIN application_process_types pt ON pt.id = i.process_type_id
+WHERE i.application_id = $1 AND pt.name = $2
+ORDER BY i.idx, i.id;
+
 -- name: UpdateInstanceStatus :one
 UPDATE application_instances
 SET status = $2, updated_at = NOW()

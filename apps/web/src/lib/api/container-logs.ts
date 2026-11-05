@@ -15,6 +15,8 @@ export interface ContainerLogParams {
   // A container id to isolate one session, or "none" for the unassigned
   // (earlier) bucket. Undefined means all sessions.
   session?: string;
+  // Only lines from this process type, across container generations.
+  processType?: string;
 }
 
 // Both application and database container logs share the same history endpoint
@@ -43,6 +45,7 @@ export function listContainerLogs(
   if (params?.since) query.set("since", params.since);
   if (params?.until) query.set("until", params.until);
   if (params?.session) query.set("session", params.session);
+  if (params?.processType) query.set("process_type", params.processType);
   const qs = query.toString();
   return api.get<ContainerLog[]>(
     `${basePath(source, projectId, sourceId)}${qs ? `?${qs}` : ""}`,

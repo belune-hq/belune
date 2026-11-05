@@ -49,6 +49,19 @@ This is measured, not a guess. With a compound command the shell stays PID 1 and
 
 A simple command is different: most shells hand over to it directly, so it becomes PID 1 and receives the signal. For a worker that must finish its current job, use a **single command**, or have the command handle signals itself.
 
+## Finding a Worker's Logs
+
+Every process type's output is collected and stored, and the **Logs** tab shows all of it. Once an application has more than one type, a **Process type** selector appears beside the filters:
+
+- **All process types** shows every container's lines together, as before.
+- Picking a type (for example `queue`) shows only that type's lines — including lines from **earlier deploys**, so you can ask what the queue was doing before yesterday's release.
+
+Each entry in the **Session** picker names its type, for example `#a1b2c3d · queue · manual · 2h ago`, so a web container and a worker started by the same deploy are no longer identical rows.
+
+Lines collected before you upgraded to a release with this feature have no recorded type. They stay visible under **All process types** and in the **Earlier logs** session, and they do not match a named type.
+
+The live stream endpoint takes the same choice: `GET /api/projects/{projectId}/applications/{applicationId}/logs?process_type=queue` follows that type's container. Without the parameter it follows the routable type, as it always has.
+
 ## Health Checks
 
 A worker listens on nothing, so a type that is **not routable never gets an HTTP health check**. Its health check is:

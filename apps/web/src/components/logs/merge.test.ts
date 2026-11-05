@@ -234,4 +234,42 @@ describe("mergeLogEntries", () => {
     expect(mergeLogEntries([], only)).toEqual(only);
     expect(mergeLogEntries([], [])).toEqual([]);
   });
+
+  describe("container identity", () => {
+    const at = "2026-10-09T06:00:00.123Z";
+    const line = (
+      sessionId: string | null | undefined,
+      id: string,
+    ): LogEntry => ({
+      id,
+      level: "info",
+      stream: "stdout",
+      message: "tick",
+      recordedAt: at,
+      sessionId,
+    });
+
+    it("keeps the same line from two containers: they are two lines", () => {
+      const result = mergeLogEntries(
+        [line("web-ctr", "a")],
+        [line("queue-ctr", "b")],
+      );
+      expect(result).toHaveLength(2);
+    });
+
+    it("still collapses the same line from the same container across sources", () => {
+      const result = mergeLogEntries(
+        [line("web-ctr", "a")],
+        [line("web-ctr", "b")],
+      );
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe("a");
+    });
+
+    it("keeps the previous behaviour for lines with no container (unassigned)", () => {
+      // No protection and no regression: both null -> collapsed as before.
+      const result = mergeLogEntries([line(null, "a")], [line(null, "b")]);
+      expect(result).toHaveLength(1);
+    });
+  });
 });

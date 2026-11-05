@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -313,6 +314,7 @@ func (c *Collector) watchContainer(ctx context.Context, ctr runtime.ContainerInf
 			deploymentUUID = pgtype.UUID{}
 		}
 	}
+	processType := processTypeOf(src.typ, ctr)
 	span.SetAttributes(
 		attribute.String("log.source_type", src.typ),
 		attribute.String("log.source_id", src.id),
@@ -400,6 +402,7 @@ func (c *Collector) watchContainer(ctx context.Context, ctr runtime.ContainerInf
 			// still replaced by a new container on a version upgrade.
 			ContainerID:  pgtype.Text{String: ctr.ID, Valid: ctr.ID != ""},
 			DeploymentID: deploymentUUID,
+			ProcessType:  processType,
 		})
 	}
 
@@ -490,7 +493,40 @@ func (c *Collector) flush(ctx context.Context, src containerSource, batch []gene
 			"recorded_at":   p.RecordedAt.Time.UTC().Format(time.RFC3339Nano),
 			"container_id":  p.ContainerID.String,
 			"deployment_id": src.deployment,
+			// null when unknown, so a live viewer filtering by type agrees with
+			// the history query, which never matches a NULL row to a named type.
+			"process_type": nullableText(p.ProcessType),
 		})
 		c.rdb.Publish(ctx, channel, string(payload))
 	}
+}
+
+// processTypeRE is the process-type name rule migration 000079 holds as a CHECK.
+// Anchored and charset-bound: a quantifier counts runes and the label is
+// attacker-controllable, so the charset is the protection, not the length.
+var processTypeRE = regexp.MustCompile(`^[a-z][a-z0-9-]{0,19}$`)
+
+// processTypeOf returns the validated process-type label for an application
+// container, or NULL for anything else.
+//
+// ⛔ The value reaches a COPY, which fails the WHOLE batch on one bad row, and a
+// label is not trustworthy input -- anyone can `docker run` with a belune
+// application-id label. So there is no CHECK on the column; a surprising value is
+// stored as NULL ("unknown") here instead of taking its batch with it.
+func processTypeOf(sourceType string, ctr runtime.ContainerInfo) pgtype.Text {
+	if sourceType != sourceApplication {
+		return pgtype.Text{}
+	}
+	v := ctr.Labels[runtime.LabelProcessType]
+	if !processTypeRE.MatchString(v) {
+		return pgtype.Text{}
+	}
+	return pgtype.Text{String: v, Valid: true}
+}
+
+func nullableText(t pgtype.Text) any {
+	if !t.Valid {
+		return nil
+	}
+	return t.String
 }

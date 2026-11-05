@@ -63,3 +63,26 @@ func TestResolveAll_KeepsTheQueryOrder(t *testing.T) {
 	assert.Equal(t, "a", got[0].ContainerName)
 	assert.Equal(t, "b", got[1].ContainerName)
 }
+
+type typeFake struct{ rows []generated.ApplicationInstance }
+
+func (f typeFake) ListInstancesByApplicationAndProcessType(context.Context, generated.ListInstancesByApplicationAndProcessTypeParams) ([]generated.ApplicationInstance, error) {
+	return f.rows, nil
+}
+
+func TestResolveType_PrefersRunningThenLowestIdx(t *testing.T) {
+	got, err := instances.ResolveType(context.Background(), typeFake{rows: []generated.ApplicationInstance{inst(1, "a", "stopped"), inst(2, "b", "running")}}, pgtype.UUID{}, "queue")
+	require.NoError(t, err)
+	assert.Equal(t, "b", got.ContainerName)
+
+	got, err = instances.ResolveType(context.Background(), typeFake{rows: []generated.ApplicationInstance{inst(1, "a", "pending"), inst(2, "b", "pending")}}, pgtype.UUID{}, "queue")
+	require.NoError(t, err)
+	assert.Equal(t, "a", got.ContainerName, "a stopped container's logs must stay readable")
+}
+
+// An unknown type is the caller's mistake, distinct from a missing row.
+func TestResolveType_UnknownTypeIsItsOwnError(t *testing.T) {
+	_, err := instances.ResolveType(context.Background(), typeFake{}, pgtype.UUID{}, "nope")
+	assert.True(t, errors.Is(err, instances.ErrNoSuchProcessType))
+	assert.False(t, errors.Is(err, instances.ErrNoInstance))
+}

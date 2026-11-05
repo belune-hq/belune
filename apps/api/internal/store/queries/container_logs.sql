@@ -1,6 +1,6 @@
 -- name: InsertContainerLog :exec
-INSERT INTO container_logs (source_type, source_id, level, stream, message, recorded_at, deployment_id, container_id)
-VALUES ($1, $2, $3, $4, $5, COALESCE(sqlc.narg('recorded_at')::timestamptz, NOW()), sqlc.narg('deployment_id'), sqlc.narg('container_id'));
+INSERT INTO container_logs (source_type, source_id, level, stream, message, recorded_at, deployment_id, container_id, process_type)
+VALUES ($1, $2, $3, $4, $5, COALESCE(sqlc.narg('recorded_at')::timestamptz, NOW()), sqlc.narg('deployment_id'), sqlc.narg('container_id'), sqlc.narg('process_type'));
 
 -- name: BulkInsertContainerLogs :copyfrom
 -- Bulk path for the log collector, which flushes batches of lines. Inserting
@@ -11,11 +11,11 @@ VALUES ($1, $2, $3, $4, $5, COALESCE(sqlc.narg('recorded_at')::timestamptz, NOW(
 -- here: the caller always supplies it, using the timestamp Docker reported for
 -- the line and its own clock only when that is missing. That is closer to when
 -- the line was actually observed than evaluating NOW() at flush time anyway.
-INSERT INTO container_logs (source_type, source_id, level, stream, message, recorded_at, deployment_id, container_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
+INSERT INTO container_logs (source_type, source_id, level, stream, message, recorded_at, deployment_id, container_id, process_type)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);
 
 -- name: SearchContainerLogs :many
-SELECT id, source_type, source_id, level, stream, message, recorded_at, deployment_id, container_id FROM container_logs
+SELECT id, source_type, source_id, level, stream, message, recorded_at, deployment_id, container_id, process_type FROM container_logs
 WHERE source_type = sqlc.arg('source_type')
   AND source_id = sqlc.arg('source_id')
   AND (sqlc.narg('level')::text IS NULL OR level = sqlc.narg('level')::text)
@@ -32,6 +32,9 @@ WHERE source_type = sqlc.arg('source_type')
     WHEN sqlc.narg('unassigned')::boolean THEN container_id IS NULL
     ELSE TRUE
   END)
+  -- Process type filter. Matches the column, so it reaches lines from earlier
+  -- container generations too; NULL rows (unknown) never match a named type.
+  AND (sqlc.narg('process_type')::text IS NULL OR process_type = sqlc.narg('process_type')::text)
 ORDER BY recorded_at DESC
 LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
 
@@ -57,6 +60,10 @@ LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
 -- deployments" still reads every line regardless of what the picker lists.
 SELECT cl.container_id,
        cl.deployment_id,
+       -- MAX, not a GROUP BY key: a container whose first lines predate the column
+       -- has NULL and non-NULL rows under one container_id, and grouping on the
+       -- type would split that one session in two.
+       MAX(cl.process_type)             AS process_type,
        MIN(cl.recorded_at)::timestamptz AS first_at,
        MAX(cl.recorded_at)::timestamptz AS last_at,
        COUNT(*)                         AS line_count,

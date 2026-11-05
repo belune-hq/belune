@@ -1,0 +1,16 @@
+-- Which process type of an application produced a log line.
+--
+-- Stored on the row, not recovered by joining application_instances on
+-- container_id: an instance row holds only the LATEST container id (every deploy
+-- overwrites it), so a join resolves the current generation and nothing older --
+-- and "it broke after yesterday's deploy" is exactly the question people ask.
+--
+-- Nullable, with NULL meaning "unknown": rows collected before this column
+-- existed, databases and system containers have no process type, exactly as
+-- container_id IS NULL already means the "earlier" bucket. Hence no backfill.
+--
+-- ⛔ Deliberately NO CHECK constraint. container_logs is written by COPY, which
+-- fails the WHOLE batch on one bad row, and the value comes from a container
+-- label that anyone can set with `docker run`. The collector validates it against
+-- the process-type name rule and stores NULL on anything else.
+ALTER TABLE container_logs ADD COLUMN process_type TEXT;

@@ -94,7 +94,7 @@ func newWAFRig(t *testing.T) *wafRig {
 	// that stream is what the recorder reads.
 	require.NoError(t, c.ConfigureAccessLogs(ctx))
 	require.NoError(t, c.AddRoute(ctx, proxy.RouteConfig{
-		Hostname: wafAppHost, TargetURL: "http://" + upstreamHost + ":" + u.Port(), SSLMode: proxy.SSLModeOff,
+		Hostname: wafAppHost, Upstreams: []string{"http://" + upstreamHost + ":" + u.Port()}, SSLMode: proxy.SSLModeOff,
 	}))
 	t.Cleanup(func() {
 		_ = c.SyncWAF(ctx, proxy.WAFConfig{})
@@ -150,7 +150,7 @@ func TestRealCaddy_WAF_AcceptsTheRouteAndKeepsItFirst(t *testing.T) {
 	listed, err := rig.c.ListRoutes(ctx)
 	require.NoError(t, err)
 	for _, r := range listed {
-		assert.NotEmpty(t, r.TargetURL, "an application route; the WAF route must not be listed as one")
+		assert.NotEmpty(t, r.Upstreams, "an application route; the WAF route must not be listed as one")
 	}
 }
 

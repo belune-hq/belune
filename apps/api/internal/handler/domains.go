@@ -805,7 +805,7 @@ func (h *Handler) UpdateDomain(w http.ResponseWriter, r *http.Request) {
 		slog.Error("failed to resolve container for proxy route; live route left untouched", "hostname", req.Hostname, "error", resolveErr)
 	} else if err := h.proxy.AddRoute(r.Context(), proxy.RouteConfig{
 		Hostname:       req.Hostname,
-		TargetURL:      fmt.Sprintf("http://%s:%d", inst.ContainerName, port),
+		Upstreams:      proxy.UpstreamURLs(port, inst.ContainerName),
 		TLS:            sslEnabled,
 		ForceHTTPS:     forceHTTPS,
 		SSLMode:        sslMode,
@@ -1117,7 +1117,7 @@ func (h *Handler) rebuildDomainRoute(r *http.Request, domainID pgtype.UUID) {
 		Hostname:       domain.Hostname,
 		Path:           domain.Path,
 		StripPath:      domain.StripPath,
-		TargetURL:      fmt.Sprintf("http://%s:%d", inst.ContainerName, port),
+		Upstreams:      proxy.UpstreamURLs(port, inst.ContainerName),
 		TLS:            domain.SslEnabled,
 		ForceHTTPS:     domain.ForceHttps,
 		SSLMode:        domain.SslMode,
@@ -1239,7 +1239,7 @@ func (h *Handler) createDomainRecord(ctx context.Context, applicationID string, 
 
 	if err := h.proxy.AddRoute(ctx, proxy.RouteConfig{
 		Hostname:       params.Hostname,
-		TargetURL:      fmt.Sprintf("http://%s:%d", containerName, port),
+		Upstreams:      proxy.UpstreamURLs(port, containerName),
 		TLS:            params.SslEnabled,
 		ForceHTTPS:     params.ForceHttps,
 		SSLMode:        params.SslMode,

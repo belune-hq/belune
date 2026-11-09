@@ -63,7 +63,7 @@ func liveClient(t *testing.T) *Client {
 func routeCfg(hostname, sslMode string) proxy.RouteConfig {
 	return proxy.RouteConfig{
 		Hostname:  hostname,
-		TargetURL: "http://127.0.0.1:9",
+		Upstreams: []string{"http://127.0.0.1:9"},
 		TLS:       true,
 		SSLMode:   sslMode,
 	}

@@ -85,7 +85,7 @@ func addDomain(t *testing.T, ctx context.Context, q *generated.Queries, app gene
 func liveRoutes(hosts ...string) []proxy.RouteConfig {
 	var out []proxy.RouteConfig
 	for _, h := range hosts {
-		out = append(out, proxy.RouteConfig{Hostname: h, Path: "/", TargetURL: "x:8080"})
+		out = append(out, proxy.RouteConfig{Hostname: h, Path: "/", Upstreams: []string{"x:8080"}})
 	}
 	return out
 }

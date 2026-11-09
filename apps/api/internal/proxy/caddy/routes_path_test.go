@@ -17,7 +17,7 @@ func TestBuildRoute_RootPathIsUnchanged(t *testing.T) {
 	route, err := buildRoute(proxy.RouteConfig{
 		Hostname:  "app.example.com",
 		Path:      "/",
-		TargetURL: "http://app:3000",
+		Upstreams: []string{"http://app:3000"},
 	})
 	require.NoError(t, err)
 
@@ -33,7 +33,7 @@ func TestBuildRoute_RootPathIsUnchanged(t *testing.T) {
 // the field) carries. It must mean "the whole host", never "a route that matches
 // nothing" — the latter would be a silent 404 for a domain that looks fine.
 func TestBuildRoute_EmptyPathMeansWholeHost(t *testing.T) {
-	route, err := buildRoute(proxy.RouteConfig{Hostname: "a.com", TargetURL: "http://a:80"})
+	route, err := buildRoute(proxy.RouteConfig{Hostname: "a.com", Upstreams: []string{"http://a:80"}})
 	require.NoError(t, err)
 	assert.Empty(t, route.Match[0].Path)
 	assert.Equal(t, "route-a.com", route.ID)
@@ -43,7 +43,7 @@ func TestBuildRoute_PathMatcherCoversPrefixAndExact(t *testing.T) {
 	route, err := buildRoute(proxy.RouteConfig{
 		Hostname:  "shop.com",
 		Path:      "/api",
-		TargetURL: "http://api:8080",
+		Upstreams: []string{"http://api:8080"},
 	})
 	require.NoError(t, err)
 
@@ -90,7 +90,7 @@ func TestBuildRoute_StripRunsAfterFeaturesAndBeforeProxy(t *testing.T) {
 		Hostname:  "shop.com",
 		Path:      "/api",
 		StripPath: true,
-		TargetURL: "http://api:8080",
+		Upstreams: []string{"http://api:8080"},
 		Features: []proxy.RouteFeature{{
 			Type:    "basic_auth",
 			Enabled: true,
@@ -114,7 +114,7 @@ func TestBuildRoute_NoStripWhenDisabled(t *testing.T) {
 		Hostname:  "shop.com",
 		Path:      "/api",
 		StripPath: false,
-		TargetURL: "http://api:8080",
+		Upstreams: []string{"http://api:8080"},
 	})
 	require.NoError(t, err)
 	for _, h := range route.Handle {
@@ -129,7 +129,7 @@ func TestBuildRoute_StripIgnoredOnRootPath(t *testing.T) {
 		Hostname:  "a.com",
 		Path:      "/",
 		StripPath: true,
-		TargetURL: "http://a:80",
+		Upstreams: []string{"http://a:80"},
 	})
 	require.NoError(t, err)
 	for _, h := range route.Handle {
@@ -156,7 +156,7 @@ func TestBuildRoute_StripThenInternalPath(t *testing.T) {
 		Path:         "/public",
 		StripPath:    true,
 		InternalPath: "/app/v2",
-		TargetURL:    "http://api:8080",
+		Upstreams:    []string{"http://api:8080"},
 	})
 	require.NoError(t, err)
 
@@ -180,7 +180,7 @@ func TestBuildRoute_InternalPathWithoutStrip(t *testing.T) {
 		Hostname:     "metrics.example.com",
 		Path:         "/",
 		InternalPath: "/grafana",
-		TargetURL:    "http://grafana:3000",
+		Upstreams:    []string{"http://grafana:3000"},
 	})
 	require.NoError(t, err)
 
@@ -198,7 +198,7 @@ func TestBuildRoute_NoInternalPathEmitsNoRewrite(t *testing.T) {
 	route, err := buildRoute(proxy.RouteConfig{
 		Hostname:  "a.com",
 		Path:      "/",
-		TargetURL: "http://a:80",
+		Upstreams: []string{"http://a:80"},
 	})
 	require.NoError(t, err)
 	for _, h := range route.Handle {

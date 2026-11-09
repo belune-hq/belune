@@ -114,7 +114,7 @@ func TestBuildFeatureHandlers_Golden(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := proxy.RouteConfig{
 				Hostname:       "example.com",
-				TargetURL:      "http://upstream:8080",
+				Upstreams:      []string{"http://upstream:8080"},
 				Features:       tc.features,
 				AdvancedConfig: tc.advanced,
 			}

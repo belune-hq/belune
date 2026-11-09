@@ -24,11 +24,22 @@ func ResolveUpstreamPort(domainPort, appPort pgtype.Int4) int32 {
 	return 8080
 }
 
+// UpstreamURLs renders container names as the route's upstream list, in the order
+// given. It never sorts: the order is the caller's (SQL's) and is part of the
+// route's identity, see RouteConfig.Upstreams.
+func UpstreamURLs(port int32, containerNames ...string) []string {
+	out := make([]string, 0, len(containerNames))
+	for _, n := range containerNames {
+		out = append(out, fmt.Sprintf("http://%s:%d", n, port))
+	}
+	return out
+}
+
 // BuildRouteConfig constructs a RouteConfig from a domain and its pre-loaded
 // features. healthCheckPath is the application-level health endpoint; pass "" to
 // disable Caddy upstream health probing for this route. cert carries the already
 // decrypted PEM pair for ssl_mode=custom, and is the zero value otherwise.
-func BuildRouteConfig(domain generated.Domain, appContainerPort pgtype.Int4, containerName, healthCheckPath string, features []generated.DomainRouteFeature, cert HostCertificate) RouteConfig {
+func BuildRouteConfig(domain generated.Domain, appContainerPort pgtype.Int4, containerNames []string, healthCheckPath string, features []generated.DomainRouteFeature, cert HostCertificate) RouteConfig {
 	port := ResolveUpstreamPort(domain.ContainerPort, appContainerPort)
 
 	var routeFeatures []RouteFeature
@@ -45,7 +56,7 @@ func BuildRouteConfig(domain generated.Domain, appContainerPort pgtype.Int4, con
 		Path:            domain.Path,
 		StripPath:       domain.StripPath,
 		InternalPath:    domain.InternalPath,
-		TargetURL:       fmt.Sprintf("http://%s:%d", containerName, port),
+		Upstreams:       UpstreamURLs(port, containerNames...),
 		TLS:             domain.SslEnabled,
 		ForceHTTPS:      domain.ForceHttps,
 		SSLMode:         domain.SslMode,
@@ -61,7 +72,7 @@ func BuildRouteConfig(domain generated.Domain, appContainerPort pgtype.Int4, con
 // BuildRouteConfigFromDB loads a domain's features and, when it serves an
 // uploaded certificate, decrypts that certificate's PEM pair for in-band delivery
 // to the proxy.
-func BuildRouteConfigFromDB(ctx context.Context, queries *generated.Queries, dec Decryptor, domain generated.Domain, containerName, healthCheckPath string) (RouteConfig, error) {
+func BuildRouteConfigFromDB(ctx context.Context, queries *generated.Queries, dec Decryptor, domain generated.Domain, containerNames []string, healthCheckPath string) (RouteConfig, error) {
 	dbFeatures, err := queries.ListRouteFeaturesByDomain(ctx, domain.ID)
 	if err != nil {
 		return RouteConfig{}, fmt.Errorf("list route features for %s: %w", domain.Hostname, err)
@@ -77,7 +88,7 @@ func BuildRouteConfigFromDB(ctx context.Context, queries *generated.Queries, dec
 		return RouteConfig{}, err
 	}
 
-	return BuildRouteConfig(domain, app.ContainerPort, containerName, healthCheckPath, dbFeatures, cert), nil
+	return BuildRouteConfig(domain, app.ContainerPort, containerNames, healthCheckPath, dbFeatures, cert), nil
 }
 
 // ResolveCertificate returns the decrypted PEM pair a domain serves, or the zero

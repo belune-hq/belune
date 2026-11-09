@@ -1172,7 +1172,7 @@ func (h *TaskHandler) wireProxy(ctx context.Context, dc *deployContext) error {
 	}
 
 	for _, domain := range dc.domains {
-		cfg, err := proxy.BuildRouteConfigFromDB(ctx, h.Queries, h.Keyring, domain, dc.routable.containerName, dc.app.HealthCheckPath.String)
+		cfg, err := proxy.BuildRouteConfigFromDB(ctx, h.Queries, h.Keyring, domain, []string{dc.routable.containerName}, dc.app.HealthCheckPath.String)
 		if err != nil {
 			return fmt.Errorf("build route config for %s: %w", domain.Hostname, err)
 		}

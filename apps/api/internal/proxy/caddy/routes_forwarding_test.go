@@ -85,7 +85,7 @@ func TestForwarding_MatchesSharedFixture(t *testing.T) {
 				Path:         c.Path,
 				StripPath:    c.StripPath,
 				InternalPath: c.InternalPath,
-				TargetURL:    "http://app:3000",
+				Upstreams:    []string{"http://app:3000"},
 			})
 			require.NoError(t, err)
 

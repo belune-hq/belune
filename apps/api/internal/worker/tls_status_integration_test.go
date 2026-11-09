@@ -115,7 +115,7 @@ func TestRealStackTLS_ProbeReportsServedCertificate(t *testing.T) {
 	domain := seedTLSDomain(t, ctx, proxy.SSLModeCustom, cert.ID)
 
 	cfg := proxy.RouteConfig{
-		Hostname: probeHost, TargetURL: "http://127.0.0.1:9", TLS: true,
+		Hostname: probeHost, Upstreams: []string{"http://127.0.0.1:9"}, TLS: true,
 		SSLMode: proxy.SSLModeCustom, CertPEM: certPEM, KeyPEM: keyPEM,
 	}
 	require.NoError(t, client.AddRoute(ctx, cfg))

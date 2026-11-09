@@ -146,11 +146,16 @@ type RouteConfig struct {
 	Path         string `json:"path"`
 	StripPath    bool   `json:"strip_path"`
 	InternalPath string `json:"internal_path"`
-	TargetURL    string `json:"target_url"`
-	TLS          bool   `json:"tls"`
-	ForceHTTPS   bool   `json:"force_https"`
-	SSLMode      string `json:"ssl_mode"`     // automatic, custom, off, dns_challenge
-	SSLProvider  string `json:"ssl_provider"` // e.g. cloudflare
+	// Upstreams are the containers this route proxies to, each as "http://name:port".
+	// The ORDER is part of the route: EnsureRoute compares the whole desired route
+	// against what Caddy holds, so an unstable order makes every route look drifted
+	// on every pass and the reconciler rewrites it for ever. Callers supply it in
+	// idx order from SQL (ORDER BY idx) and nothing downstream re-sorts it.
+	Upstreams   []string `json:"upstreams"`
+	TLS         bool     `json:"tls"`
+	ForceHTTPS  bool     `json:"force_https"`
+	SSLMode     string   `json:"ssl_mode"`     // automatic, custom, off, dns_challenge
+	SSLProvider string   `json:"ssl_provider"` // e.g. cloudflare
 	// CertPEM/KeyPEM carry the decrypted certificate for ssl_mode=custom. They are
 	// pushed to Caddy in-band (load_pem) rather than written to disk, so the key
 	// never touches the proxy's filesystem. Treat as secret: never log them.

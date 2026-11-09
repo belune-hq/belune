@@ -1,6 +1,7 @@
 package caddy
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/belune-hq/belune/internal/proxy"
@@ -29,12 +30,52 @@ func TestBuildRoute_Golden(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := tc.cfg
-			cfg.TargetURL = "http://proj-app-1234abcd:8080"
+			cfg.Upstreams = []string{"http://proj-app-1234abcd:8080"}
 			got, err := buildRoute(cfg)
 			if err != nil {
 				t.Fatalf("buildRoute: %v", err)
 			}
 			checkGolden(t, tc.name, got)
 		})
+	}
+}
+
+// A route with several upstreams renders one dial per upstream, in the order given,
+// and renders the same bytes every time. Vacuous at one replica today; it is the C2
+// guard: the desired route is compared against Caddy's as JSON, so an unstable
+// order would make every route look drifted on every pass.
+func TestBuildRoute_UpstreamsKeepTheirOrderAndAreByteStable(t *testing.T) {
+	cfg := proxy.RouteConfig{
+		Hostname: "app.example.com", SSLMode: proxy.SSLModeAutomatic,
+		Upstreams: []string{"http://app-1:8080", "http://app-2:8080", "http://app-3:8080"},
+	}
+	first, err := buildRoute(cfg)
+	if err != nil {
+		t.Fatalf("buildRoute: %v", err)
+	}
+	want, _ := json.Marshal(first)
+
+	for i := 0; i < 50; i++ {
+		again, err := buildRoute(cfg)
+		if err != nil {
+			t.Fatalf("buildRoute: %v", err)
+		}
+		got, _ := json.Marshal(again)
+		if string(got) != string(want) {
+			t.Fatalf("pass %d rendered different bytes:\n%s\n%s", i, want, got)
+		}
+	}
+
+	var dials []string
+	for _, h := range first.Handle {
+		if h["handler"] != "reverse_proxy" {
+			continue
+		}
+		for _, u := range h["upstreams"].([]caddyUpstream) {
+			dials = append(dials, u.Dial)
+		}
+	}
+	if len(dials) != 3 || dials[0] != "app-1:8080" || dials[1] != "app-2:8080" || dials[2] != "app-3:8080" {
+		t.Fatalf("upstreams out of order or missing: %v", dials)
 	}
 }

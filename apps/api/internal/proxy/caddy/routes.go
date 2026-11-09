@@ -210,10 +210,11 @@ func buildRoute(cfg proxy.RouteConfig) (caddyRoute, error) {
 	}
 
 	// Reverse proxy is always the last handler.
-	handlers = append(handlers, newReverseProxyHandle(
-		[]caddyUpstream{{Dial: targetToDial(cfg.TargetURL)}},
-		cfg.HealthCheckPath,
-	))
+	upstreams := make([]caddyUpstream, 0, len(cfg.Upstreams))
+	for _, u := range cfg.Upstreams {
+		upstreams = append(upstreams, caddyUpstream{Dial: targetToDial(u)})
+	}
+	handlers = append(handlers, newReverseProxyHandle(upstreams, cfg.HealthCheckPath))
 
 	// If ForceHTTPS is enabled, prepend an HTTP→HTTPS redirect subroute.
 	if cfg.ForceHTTPS && cfg.SSLMode != proxy.SSLModeOff {
@@ -374,7 +375,7 @@ func (c *Client) AddRoute(ctx context.Context, cfg proxy.RouteConfig) (err error
 		return fmt.Errorf("reorder catch-all: %w", err)
 	}
 
-	slog.Info("caddy route added", "hostname", cfg.Hostname, "target", cfg.TargetURL)
+	slog.Info("caddy route added", "hostname", cfg.Hostname, "upstreams", cfg.Upstreams)
 	return nil
 }
 
@@ -641,14 +642,19 @@ func (c *Client) ListRoutes(ctx context.Context) (result []proxy.RouteConfig, er
 				// removed and re-added for ever.
 				Path: pathFromMatcher(route.Match[0].Path),
 			}
-			// Extract target URL from the last handler (reverse_proxy).
+			// Extract the upstreams from the last handler (reverse_proxy), all of
+			// them and in Caddy's order. Nothing in production reads this back --
+			// drift is detected on the full route JSON -- but a read-back that
+			// silently kept only the first would misreport a multi-upstream route.
 			for i := len(route.Handle) - 1; i >= 0; i-- {
 				h := route.Handle[i]
 				if h["handler"] == "reverse_proxy" {
-					if upstreams, ok := h["upstreams"].([]any); ok && len(upstreams) > 0 {
-						if u, ok := upstreams[0].(map[string]any); ok {
-							if dial, ok := u["dial"].(string); ok {
-								cfg.TargetURL = dial
+					if upstreams, ok := h["upstreams"].([]any); ok {
+						for _, raw := range upstreams {
+							if u, ok := raw.(map[string]any); ok {
+								if dial, ok := u["dial"].(string); ok {
+									cfg.Upstreams = append(cfg.Upstreams, dial)
+								}
 							}
 						}
 					}

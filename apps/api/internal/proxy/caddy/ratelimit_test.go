@@ -19,7 +19,7 @@ func rateLimitedRoute(host, path string) proxy.RouteConfig {
 	return proxy.RouteConfig{
 		Hostname:  host,
 		Path:      path,
-		TargetURL: "http://127.0.0.1:9",
+		Upstreams: []string{"http://127.0.0.1:9"},
 		Features: []proxy.RouteFeature{{
 			Type:    proxy.FeatureRateLimit,
 			Enabled: true,

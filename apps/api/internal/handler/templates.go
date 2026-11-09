@@ -575,15 +575,14 @@ func (h *Handler) addTemplateDomain(r *http.Request, project generated.Project, 
 	}
 
 	cert := h.domainCertificate(ctx, domain)
-	inst, err := instances.ResolveOne(ctx, h.queries, appID)
+	containerNames, err := instances.RoutableContainerNames(ctx, h.queries, appID)
 	if err != nil {
 		slog.Error("template: failed to resolve container for domain route", "hostname", hostname, "error", err)
 		return
 	}
-	containerName := inst.ContainerName
 	if err := h.proxy.AddRoute(ctx, proxy.RouteConfig{
 		Hostname:   hostname,
-		Upstreams:  proxy.UpstreamURLs(port, containerName),
+		Upstreams:  proxy.UpstreamURLs(port, containerNames...),
 		TLS:        true,
 		ForceHTTPS: true,
 		SSLMode:    templateSSLMode,

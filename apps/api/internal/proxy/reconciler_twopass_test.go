@@ -3,6 +3,7 @@ package proxy_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/belune-hq/belune/internal/proxy"
 	"github.com/belune-hq/belune/internal/proxy/capability"
+	"github.com/belune-hq/belune/internal/store/generated"
 	"github.com/belune-hq/belune/internal/testutil"
 )
 
@@ -86,4 +88,46 @@ func TestReconcile_SecondPassAgainstAnUnchangedDatabaseWritesNoRoute(t *testing.
 	assert.Equal(t, 0, second.LastAdded, "the second pass adds nothing")
 	assert.Equal(t, 0, second.LastUpdated, "and rewrites nothing: the desired route is stable across passes")
 	assert.Equal(t, 0, second.LastRemoved)
+}
+
+// The same property at three replicas, which is what the C1 test was built for: the
+// route's upstream list is every routable instance in idx order, and a second pass
+// against the unchanged database writes nothing. An unstable order would fail it.
+func TestReconcile_ThreeReplicasRouteToAllOfThemInIdxOrderAndTheSecondPassWritesNothing(t *testing.T) {
+	ctx := context.Background()
+	pool, queries, teardown := testutil.SetupTestDB()
+	defer teardown()
+	t.Cleanup(func() { _ = testutil.TruncateAll(ctx, pool) })
+
+	app := seedRunningApp(t, ctx, queries)
+	web, err := queries.GetProcessTypeByName(ctx, generated.GetProcessTypeByNameParams{ApplicationID: app.ID, Name: "web"})
+	require.NoError(t, err)
+	// Inserted out of idx order on purpose.
+	for _, idx := range []int32{3, 2} {
+		_, err := queries.CreateInstance(ctx, generated.CreateInstanceParams{
+			ApplicationID: app.ID, ProcessTypeID: web.ID, Idx: idx,
+			ContainerName: fmt.Sprintf("%s-web-%d", app.Slug, idx), Status: "pending",
+		})
+		require.NoError(t, err)
+	}
+	addDomain(t, ctx, queries, app, "a.belune.local")
+
+	sp := &storeProxy{mockProxy: &mockProxy{}, held: map[string][]byte{}}
+	r := proxy.NewReconciler(queries, sp, nil, time.Second).
+		WithCapabilities(&countingProvider{set: capability.NewSet()})
+
+	require.NoError(t, r.ReconcileNow(ctx))
+	routes, err := sp.ListRoutes(ctx)
+	require.NoError(t, err)
+	require.Len(t, routes, 1)
+	assert.Equal(t, []string{
+		"http://" + app.Slug + ":8080",
+		"http://" + app.Slug + "-web-2:8080",
+		"http://" + app.Slug + "-web-3:8080",
+	}, routes[0].Upstreams, "every routable instance, idx order, whatever the insert order")
+
+	require.NoError(t, r.ReconcileNow(ctx))
+	second := r.Status()
+	assert.Equal(t, 0, second.LastAdded)
+	assert.Equal(t, 0, second.LastUpdated, "a stable order: the second pass rewrites nothing")
 }

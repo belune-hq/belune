@@ -65,6 +65,34 @@ func ResolveOne(ctx context.Context, q Querier, appID pgtype.UUID) (generated.Ap
 	return rows[0], nil
 }
 
+// RoutableContainerNames returns the container name of EVERY instance of the routable
+// type, in idx order: the route's upstream list.
+//
+// ⛔ It does NOT filter by instance status. Caddy already drops a bad upstream itself
+// (the route carries an active health check), and the status column is eventually
+// consistent -- driven by the event watcher -- so a stale 'stopped' row would silently
+// remove a healthy replica from the pool: a routing decision made on a cache. The
+// order comes from SQL (ORDER BY idx) and is not re-sorted here, because it is part of
+// the route and an unstable one rewrites the route on every reconcile pass.
+//
+// ResolveOne is deliberately left as it is: logs, exec and metrics want ONE container
+// and fall back to a stopped one. Routing wants the list.
+func RoutableContainerNames(ctx context.Context, q Querier, appID pgtype.UUID) ([]string, error) {
+	rows, err := q.ListRoutableInstancesByApplication(ctx, appID)
+	if err != nil {
+		return nil, fmt.Errorf("listing routable instances: %w", err)
+	}
+	if len(rows) == 0 {
+		slog.Error("instance resolver: application has no routable instance row", "application_id", uuidString(appID))
+		return nil, ErrNoInstance
+	}
+	names := make([]string, 0, len(rows))
+	for _, r := range rows {
+		names = append(names, r.ContainerName)
+	}
+	return names, nil
+}
+
 // ResolveAll returns every instance of the application, ordered by idx (the order
 // comes from the query; it is not re-sorted here).
 func ResolveAll(ctx context.Context, q Querier, appID pgtype.UUID) ([]generated.ApplicationInstance, error) {

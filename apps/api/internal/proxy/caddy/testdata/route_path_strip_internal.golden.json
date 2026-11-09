@@ -1,0 +1,32 @@
+{
+  "@id": "route-app.example.com-api-702acf",
+  "match": [
+    {
+      "host": [
+        "app.example.com"
+      ],
+      "path": [
+        "/api",
+        "/api/*"
+      ]
+    }
+  ],
+  "handle": [
+    {
+      "handler": "rewrite",
+      "strip_path_prefix": "/api"
+    },
+    {
+      "handler": "rewrite",
+      "uri": "/v2{http.request.uri}"
+    },
+    {
+      "handler": "reverse_proxy",
+      "upstreams": [
+        {
+          "dial": "proj-app-1234abcd:8080"
+        }
+      ]
+    }
+  ]
+}

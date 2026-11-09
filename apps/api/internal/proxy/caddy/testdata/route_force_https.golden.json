@@ -1,0 +1,43 @@
+{
+  "@id": "route-app.example.com",
+  "match": [
+    {
+      "host": [
+        "app.example.com"
+      ]
+    }
+  ],
+  "handle": [
+    {
+      "handler": "subroute",
+      "routes": [
+        {
+          "handle": [
+            {
+              "handler": "static_response",
+              "headers": {
+                "Location": [
+                  "{http.request.scheme}s://{http.request.host}{http.request.uri}"
+                ]
+              },
+              "status_code": "301"
+            }
+          ],
+          "match": [
+            {
+              "protocol": "http"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "handler": "reverse_proxy",
+      "upstreams": [
+        {
+          "dial": "proj-app-1234abcd:8080"
+        }
+      ]
+    }
+  ]
+}

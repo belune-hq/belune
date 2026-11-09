@@ -1,0 +1,28 @@
+{
+  "@id": "route-app.example.com",
+  "match": [
+    {
+      "host": [
+        "app.example.com"
+      ]
+    }
+  ],
+  "handle": [
+    {
+      "handler": "reverse_proxy",
+      "health_checks": {
+        "active": {
+          "expect_status": 2,
+          "interval": "30s",
+          "timeout": "5s",
+          "uri": "/healthz"
+        }
+      },
+      "upstreams": [
+        {
+          "dial": "proj-app-1234abcd:8080"
+        }
+      ]
+    }
+  ]
+}

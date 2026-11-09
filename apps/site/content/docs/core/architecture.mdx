@@ -64,15 +64,15 @@ Belune keeps Caddy's routing table in sync by pushing config to its admin API wh
 1. **Clone** — the worker checks out the pushed commit (or the branch tip, for a manual deploy) using the user-specified credentials, or none for public repositories.
 2. **Build** — the builder you chose is used, or if you left it on auto one is picked in priority order: **Dockerfile** (if present) → **Cloud Native Buildpacks** → **Railpack**. See [Builders](/docs/core/application/builders).
 3. **Load** — the built image is loaded into the host's Docker engine, tagged with the deployment's ID.
-4. **Run** — the previous container (if any) is stopped and a new one started from the image, attached to the project's private network, with its configured env vars, volumes, and mounts.
-5. **Route** — Belune pushes the app's domain(s) to Caddy's admin API, which requests or renews a certificate as needed.
-6. **Health** — the application is marked **running** once the container is up.
+4. **Run** — a new container is started from the image beside the previous one (if any), attached to the project's private network, with its configured env vars, volumes, and mounts. An application with persistent volumes is the exception: it stops the previous container first, so two containers never write one volume.
+5. **Health** — the new container must pass its health check before it takes traffic. If it fails, it is removed and the previous container keeps serving.
+6. **Route** — Belune pushes the app's domain(s) to Caddy's admin API, which requests or renews a certificate as needed, then retires the previous container.
 
 ### Image-Based Applications and Databases
 1. **Pull** — the worker pulls the image from the image registry.
-2. **Run** — the previous container (if any) is stopped and a new one started from the image, attached to the project's private network, with its configured env vars, volumes, and mounts.
-3. **Route** — Belune pushes the app's domain(s) to Caddy's admin API, which requests or renews a certificate as needed.
-4. **Health** — the application is marked **running** once the container is up.
+2. **Run** — a new container is started from the image beside the previous one (if any), attached to the project's private network, with its configured env vars, volumes, and mounts. An application with persistent volumes stops the previous container first.
+3. **Health** — the new container must pass its health check before it takes traffic; if it fails, it is removed and the previous container keeps serving.
+4. **Route** — Belune pushes the app's domain(s) to Caddy's admin API, which requests or renews a certificate as needed, then retires the previous container.
 
 ## The Docker Socket
 

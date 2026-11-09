@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"io"
+	"os"
 	"testing"
 	"time"
 
@@ -190,4 +191,92 @@ func TestEntrypoint_ClearedRunsTheCommandInheritedSwallowsIt(t *testing.T) {
 
 	inherited := runToCompletion(t, c, runtime.ContainerConfig{Image: tag})
 	assert.Contains(t, inherited, "IMAGE_DEFAULT_CMD", "nil for both leaves the image exactly as built")
+}
+
+// A rolling deploy gives each generation its own container name, so the STABLE name
+// siblings address must follow the live one as a network alias. This is the part that
+// is ours and must never regress: both generations carry the alias on the network, and
+// an alias equal to the container's own name is harmless (existing installs already
+// run the bare-slug container). It asks Docker what it recorded, so no resolver, and
+// no host DNS configuration, is involved.
+func TestNetworkAliases_AreRecordedOnTheNetworkForEveryGeneration(t *testing.T) {
+	c := newTestDockerClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	require.NoError(t, c.PullImage(ctx, containerTestImage))
+
+	netName := uniqueTestContainerName(t) + "-net"
+	require.NoError(t, c.CreateNetwork(ctx, netName))
+	t.Cleanup(func() { _ = c.RemoveNetwork(context.Background(), netName) })
+
+	stable := uniqueTestContainerName(t) + "-svc"
+	start := func(name string, aliases []string) {
+		id, err := c.CreateContainer(ctx, runtime.ContainerConfig{
+			Name: name, Image: containerTestImage, Cmd: []string{"sleep", "3600"},
+			Network: netName, NetworkAliases: aliases,
+		})
+		require.NoError(t, err, name)
+		t.Cleanup(func() { _ = c.RemoveContainer(context.Background(), id) })
+		require.NoError(t, c.StartContainer(ctx, id))
+	}
+	gen1, gen2 := stable, stable+"-0f9b521e"
+	start(gen1, []string{stable}) // named the stable name itself AND aliasing it
+	start(gen2, []string{stable})
+
+	for _, name := range []string{gen1, gen2} {
+		info, err := c.cli.ContainerInspect(ctx, name)
+		require.NoError(t, err, name)
+		ep := info.NetworkSettings.Networks[netName]
+		require.NotNil(t, ep, "%s is on the network", name)
+		assert.Contains(t, ep.Aliases, stable, "%s answers to the stable name", name)
+	}
+}
+
+// That a shared alias then resolves to BOTH generations is Docker's embedded DNS, not
+// ours, and the decision it backs lives where the alias is set (deploy_task.go): during
+// a roll a sibling reaching either generation is correct because both serve.
+//
+// Gated behind BELUNE_DOCKER_INTEGRATION=1, which CI never sets: the probe depends on
+// the HOST's DNS search list. On a runner with one, busybox nslookup qualifies the bare
+// name and queries only that (NXDOMAIN), so the result says nothing about the alias.
+// Run it by hand on a host without a search domain.
+func TestNetworkAliases_ASharedAliasResolvesToBothGenerationsMidRoll(t *testing.T) {
+	if os.Getenv("BELUNE_DOCKER_INTEGRATION") != "1" {
+		t.Skip("set BELUNE_DOCKER_INTEGRATION=1 (the probe depends on the host's DNS search list)")
+	}
+	c := newTestDockerClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	require.NoError(t, c.PullImage(ctx, containerTestImage))
+
+	netName := uniqueTestContainerName(t) + "-net"
+	require.NoError(t, c.CreateNetwork(ctx, netName))
+	t.Cleanup(func() { _ = c.RemoveNetwork(context.Background(), netName) })
+
+	stable := uniqueTestContainerName(t) + "-svc"
+	start := func(name string) {
+		id, err := c.CreateContainer(ctx, runtime.ContainerConfig{
+			Name: name, Image: containerTestImage, Cmd: []string{"sleep", "3600"},
+			Network: netName, NetworkAliases: []string{stable},
+		})
+		require.NoError(t, err, name)
+		t.Cleanup(func() { _ = c.RemoveContainer(context.Background(), id) })
+		require.NoError(t, c.StartContainer(ctx, id))
+	}
+	start(stable)
+	gen2 := stable + "-0f9b521e"
+	start(gen2)
+
+	var out, errb bytes.Buffer
+	code, err := c.ContainerExec(ctx, gen2, []string{"nslookup", stable}, nil, &out, &errb)
+	require.NoError(t, err)
+	require.Zero(t, code, "nslookup: %s %s", out.String(), errb.String())
+	addrs := 0
+	for _, line := range bytes.Split(out.Bytes(), []byte("\n")) {
+		// "Address: 192.x" answers; the resolver's own "Address:\t127.0.0.11:53" does not.
+		if bytes.HasPrefix(line, []byte("Address: ")) {
+			addrs++
+		}
+	}
+	assert.Equal(t, 2, addrs, "the shared alias resolves to both generations: %s", out.String())
 }

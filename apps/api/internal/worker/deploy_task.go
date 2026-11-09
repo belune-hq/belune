@@ -53,6 +53,14 @@ type deployTarget struct {
 	instanceIdx   int32
 	containerName string // read from the instance row, never minted
 	containerID   string // set once the container is created
+	routable      bool   // an instance of the routable type
+	// prevName is the container this one REPLACES during a roll, and "" when the
+	// target is created in place (workers, stateful apps, a first deploy). While
+	// rolling, containerName is already the NEW container's name and the instance
+	// row still describes the old one until cutover. prevExists is whether the old
+	// container is actually there to be drained.
+	prevName   string
+	prevExists bool
 	// cpuLimit and memoryLimit are what the container is created with: the process
 	// type's own when set, otherwise the application's (NULL on the type means
 	// inherit). 0 is unlimited, as on the application.
@@ -263,6 +271,43 @@ func (h *TaskHandler) HandleDeployTask(ctx context.Context, t *asynq.Task) error
 		}
 	}
 
+	// Stage 5: the routable type. A stateless application ROLLS: the new generation is
+	// created beside the old, health-gated, and only then does the route move, so a
+	// failure at any point leaves the old generation serving. An application with
+	// persistent volumes does not: two containers writing one volume is a data hazard
+	// (two databases on one data directory), so it keeps the stop-then-create sequence
+	// that has always been proven for it.
+	var routeErr error
+	if h.shouldRoll(ctx, dc) {
+		routeErr = h.rollRoutable(ctx, dc, rootSpan)
+	} else {
+		routeErr = h.recreateRoutable(ctx, dc, rootSpan)
+	}
+	if routeErr != nil {
+		return routeErr
+	}
+
+	rootSpan.SetAttributes(
+		attribute.String("container.id", dc.routable.containerID),
+		attribute.String("deploy.commit_sha", dc.commitSHA),
+	)
+	rootSpan.SetStatus(codes.Ok, "deploy completed")
+
+	slog.Info("deploy completed",
+		"application_id", payload.ApplicationID,
+		"deployment_id", payload.DeploymentID,
+		"container", dc.routable.containerID,
+		"commit", dc.commitSHA,
+	)
+	return nil
+}
+
+// recreateRoutable is the stop-then-create sequence, kept for applications that must
+// not run two generations at once (persistent volumes). Stage 5..8 as they have always
+// been: this is the point of no return, so once cleanup has run a failure flags the
+// application errored.
+func (h *TaskHandler) recreateRoutable(ctx context.Context, dc *deployContext, rootSpan trace.Span) error {
+	payload := dc.payload
 	// Stage 5: the routable type -- the sequence proven on a real install, unchanged.
 	// This is the point of no return for the application: tearing down the previous
 	// container leaves nothing serving, so from here a failure flags the app errored.
@@ -327,18 +372,6 @@ func (h *TaskHandler) HandleDeployTask(ctx context.Context, t *asynq.Task) error
 		h.notifyDeployment(ctx, dc.deploymentID, status.DeploymentSuccess, "deploy", "")
 	}
 
-	rootSpan.SetAttributes(
-		attribute.String("container.id", dc.routable.containerID),
-		attribute.String("deploy.commit_sha", dc.commitSHA),
-	)
-	rootSpan.SetStatus(codes.Ok, "deploy completed")
-
-	slog.Info("deploy completed",
-		"application_id", payload.ApplicationID,
-		"deployment_id", payload.DeploymentID,
-		"container", dc.routable.containerID,
-		"commit", dc.commitSHA,
-	)
 	return nil
 }
 
@@ -429,8 +462,11 @@ func (h *TaskHandler) loadApplication(ctx context.Context, dc *deployContext) er
 		}
 	}
 	dc.routable = target(pt, routableRows[0], cpu, mem)
+	dc.routable.routable = true
 	for _, in := range routableRows[1:] {
-		dc.routableRest = append(dc.routableRest, target(pt, in, cpu, mem))
+		rt := target(pt, in, cpu, mem)
+		rt.routable = true
+		dc.routableRest = append(dc.routableRest, rt)
 	}
 
 	// Every other process type, from the same image. Resolved HERE, before anything
@@ -916,6 +952,13 @@ func (h *TaskHandler) createAndStart(ctx context.Context, dc *deployContext, t *
 		Env:        dc.env,
 		Ports:      map[string]string{},
 		Network:    naming.ProjectNetworkName(dc.appRow.ProjectSlug),
+		// The routable type answers to the application's stable slug whatever its
+		// container is called, so siblings addressing it by name (a documented
+		// contract) keep working across a roll. For a legacy container named exactly
+		// the slug the alias is a no-op. While two generations overlap they share it
+		// and DNS returns both: a sibling reaching either is correct, and the overlap
+		// lasts only until the old one is drained.
+		NetworkAliases: routableAliases(dc, t),
 		// application-id groups all of an app's logs; deployment-id further
 		// separates them into per-run sessions so the viewer can isolate one
 		// redeploy/rebuild/rollback from the next.
@@ -959,7 +1002,10 @@ func (h *TaskHandler) createAndStart(ctx context.Context, dc *deployContext, t *
 	// Stamp the generation BEFORE the container starts, so its first events already
 	// resolve against a row that knows which deployment it belongs to. Best-effort:
 	// the column is nullable and D1 changes nothing for an operator if it stays so.
-	if t.instanceID.Valid {
+	// Not while rolling: the row still describes the OLD container, and stamping it
+	// would make the stale-event guard drop the old container's events while it is
+	// still serving. Cutover writes the deployment together with the new name.
+	if t.instanceID.Valid && t.prevName == "" {
 		if err := h.Queries.SetInstanceDeployment(ctx, generated.SetInstanceDeploymentParams{
 			ID: t.instanceID, DeploymentID: dc.deploymentID,
 		}); err != nil {
@@ -1306,9 +1352,11 @@ func (h *TaskHandler) finalize(ctx context.Context, dc *deployContext) error {
 				continue
 			}
 			if _, err := q.UpdateInstanceContainer(ctx, generated.UpdateInstanceContainerParams{
-				ID:          t.instanceID,
-				ContainerID: pgtype.Text{String: t.containerID, Valid: t.containerID != ""},
-				Status:      status.ApplicationRunning,
+				ID:            t.instanceID,
+				ContainerName: t.containerName,
+				DeploymentID:  dc.deploymentID,
+				ContainerID:   pgtype.Text{String: t.containerID, Valid: t.containerID != ""},
+				Status:        status.ApplicationRunning,
 			}); err != nil {
 				return fmt.Errorf("record the container of process type %q: %w", t.typeName, err)
 			}
@@ -1367,12 +1415,15 @@ func (h *TaskHandler) runCompensators(dc *deployContext) {
 // the application as errored.
 //
 // It must not when the application is still serving: a build-only task never
-// touches the running container, and — now that the build runs before teardown
-// — a failure before cleanup leaves the previous container running the old
-// version. Once cleanup has run there is nothing serving, so a failure there is
-// a genuine error; so is a failure on an app that was not running to begin with
-// (a first-ever deploy, or one on a stopped app), which is how the failure
-// stays visible on the row rather than only on the deployment.
+// touches the running container, a failure before the routable type is replaced
+// leaves the previous container running the old version, and a ROLLING deploy
+// only ever fails with the old generation intact -- it never tears anything down
+// before the new one is healthy, so it never sets cleanedUp. cleanedUp is set only
+// by the stop-then-create sequence (apps with persistent volumes), where once
+// cleanup has run nothing is serving and a failure is a genuine error. A failure
+// on an app that was not running to begin with (a first-ever deploy, or one on a
+// stopped app) is also an error, which is how it stays visible on the row rather
+// than only on the deployment.
 func deployFailureErrorsApp(dc *deployContext) bool {
 	if dc.buildOnly {
 		return false

@@ -96,9 +96,12 @@ SET status = $2, updated_at = NOW()
 WHERE id = $1
 RETURNING *;
 
+-- The row always describes the CURRENT container, so a rolling deploy repoints it at
+-- cutover: name, id and deployment move together. A bare name is still data, never
+-- recomputed -- this writes the one the deploy actually created.
 -- name: UpdateInstanceContainer :one
 UPDATE application_instances
-SET container_id = $2, status = $3, updated_at = NOW()
+SET container_name = $2, container_id = $3, status = $4, deployment_id = $5, updated_at = NOW()
 WHERE id = $1
 RETURNING *;
 

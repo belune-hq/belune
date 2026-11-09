@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -181,6 +182,8 @@ func (f ptFixture) webTypeID(t *testing.T) string {
 	return pgUUID(pt.ID)
 }
 
+var workerName = regexp.MustCompile(`-worker-1-[0-9a-f]{8}$`)
+
 func TestProcessTypes_CreatingOneWritesItsInstanceWithAMintedName(t *testing.T) {
 	f := newPTFixture(t)
 	code, out := f.do(t, "POST", "", map[string]any{"name": "worker", "command": "bundle exec sidekiq"})
@@ -191,15 +194,16 @@ func TestProcessTypes_CreatingOneWritesItsInstanceWithAMintedName(t *testing.T) 
 	require.Len(t, insts, 2, "the backfilled web instance and the new one")
 	var found bool
 	for _, in := range insts {
-		if in.ContainerName == f.appSlug+"-worker-1" {
+		if workerName.MatchString(in.ContainerName) && strings.HasPrefix(in.ContainerName, f.appSlug+"-worker-1-") {
 			found = true
+			assert.False(t, in.DeploymentID.Valid, "no deployment has created this container yet, and the column stays nullable")
 			assert.EqualValues(t, 1, in.Idx)
 			assert.Equal(t, "pending", in.Status)
 		} else {
 			assert.Equal(t, f.appSlug, in.ContainerName, "the existing web instance is never renamed")
 		}
 	}
-	assert.True(t, found, "container name is {appSlug}-{type}-{idx}, with no deployment suffix")
+	assert.True(t, found, "a new name is {appSlug}-{type}-{idx}-{8 hex}")
 
 	// Nothing was deployed by the POST.
 	assert.Empty(t, env.Asynq.Tasks, "creating a type must not enqueue a deploy")
@@ -234,13 +238,14 @@ func TestProcessTypes_TheRoutableTypeCannotBeDeleted(t *testing.T) {
 func TestProcessTypes_DeletingAWorkerRemovesItsRowsAndItsContainer(t *testing.T) {
 	f := newPTFixture(t)
 	id := f.createWorker(t, "worker", nil)
+	stored := f.instances(t, id)[0].ContainerName
 	env.Runtime.StopCalls, env.Runtime.RemoveCalls = nil, nil
 
 	code, out := f.do(t, "DELETE", "/"+id, nil)
 	require.Equal(t, http.StatusOK, code, "%v", out)
 
-	assert.Contains(t, env.Runtime.StopCalls, f.appSlug+"-worker-1")
-	assert.Contains(t, env.Runtime.RemoveCalls, f.appSlug+"-worker-1", "removed now, not left to the 24h orphan sweep")
+	assert.Contains(t, env.Runtime.StopCalls, stored)
+	assert.Contains(t, env.Runtime.RemoveCalls, stored, "removed now, not left to the 24h orphan sweep")
 	assert.NotContains(t, env.Runtime.RemoveCalls, f.appSlug, "the web container is not touched")
 
 	insts, err := env.Queries.ListInstancesByApplication(context.Background(), f.appUUID)

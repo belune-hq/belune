@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -165,10 +167,35 @@ func optInt(v *int64) pgtype.Int8 {
 	return pgtype.Int8{Int64: *v, Valid: true}
 }
 
-// instanceName mints a container name: {appSlug}-{processType}-{idx}, with no
-// deployment suffix (that is for coexisting generations in a rolling deploy).
-func instanceName(appSlug, typeName string, idx int32) (string, error) {
-	n := fmt.Sprintf("%s-%s-%d", appSlug, typeName, idx)
+// newGeneration returns the 8-hex token that suffixes a freshly minted container name.
+//
+// It is random rather than a deployment id because the rows are minted here, in the
+// API, before any deployment exists (a new type) or for a scale-up that is not a
+// deploy; deployment_id on the row is written by the worker when the container is
+// created, and the name is an opaque handle (see package instances). Random also keeps
+// 3 -> 1 -> 3 from re-minting the name of a surplus container whose removal is still
+// in flight, which a "latest deployment" token would.
+func newGeneration() string {
+	var b [4]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		panic(fmt.Sprintf("crypto/rand: %v", err)) // never fails on supported platforms
+	}
+	return hex.EncodeToString(b[:])
+}
+
+// instanceName mints a container name: {appSlug}-{processType}-{idx}-{generation}.
+//
+// The suffix is a random token, NOT the deployment id that migration 000079's comment
+// describes: rows are minted outside any deploy (a new type, a scale-up), and a
+// deployment-derived token can collide with a container still inside its 30s stop
+// grace (3 -> 1 -> 3). Nothing may parse a container name, so it only has to be unique.
+//
+// ⛔ Only for NEW rows. A stored container_name is data and is never recomputed: the
+// install still has a routable container named after the pre-0.3.0 slug beside rows
+// minted later, and a name derived from parts would point at a container that does
+// not exist. The suffix lets two generations of one idx coexist during a roll.
+func instanceName(appSlug, typeName string, idx int32, generation string) (string, error) {
+	n := fmt.Sprintf("%s-%s-%d-%s", appSlug, typeName, idx, generation)
 	if len(n) > dockerNameLimit {
 		return "", invalid("the container name %q would be %d characters, over Docker's %d limit; use a shorter process type name or application name", n, len(n), dockerNameLimit)
 	}
@@ -268,8 +295,9 @@ func (s *ApplicationService) CreateProcessType(ctx context.Context, appID pgtype
 	}
 	// Checked for the highest idx: a longer idx makes the longer name.
 	names := make([]string, 0, replicas)
+	generation := newGeneration()
 	for idx := int32(1); idx <= replicas; idx++ {
-		n, err := instanceName(app.Slug, in.Name, idx)
+		n, err := instanceName(app.Slug, in.Name, idx, generation)
 		if err != nil {
 			return generated.ApplicationProcessType{}, nil, ScalePlan{}, err
 		}
@@ -409,11 +437,12 @@ func (s *ApplicationService) UpdateProcessType(ctx context.Context, appID, typeI
 			}
 			have[r.Idx] = true
 		}
+		generation := newGeneration()
 		for idx := int32(1); idx <= replicas; idx++ {
 			if have[idx] {
 				continue
 			}
-			name, err := instanceName(app.Slug, cur.Name, idx)
+			name, err := instanceName(app.Slug, cur.Name, idx, generation)
 			if err != nil {
 				return err
 			}

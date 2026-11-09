@@ -106,7 +106,9 @@ func TestReconcile_ThreeReplicasRouteToAllOfThemInIdxOrderAndTheSecondPassWrites
 	for _, idx := range []int32{3, 2} {
 		_, err := queries.CreateInstance(ctx, generated.CreateInstanceParams{
 			ApplicationID: app.ID, ProcessTypeID: web.ID, Idx: idx,
-			ContainerName: fmt.Sprintf("%s-web-%d", app.Slug, idx), Status: "pending",
+			// The shape D1 mints, beside idx 1's legacy bare slug: upstreams come from
+			// stored names, so this is what a roll will actually hand the reconciler.
+			ContainerName: fmt.Sprintf("%s-web-%d-0f9b521e", app.Slug, idx), Status: "pending",
 		})
 		require.NoError(t, err)
 	}
@@ -122,8 +124,8 @@ func TestReconcile_ThreeReplicasRouteToAllOfThemInIdxOrderAndTheSecondPassWrites
 	require.Len(t, routes, 1)
 	assert.Equal(t, []string{
 		"http://" + app.Slug + ":8080",
-		"http://" + app.Slug + "-web-2:8080",
-		"http://" + app.Slug + "-web-3:8080",
+		"http://" + app.Slug + "-web-2-0f9b521e:8080",
+		"http://" + app.Slug + "-web-3-0f9b521e:8080",
 	}, routes[0].Upstreams, "every routable instance, idx order, whatever the insert order")
 
 	require.NoError(t, r.ReconcileNow(ctx))

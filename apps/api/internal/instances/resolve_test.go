@@ -108,3 +108,29 @@ func TestResolveHealth_FourCases(t *testing.T) {
 	assert.Equal(t, "command", got.Type)
 	assert.Equal(t, instances.HealthSourceSet, got.Source, "non-routable, set: the type's own")
 }
+
+// D1: names minted from now on carry a suffix, but a stored name is data. The install
+// still runs a routable container called after the pre-0.3.0 slug beside rows minted
+// later; every resolver must hand back exactly what is stored.
+func TestResolvers_ReturnStoredNamesUnchangedWhateverTheirShape(t *testing.T) {
+	legacy := "my-app-pcr-calculator-5586176d"
+	minted := "my-app-pcr-calculator-5586176d-worker-1-0f9b521e"
+	web := inst(1, legacy, "running")
+	worker := inst(1, minted, "running")
+	q := fake{all: []generated.ApplicationInstance{web, worker}, routable: []generated.ApplicationInstance{web}}
+	ctx := context.Background()
+
+	one, err := instances.ResolveOne(ctx, q, pgtype.UUID{})
+	require.NoError(t, err)
+	assert.Equal(t, legacy, one.ContainerName)
+
+	all, err := instances.ResolveAll(ctx, q, pgtype.UUID{})
+	require.NoError(t, err)
+	require.Len(t, all, 2)
+	assert.Equal(t, legacy, all[0].ContainerName)
+	assert.Equal(t, minted, all[1].ContainerName)
+
+	names, err := instances.RoutableContainerNames(ctx, q, pgtype.UUID{})
+	require.NoError(t, err)
+	assert.Equal(t, []string{legacy}, names)
+}

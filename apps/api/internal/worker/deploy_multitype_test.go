@@ -132,6 +132,8 @@ func TestHandleDeployTask_DeploysEveryProcessTypeFromTheOneImage(t *testing.T) {
 	for _, in := range insts {
 		assert.Equal(t, "id-"+in.ContainerName, in.ContainerID.String, in.ContainerName)
 		assert.Equal(t, status.ApplicationRunning, in.Status, in.ContainerName)
+		// A roll tells generations apart by this; nothing wrote it before D1.
+		assert.Equal(t, dep.ID, in.DeploymentID, "%s records the deployment that created it", in.ContainerName)
 	}
 	appRow, err := testQueries.GetApplication(ctx, app.ID)
 	require.NoError(t, err)

@@ -112,6 +112,7 @@ const (
 	LabelApplicationID = "application-id"
 	LabelDatabaseID    = "database-id"
 	LabelProcessType   = "process-type"
+	LabelDeploymentID  = "deployment-id"
 	LabelInstanceIdx   = "instance-idx"
 )
 

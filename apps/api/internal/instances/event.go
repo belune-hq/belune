@@ -60,10 +60,26 @@ func ResolveForContainer(ctx context.Context, q EventQuerier, appID pgtype.UUID,
 	}
 	processType := ev.Labels[runtime.LabelProcessType]
 	if idx, convErr := strconv.Atoi(ev.Labels[runtime.LabelInstanceIdx]); processType != "" && convErr == nil {
+		// Both generations of a rolling deploy carry the SAME type and idx labels, so
+		// this key alone would hand a draining container's late 'die' to the live
+		// row. The deployment-id label tells them apart: a container from another
+		// deployment than the one the row records is not the row's container. Rows
+		// with no recorded deployment (NULL), and events with no label, are matched
+		// as before.
+		return resolveByLabels(ctx, q, appID, processType, int32(idx), ev.Labels[runtime.LabelDeploymentID])
+	}
+	return generated.ApplicationInstance{}, false, nil
+}
+
+func resolveByLabels(ctx context.Context, q EventQuerier, appID pgtype.UUID, processType string, idx int32, deploymentLabel string) (inst generated.ApplicationInstance, found bool, err error) {
+	{
 		inst, err = q.GetInstanceByProcessTypeAndIdx(ctx, generated.GetInstanceByProcessTypeAndIdxParams{
-			ApplicationID: appID, Name: processType, Idx: int32(idx),
+			ApplicationID: appID, Name: processType, Idx: idx,
 		})
 		if err == nil {
+			if inst.DeploymentID.Valid && deploymentLabel != "" && uuidString(inst.DeploymentID) != deploymentLabel {
+				return generated.ApplicationInstance{}, false, nil
+			}
 			return inst, true, nil
 		}
 		if !isNoRows(err) {

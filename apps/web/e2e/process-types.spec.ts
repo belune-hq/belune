@@ -74,13 +74,13 @@ test("the Processes tab shows the routable type, adds a worker, and offers no wa
   // its container, and NO remove control.
   const webRow = page.getByRole("listitem").filter({ hasText: "Routable" });
   await expect(webRow).toBeVisible();
-  // This application was created with no health check path, so the inherited http
-  // check probes nothing. The row must SAY so, visibly (a jsdom run cannot tell
-  // opacity 0 from shown), rather than read as a configured check.
-  const inert = webRow.getByTestId("health-inert");
-  await expect(inert).toContainText("no path set, so nothing is checked");
-  expect((await settled(inert)).height).toBeGreaterThan(10);
-  expect((await rendered(inert)).opacity).toBe(1);
+  // A new application has no health check and SAYS so (000081): "None", not an http
+  // probe with no path. The inert-http warning is for rows that predate the default,
+  // which the API no longer lets a person create, so it is covered by Vitest.
+  const health = webRow.getByText("None (the application's)");
+  await expect(health).toBeVisible();
+  expect((await settled(health)).height).toBeGreaterThan(10);
+  await expect(webRow.getByTestId("health-inert")).toHaveCount(0);
   await expect(webRow.getByText(app.slug, { exact: true })).toBeVisible();
   await expect(webRow.getByRole("button", { name: "Edit web" })).toBeVisible();
   await expect(webRow.getByRole("button", { name: /^Remove/ })).toHaveCount(0);

@@ -1,0 +1,23 @@
+-- New applications start with NO health check, and say so.
+--
+-- 000054 added health_check_type with DEFAULT 'http', and its comment explains why:
+-- every application that existed then already behaved as 'http' (an empty path under
+-- 'http' is simply skipped), so that default changed no existing behaviour. It was a
+-- compatibility default, chosen for the rows already in the table.
+--
+-- 0.3.2 gave that state a consequence. A rolling deploy is only safe because the new
+-- container passes its health gate before the old one is removed, and 'http' with no
+-- path IS no gate. The create handler never sets health_check_path and the create form
+-- never asks, so every new application was 'http' + NULL: labelled as a check, probing
+-- nothing. 'none' is the honest name for that, and it is already a legal value of the
+-- CHECK in 000054.
+--
+-- ⛔ Only the DEFAULT moves, for future inserts. Existing rows are deliberately NOT
+-- rewritten: an application that is 'http' with no path keeps that state, and with it
+-- the Processes tab warning ("no path set, so nothing is checked"), which is an active
+-- prompt to configure a check. Relabelling it 'none' would make it honest but mute.
+--
+-- ⛔ And the default is not a real check (not '/' or anything else): health_check_path
+-- feeds Caddy's active upstream probe with an expected 2xx, so an application whose
+-- root legitimately answers 302 or 401 would be ejected from its own route.
+ALTER TABLE applications ALTER COLUMN health_check_type SET DEFAULT 'none';

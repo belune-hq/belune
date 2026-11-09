@@ -274,3 +274,22 @@ func TestProcessTypes_AnotherApplicationsTypeIsNotFound(t *testing.T) {
 }
 
 func pgUUID(u pgtype.UUID) string { return u.String() }
+
+// A freshly created application checks nothing and says so: the column default is
+// 'none' (000081), not an http probe with no path.
+func TestProcessTypes_ANewApplicationStartsWithNoHealthCheckAndSaysSo(t *testing.T) {
+	f := newPTFixture(t)
+
+	app, err := env.Queries.GetApplication(context.Background(), f.appUUID)
+	require.NoError(t, err)
+	assert.Equal(t, "none", app.HealthCheckType)
+	assert.False(t, app.HealthCheckPath.Valid, "no path is guessed: a probe that expects 2xx would eject an app that redirects")
+
+	resp := env.DoRequest(t, "GET", f.path(""), nil, testutil.AuthHeader(f.token))
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	defer func() { _ = resp.Body.Close() }()
+	var list []map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&list))
+	require.Len(t, list, 1)
+	assert.Equal(t, map[string]any{"kind": "none", "source": "inherited", "inert": false}, list[0]["resolved_health"])
+}

@@ -141,13 +141,16 @@ export interface ProcessInstance {
   status: string;
 }
 
-// replicas and the per-type CPU/memory limits are deliberately absent: nothing
-// reads them in 0.3.0, so the API neither accepts nor returns them.
+// replicas and the per-type limits are returned (the UI to change them is separate).
+// cpu_limit / memory_limit are null when the type inherits the application's.
 export interface ProcessType {
   id: string;
   name: string;
   command: string;
   routable: boolean;
+  replicas: number;
+  cpu_limit: number | null;
+  memory_limit: number | null;
   // null = resolve by the rule (routable inherits the application's, else none).
   health_check_type: "http" | "command" | "none" | null;
   health_check_command: string | null;

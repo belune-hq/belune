@@ -33,6 +33,9 @@ const pt = (over: Partial<ProcessType>): ProcessType => ({
   name: "web",
   command: "",
   routable: false,
+  replicas: 1,
+  cpu_limit: null,
+  memory_limit: null,
   health_check_type: null,
   health_check_command: null,
   // What the server resolves for a type with nothing set: the routable one inherits

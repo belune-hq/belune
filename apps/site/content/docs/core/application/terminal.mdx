@@ -11,6 +11,8 @@ Open an interactive shell inside a running application container straight from t
 
 Pick a shell — **sh**, **bash**, **ash**, **zsh**, or **fish**, whichever the image actually has — and hit **Connect**. The session runs over a WebSocket into a real terminal rendered in the browser, resizing live as you resize the panel. 
 
+When the application has more than one [process type](/docs/core/application/process-types), a **Process type** selector appears beside the shell picker. It opens the shell in that type's container; without a choice you land in the routable one, as before. Two sessions into two containers of the same application can be open at once.
+
 If the connection drops, **Reconnect** starts a fresh session with the same shell choice.
 
 ## What You Can Do

@@ -4,6 +4,7 @@ import type { ProcessType } from "@/lib/types";
 
 const createMutate = vi.fn();
 const deleteMutate = vi.fn();
+const restartMutate = vi.fn();
 const toastWarning = vi.fn();
 let types: ProcessType[] = [];
 
@@ -15,6 +16,7 @@ vi.mock("@/lib/hooks/use-process-types", () => ({
   }),
   useUpdateProcessType: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useDeleteProcessType: () => ({ mutateAsync: deleteMutate, isPending: false }),
+  useRestartInstance: () => ({ mutateAsync: restartMutate, isPending: false }),
 }));
 vi.mock("sonner", () => ({
   toast: {
@@ -33,6 +35,11 @@ const pt = (over: Partial<ProcessType>): ProcessType => ({
   routable: false,
   health_check_type: null,
   health_check_command: null,
+  // What the server resolves for a type with nothing set: the routable one inherits
+  // http, a worker gets none. The component renders this; it does not recompute it.
+  resolved_health: over.routable
+    ? { kind: "http", source: "inherited" }
+    : { kind: "none", source: "default" },
   instances: [],
   created_at: "",
   updated_at: "",
@@ -40,13 +47,7 @@ const pt = (over: Partial<ProcessType>): ProcessType => ({
 });
 
 const renderIt = () =>
-  render(
-    <ProcessTypesSection
-      projectId="p"
-      applicationId="a"
-      appHealthType="http"
-    />,
-  );
+  render(<ProcessTypesSection projectId="p" applicationId="a" />);
 
 /**
  * Rendered text and the accessible tree only — jsdom has no layout engine, so
@@ -186,5 +187,70 @@ describe("ProcessTypesSection", () => {
       ),
     );
     expect(deleteMutate).toHaveBeenCalledWith("k");
+  });
+
+  // The component renders what the SERVER resolved; it does not recompute the rule.
+  // A deliberately inconsistent fixture proves it: this "worker" is non-routable with
+  // no type of its own, which the old client copy would have shown as "None (default)".
+  it("renders the health check from the API, not from a local copy of the rule", () => {
+    types = [
+      pt({
+        id: "k",
+        name: "worker",
+        resolved_health: { kind: "command", source: "set" },
+        health_check_command: "pgrep worker",
+      }),
+    ];
+    renderIt();
+    expect(screen.getByText("Command: pgrep worker")).toBeTruthy();
+    expect(screen.queryByText("None (default)")).toBeNull();
+  });
+
+  it("restarts exactly the instance whose control was used", async () => {
+    restartMutate.mockResolvedValue({ status: "restarted" });
+    types = [
+      pt({
+        id: "w",
+        name: "web",
+        routable: true,
+        instances: [
+          {
+            id: "i-web",
+            idx: 1,
+            container_name: "app",
+            container_id: "c1",
+            status: "running",
+          },
+        ],
+      }),
+      pt({
+        id: "k",
+        name: "worker",
+        instances: [
+          {
+            id: "i-worker",
+            idx: 1,
+            container_name: "app-worker-1",
+            container_id: "c2",
+            status: "running",
+          },
+        ],
+      }),
+    ];
+    renderIt();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Restart app-worker-1" }),
+    );
+    await waitFor(() => expect(restartMutate).toHaveBeenCalledTimes(1));
+    expect(restartMutate).toHaveBeenCalledWith("i-worker");
+  });
+
+  it("offers no restart for an instance that has no container yet", () => {
+    renderIt();
+    // The fixture's worker is 'pending' with container_id null: nothing to restart.
+    const btn = screen.getByRole("button", {
+      name: "Restart proj-app-1234abcd-worker-1",
+    }) as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
   });
 });

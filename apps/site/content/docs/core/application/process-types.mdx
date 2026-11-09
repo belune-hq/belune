@@ -62,6 +62,16 @@ Lines collected before you upgraded to a release with this feature have no recor
 
 The live stream endpoint takes the same choice: `GET /api/projects/{projectId}/applications/{applicationId}/logs?process_type=queue` follows that type's container. Without the parameter it follows the routable type, as it always has.
 
+## Restarting One Container
+
+Each container on the **Processes** tab has its own **Restart** control. It stops and starts that one container and leaves the application's other containers alone. The application-level Start, Stop and Restart still act on every container.
+
+A container that ignores its stop signal is killed after a 30-second grace period, so a restart can take longer than a request normally lasts. Either way it is started again afterwards. When it does, Belune tells you the restart is **in progress** and finishes it in the background.
+
+The Processes tab updates after an action you take. If a worker crashes on its own, the tab shows that on its next refresh rather than instantly.
+
+A container that was added since the last deploy has nothing to restart yet, so its control is disabled until the next deploy creates it. If a container has been removed, Restart tells you to redeploy.
+
 ## Health Checks
 
 A worker listens on nothing, so a type that is **not routable never gets an HTTP health check**. Its health check is:

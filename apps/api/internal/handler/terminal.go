@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -22,6 +23,7 @@ import (
 	"github.com/belune-hq/belune/internal/pkg/tracing"
 	"github.com/belune-hq/belune/internal/runtime"
 	"github.com/belune-hq/belune/internal/server/middleware"
+	"github.com/belune-hq/belune/internal/store/generated"
 	"github.com/belune-hq/belune/internal/terminal"
 )
 
@@ -80,7 +82,20 @@ func (h *Handler) CreateTerminalSession(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusNotFound, "application not found")
 		return
 	}
-	inst, err := instances.ResolveOne(r.Context(), h.queries, applicationUUID)
+	// ?process_type=<name> opens the shell in that type's container; absent keeps
+	// the routable one. Sessions are keyed on a generated id and capped per USER,
+	// so two terminals into two containers of one application are independent.
+	processType := r.URL.Query().Get("process_type")
+	var inst generated.ApplicationInstance
+	if processType != "" {
+		inst, err = instances.ResolveType(r.Context(), h.queries, applicationUUID, processType)
+		if errors.Is(err, instances.ErrNoSuchProcessType) {
+			writeError(w, http.StatusNotFound, "no such process type")
+			return
+		}
+	} else {
+		inst, err = instances.ResolveOne(r.Context(), h.queries, applicationUUID)
+	}
 	if err != nil {
 		writeServerError(w, r, "application has no container instance", err)
 		return
@@ -114,8 +129,9 @@ func (h *Handler) CreateTerminalSession(w http.ResponseWriter, r *http.Request) 
 	)
 
 	h.audit(r, "terminal.session.started", "application", applicationID, map[string]any{
-		"shell":      shell,
-		"session_id": s.ID,
+		"shell":        shell,
+		"session_id":   s.ID,
+		"process_type": processType,
 	})
 
 	writeJSON(w, http.StatusCreated, map[string]string{"session_id": s.ID})

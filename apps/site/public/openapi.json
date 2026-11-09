@@ -7932,6 +7932,96 @@
         ]
       }
     },
+    "/api/projects/{projectId}/applications/{applicationId}/instances/{instanceId}/restart": {
+      "post": {
+        "operationId": "RestartInstance",
+        "summary": "Restart Instance",
+        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
+        "tags": [
+          "Application Process Types"
+        ],
+        "x-belune-order": 5,
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "instanceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "deploy": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/projects/{projectId}/applications/{applicationId}/logs": {
       "get": {
         "operationId": "StreamLogs",
@@ -9901,6 +9991,14 @@
             "required": true,
             "schema": {
               "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "process_type",
+            "in": "query",
+            "required": false,
+            "schema": {
               "type": "string"
             }
           }
@@ -20735,6 +20833,9 @@
           "name": {
             "type": "string"
           },
+          "resolved_health": {
+            "$ref": "#/components/schemas/resolvedHealthResponse"
+          },
           "routable": {
             "type": "boolean"
           },
@@ -21045,6 +21146,17 @@
             "type": "string"
           },
           "password": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "resolvedHealthResponse": {
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "source": {
             "type": "string"
           }
         },

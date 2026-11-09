@@ -4,6 +4,7 @@ import {
   BoxesIcon,
   InfoIcon,
   PencilIcon,
+  RotateCwIcon,
   PlusIcon,
   Trash2Icon,
 } from "lucide-react";
@@ -31,23 +32,17 @@ import {
 import {
   useDeleteProcessType,
   useProcessTypes,
+  useRestartInstance,
 } from "@/lib/hooks/use-process-types";
-import { resolveHealth, type HealthKind } from "@/lib/utils/process-types";
-import type { ProcessType } from "@/lib/types";
+import type { ProcessInstance, ProcessType } from "@/lib/types";
 import { ProcessTypeForm } from "./process-type-form";
 
 interface Props {
   projectId: string;
   applicationId: string;
-  // The application's own check, which only the routable type can inherit.
-  appHealthType: HealthKind;
 }
 
-export function ProcessTypesSection({
-  projectId,
-  applicationId,
-  appHealthType,
-}: Props) {
+export function ProcessTypesSection({ projectId, applicationId }: Props) {
   const { data: types, isLoading } = useProcessTypes(projectId, applicationId);
   const del = useDeleteProcessType(projectId, applicationId);
   const [formOpen, setFormOpen] = useState(false);
@@ -125,7 +120,8 @@ export function ProcessTypesSection({
               <TypeRow
                 key={pt.id}
                 pt={pt}
-                appHealthType={appHealthType}
+                projectId={projectId}
+                applicationId={applicationId}
                 onEdit={() => {
                   setEditing(pt);
                   setFormOpen(true);
@@ -172,8 +168,8 @@ export function ProcessTypesSection({
   );
 }
 
-function healthText(pt: ProcessType, appHealthType: HealthKind): string {
-  const h = resolveHealth(pt, appHealthType);
+function healthText(pt: ProcessType): string {
+  const h = pt.resolved_health;
   const label = { http: "HTTP probe", command: "Command", none: "None" }[
     h.kind
   ];
@@ -187,12 +183,14 @@ function healthText(pt: ProcessType, appHealthType: HealthKind): string {
 
 function TypeRow({
   pt,
-  appHealthType,
+  projectId,
+  applicationId,
   onEdit,
   onRemove,
 }: {
   pt: ProcessType;
-  appHealthType: HealthKind;
+  projectId: string;
+  applicationId: string;
   onEdit: () => void;
   onRemove: () => void;
 }) {
@@ -233,22 +231,19 @@ function TypeRow({
           )}
         </dd>
         <dt>Health check</dt>
-        <dd className="min-w-0 truncate">{healthText(pt, appHealthType)}</dd>
+        <dd className="min-w-0 truncate">{healthText(pt)}</dd>
         <dt>Container</dt>
         <dd className="space-y-1">
           {pt.instances.length === 0 ? (
             <span>No instance</span>
           ) : (
             pt.instances.map((inst) => (
-              <div
+              <InstanceRow
                 key={inst.id}
-                className="flex min-w-0 flex-wrap items-center gap-2"
-              >
-                <span className="text-text-faint min-w-0 truncate font-mono text-xs">
-                  {inst.container_name}
-                </span>
-                <StatusPill status={inst.status} />
-              </div>
+                inst={inst}
+                projectId={projectId}
+                applicationId={applicationId}
+              />
             ))
           )}
         </dd>
@@ -260,5 +255,45 @@ function TypeRow({
         </p>
       )}
     </li>
+  );
+}
+
+function InstanceRow({
+  inst,
+  projectId,
+  applicationId,
+}: {
+  inst: ProcessInstance;
+  projectId: string;
+  applicationId: string;
+}) {
+  const restart = useRestartInstance(projectId, applicationId);
+  // No container yet (a type added since the last deploy): nothing to restart.
+  const hasContainer = inst.container_id !== null;
+
+  const submit = () =>
+    toast.promise(restart.mutateAsync(inst.id), {
+      loading: `Restarting ${inst.container_name}…`,
+      success: (res) =>
+        res.status === "restarting"
+          ? "Restart in progress — it is taking a while to stop"
+          : "Container restarted",
+      error: (err) => err.message,
+    });
+
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <span className="text-text-faint min-w-0 truncate font-mono text-xs">
+        {inst.container_name}
+      </span>
+      <StatusPill status={inst.status} />
+      <IconAction
+        label={`Restart ${inst.container_name}`}
+        onClick={submit}
+        disabled={!hasContainer || restart.isPending}
+      >
+        <RotateCwIcon aria-hidden="true" className="size-4" />
+      </IconAction>
+    </div>
   );
 }

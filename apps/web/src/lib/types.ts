@@ -151,6 +151,14 @@ export interface ProcessType {
   // null = resolve by the rule (routable inherits the application's, else none).
   health_check_type: "http" | "command" | "none" | null;
   health_check_command: string | null;
+  // What the type ACTUALLY runs with, resolved by the server's one rule. Render
+  // this; do not recompute it here.
+  resolved_health: {
+    kind: "http" | "command" | "none";
+    // "set" = the type chose it; "inherited" = the application's; "default" =
+    // the fallback for a non-routable type.
+    source: "set" | "inherited" | "default";
+  };
   instances: ProcessInstance[];
   created_at: string;
   updated_at: string;

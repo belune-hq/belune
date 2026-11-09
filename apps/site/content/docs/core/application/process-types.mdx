@@ -76,11 +76,12 @@ A container that was added since the last deploy has nothing to restart yet, so 
 
 A type's **replicas** is how many containers it runs, from 0 to 20. Each replica is its own container, named `<application>-<type>-<number>`.
 
-- **Scaling down** acts immediately. The surplus containers are stopped, given up to 30 seconds to finish what they are doing, and then removed. Replica 1 is never touched.
+- **Scaling down** acts immediately. For the routable type the proxy stops sending traffic to the removed replicas first; then the surplus containers are stopped, given up to 30 seconds to finish what they are doing, and then removed. Replica 1 is never touched.
 - **Scaling up** creates the new containers right away from the image of the last successful deploy. If the application has never deployed, the new replicas appear on the next deploy, as a new type does.
 - **0 pauses a worker** without deleting its configuration. A paused type is skipped by deploys instead of failing them.
 - **The routable type cannot be scaled to 0.** Every domain routes to it, and with no container the proxy would have nothing to send traffic to.
 - **Routable replicas share the traffic.** The proxy sends requests to every replica of the routable type, and stops sending to one that fails its health check.
+- **Set a health check before scaling the routable type above 1.** The proxy can only stop sending traffic to a replica that fails an HTTP health check, which needs a health check path on the application. Without one, a crashed replica stays in the pool and a share of requests fail quietly.
 - **Applications with volumes run one replica.** Volumes are mounted into every process type, so a second container of any type would write the same volume. Remove the volumes or keep replicas at 1.
 
 A deploy replaces every replica of every type. Replicas are not rolled one at a time yet, so a deploy still briefly takes the routable type down.

@@ -159,3 +159,36 @@ func TestScale_LimitsAreSetKeptAndCleared(t *testing.T) {
 	code, _ = f.do(t, "PUT", "/"+id, map[string]any{"memory_limit": 1024})
 	assert.Equal(t, http.StatusBadRequest, code, "below Docker's floor")
 }
+
+// ⛔ Scaling the ROUTABLE type down must take the removed replicas out of Caddy BEFORE
+// their containers go. An "it was called" check would pass with the calls reversed,
+// which is the whole bug, so both calls append to one list and the ORDER is asserted.
+func TestScale_DownOnTheRoutableTypeReconcilesBeforeTheRemovalIsQueued(t *testing.T) {
+	f := newPTFixture(t)
+	web := f.webTypeID(t)
+	code, out := f.do(t, "PUT", "/"+web, map[string]any{"replicas": 3})
+	require.Equal(t, http.StatusOK, code, "%v", out)
+
+	var order []string
+	env.Reconciler.OnCall = func(s string) { order = append(order, s) }
+	env.Asynq.OnCall = func(s string) { order = append(order, s) }
+	t.Cleanup(func() { env.Reconciler.OnCall, env.Asynq.OnCall = nil, nil })
+
+	code, out = f.do(t, "PUT", "/"+web, map[string]any{"replicas": 1})
+	require.Equal(t, http.StatusOK, code, "%v", out)
+	assert.Equal(t, []string{"reconcile", "enqueue:" + worker.TypeScaleProcessType}, order,
+		"the proxy is updated first; only then are the containers queued for removal")
+}
+
+// A worker has no routes: scaling it down does not spend a reconcile pass.
+func TestScale_DownOnAWorkerDoesNotReconcile(t *testing.T) {
+	f := newPTFixture(t)
+	id := f.createWorker(t, "worker", map[string]any{"replicas": 3})
+	var order []string
+	env.Reconciler.OnCall = func(s string) { order = append(order, s) }
+	t.Cleanup(func() { env.Reconciler.OnCall = nil })
+
+	code, _ := f.do(t, "PUT", "/"+id, map[string]any{"replicas": 1})
+	require.Equal(t, http.StatusOK, code)
+	assert.NotContains(t, order, "reconcile")
+}

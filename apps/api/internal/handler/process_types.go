@@ -259,6 +259,17 @@ func (h *Handler) UpdateProcessType(w http.ResponseWriter, r *http.Request) {
 		"name":           pt.Name,
 		"replicas":       pt.Replicas,
 	})
+	// ⛔ Order matters: take the removed replicas out of Caddy's upstream list BEFORE
+	// their containers are stopped. The rows are already gone, so a reconcile now
+	// builds the shorter list; without it Caddy keeps sending requests to containers
+	// that no longer exist until the next periodic pass (up to 30s), and its active
+	// health check only exists when the application configures a path and runs every
+	// 30s. A worker has no routes, so the pass would be wasted on a non-routable type.
+	if pt.Routable && len(plan.RemoveContainers) > 0 && h.reconciler != nil {
+		if err := h.reconciler.ReconcileNow(r.Context()); err != nil {
+			slog.Warn("scale down: could not update the proxy before removing containers", "application_id", uuidToString(appUUID), "error", err)
+		}
+	}
 	h.enqueueScale(plan)
 	writeJSON(w, http.StatusOK, toProcessTypeResponse(app, pt, insts))
 }

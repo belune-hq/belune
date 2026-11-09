@@ -454,10 +454,13 @@ func (m *MockProxyManager) ListRoutes(_ context.Context) ([]proxy.RouteConfig, e
 type MockReconciler struct {
 	mu                sync.Mutex
 	ReconcileNowCalls int
-	Status_           proxy.ReconcilerStatus
-	ReconcileErr      error
-	WAF_              proxy.WAFState
-	CrowdSec_         proxy.CrowdSecState
+	// OnCall, when set, is told "reconcile" on every ReconcileNow, so a test can record
+	// the order of calls across mocks.
+	OnCall       func(string)
+	Status_      proxy.ReconcilerStatus
+	ReconcileErr error
+	WAF_         proxy.WAFState
+	CrowdSec_    proxy.CrowdSecState
 }
 
 func (m *MockReconciler) WAF() proxy.WAFState {
@@ -482,6 +485,9 @@ func (m *MockReconciler) ReconcileNow(_ context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.ReconcileNowCalls++
+	if m.OnCall != nil {
+		m.OnCall("reconcile")
+	}
 	return m.ReconcileErr
 }
 
@@ -634,6 +640,8 @@ type MockTaskEnqueuer struct {
 	Tasks       []EnqueuedTask
 	EnqueueErr  error // when set, Enqueue returns this error
 	EnqueueOnce bool  // when true, EnqueueErr is cleared after first use
+	// OnCall, when set, is told "enqueue:<type>" on every successful Enqueue.
+	OnCall func(string)
 }
 
 func (m *MockTaskEnqueuer) Enqueue(task *asynq.Task, opts ...asynq.Option) (*asynq.TaskInfo, error) {
@@ -648,6 +656,9 @@ func (m *MockTaskEnqueuer) Enqueue(task *asynq.Task, opts ...asynq.Option) (*asy
 		return nil, err
 	}
 
+	if m.OnCall != nil {
+		m.OnCall("enqueue:" + task.Type())
+	}
 	et := EnqueuedTask{
 		TypeName: task.Type(),
 		Payload:  task.Payload(),

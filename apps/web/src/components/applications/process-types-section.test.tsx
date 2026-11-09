@@ -5,8 +5,11 @@ import type { ProcessType } from "@/lib/types";
 const createMutate = vi.fn();
 const deleteMutate = vi.fn();
 const restartMutate = vi.fn();
+const updateMutate = vi.fn();
 const toastWarning = vi.fn();
 let types: ProcessType[] = [];
+let volumes: unknown[] = [];
+let appLimits = { cpu_limit: 0, memory_limit: 0 };
 
 vi.mock("@/lib/hooks/use-process-types", () => ({
   useProcessTypes: () => ({ data: types, isLoading: false }),
@@ -14,9 +17,15 @@ vi.mock("@/lib/hooks/use-process-types", () => ({
     mutateAsync: createMutate,
     isPending: false,
   }),
-  useUpdateProcessType: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUpdateProcessType: () => ({ mutateAsync: updateMutate, isPending: false }),
   useDeleteProcessType: () => ({ mutateAsync: deleteMutate, isPending: false }),
   useRestartInstance: () => ({ mutateAsync: restartMutate, isPending: false }),
+}));
+vi.mock("@/lib/hooks/use-volumes", () => ({
+  useVolumes: () => ({ data: volumes }),
+}));
+vi.mock("@/lib/hooks/use-applications", () => ({
+  useApplication: () => ({ data: appLimits }),
 }));
 vi.mock("sonner", () => ({
   toast: {
@@ -58,6 +67,8 @@ const renderIt = () =>
  */
 describe("ProcessTypesSection", () => {
   beforeEach(() => {
+    volumes = [];
+    appLimits = { cpu_limit: 0, memory_limit: 0 };
     createMutate.mockReset().mockResolvedValue({});
     deleteMutate.mockReset().mockResolvedValue({ status: "deleted" });
     toastWarning.mockReset();
@@ -121,12 +132,12 @@ describe("ProcessTypesSection", () => {
     expect(screen.getByText(/immediately/i)).toBeTruthy();
   });
 
-  it("never offers replicas or resource limits", () => {
+  it("offers replicas and per-type limits when adding a type", async () => {
     renderIt();
     fireEvent.click(screen.getByRole("button", { name: /Add Process Type/ }));
-    expect(screen.queryByText(/replicas/i)).toBeNull();
-    expect(screen.queryByText(/cpu/i)).toBeNull();
-    expect(screen.queryByText(/memory/i)).toBeNull();
+    expect(await screen.findByLabelText("Replicas")).toBeTruthy();
+    expect(screen.getByLabelText("CPU (cores)")).toBeTruthy();
+    expect(screen.getByLabelText("Memory (MB)")).toBeTruthy();
   });
 
   it("does not submit an invalid name, and does not flag it while typing", async () => {
@@ -255,5 +266,73 @@ describe("ProcessTypesSection", () => {
       name: "Restart proj-app-1234abcd-worker-1",
     }) as HTMLButtonElement;
     expect(btn.disabled).toBe(true);
+  });
+
+  // The routable type cannot be paused. The operator is told in their own terms
+  // before the round trip; the server refuses the same thing and stays the authority.
+  it("refuses 0 replicas on the web process, and offers a pause on a worker", async () => {
+    renderIt();
+    fireEvent.click(screen.getByRole("button", { name: "Edit web" }));
+    const replicas = await screen.findByLabelText("Replicas");
+    fireEvent.change(replicas, { target: { value: "0" } });
+    fireEvent.blur(replicas);
+    await waitFor(() =>
+      expect(screen.getByText(/cannot be paused/i)).toBeTruthy(),
+    );
+  });
+
+  it("labels 0 as a pause on a worker", async () => {
+    renderIt();
+    fireEvent.click(screen.getByRole("button", { name: "Edit worker" }));
+    fireEvent.change(await screen.findByLabelText("Replicas"), {
+      target: { value: "0" },
+    });
+    await waitFor(() => expect(screen.getByText(/Paused\./)).toBeTruthy());
+  });
+
+  it("refuses more than one replica of any type when the application has a volume", async () => {
+    volumes = [{ id: "v" }];
+    renderIt();
+    fireEvent.click(screen.getByRole("button", { name: "Edit worker" }));
+    const replicas = await screen.findByLabelText("Replicas");
+    fireEvent.change(replicas, { target: { value: "2" } });
+    fireEvent.blur(replicas);
+    await waitFor(() =>
+      expect(screen.getByText(/persistent volumes/i)).toBeTruthy(),
+    );
+  });
+
+  // A blank limit is not "zero": it inherits the application's, and says so.
+  it("shows what an empty limit inherits instead of a bare blank", async () => {
+    appLimits = { cpu_limit: 2, memory_limit: 512 * 1024 * 1024 };
+    renderIt();
+    fireEvent.click(screen.getByRole("button", { name: "Edit worker" }));
+    expect(
+      await screen.findByPlaceholderText("Inherit — 2 cores"),
+    ).toBeTruthy();
+    expect(screen.getByPlaceholderText("Inherit — 512 MB")).toBeTruthy();
+  });
+
+  it("sends replicas and clears blank limits when saving", async () => {
+    updateMutate.mockResolvedValue({});
+    renderIt();
+    fireEvent.click(screen.getByRole("button", { name: "Edit worker" }));
+    fireEvent.change(await screen.findByLabelText("Replicas"), {
+      target: { value: "3" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(updateMutate).toHaveBeenCalledTimes(1));
+    expect(updateMutate.mock.calls[0][0].data).toMatchObject({
+      replicas: 3,
+      cpu_limit: 0,
+      memory_limit: 0,
+    });
+  });
+
+  it("shows a paused type as paused, with no containers", () => {
+    types = [pt({ id: "k", name: "worker", replicas: 0, instances: [] })];
+    renderIt();
+    expect(screen.getByText("0 — paused")).toBeTruthy();
+    expect(screen.getByText("Paused — no containers")).toBeTruthy();
   });
 });

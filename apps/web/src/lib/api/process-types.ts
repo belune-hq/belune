@@ -15,6 +15,10 @@ export interface CreateProcessType {
   // "" = resolve by the rule.
   health_check_type?: string;
   health_check_command?: string;
+  // Omitted = 1. Limits omitted = inherit the application's.
+  replicas?: number;
+  cpu_limit?: number;
+  memory_limit?: number;
 }
 
 export function createProcessType(
@@ -31,6 +35,10 @@ export interface UpdateProcessType {
   command?: string;
   health_check_type?: string;
   health_check_command?: string;
+  // Omitted keeps the stored value. For the limits, 0 clears back to inheriting.
+  replicas?: number;
+  cpu_limit?: number;
+  memory_limit?: number;
 }
 
 export function updateProcessType(

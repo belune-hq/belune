@@ -168,6 +168,18 @@ export function ProcessTypesSection({ projectId, applicationId }: Props) {
   );
 }
 
+// What the type is limited to. A NULL limit is "inherit the application's", said
+// outright: a blank would read as unset-and-therefore-unlimited.
+function limitsText(pt: ProcessType): string {
+  const cpu =
+    pt.cpu_limit != null ? `CPU ${pt.cpu_limit} cores` : "CPU inherited";
+  const mem =
+    pt.memory_limit != null
+      ? `Memory ${Math.round(pt.memory_limit / (1024 * 1024))} MB`
+      : "Memory inherited";
+  return `${cpu} · ${mem}`;
+}
+
 function healthText(pt: ProcessType): string {
   const h = pt.resolved_health;
   const label = { http: "HTTP probe", command: "Command", none: "None" }[
@@ -230,12 +242,24 @@ function TypeRow({
             <span className="font-sans text-sm">the image&apos;s own</span>
           )}
         </dd>
+        <dt>Replicas</dt>
+        <dd>
+          {pt.replicas === 0 ? (
+            <span className="text-foreground font-medium">0 — paused</span>
+          ) : (
+            pt.replicas
+          )}
+        </dd>
+        <dt>Resources</dt>
+        <dd className="min-w-0 truncate">{limitsText(pt)}</dd>
         <dt>Health check</dt>
         <dd className="min-w-0 truncate">{healthText(pt)}</dd>
         <dt>Container</dt>
         <dd className="space-y-1">
           {pt.instances.length === 0 ? (
-            <span>No instance</span>
+            <span>
+              {pt.replicas === 0 ? "Paused — no containers" : "No instance"}
+            </span>
           ) : (
             pt.instances.map((inst) => (
               <InstanceRow

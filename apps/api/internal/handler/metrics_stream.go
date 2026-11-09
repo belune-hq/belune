@@ -64,7 +64,7 @@ func (h *Handler) StreamHostMetrics(w http.ResponseWriter, r *http.Request) {
 }
 
 // StreamApplicationMetrics streams live container metrics for a single application via SSE.
-// Queries Docker stats API on-demand every 2 seconds — no database storage.
+// Queries Docker stats API on-demand every instances.MetricsInterval — no database storage.
 // GET /api/projects/{projectId}/applications/{applicationId}/metrics/stream
 //
 //apidoc:tag applications/metrics-logs
@@ -83,23 +83,22 @@ func (h *Handler) StreamApplicationMetrics(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Look up container name from application record
 	appRow, err := h.queries.GetApplicationWithProjectSlug(r.Context(), appUUID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "application not found")
 		return
 	}
-	// Resolved once, here, and not per tick, for the same reason as the runtime
-	// below.
-	inst, err := instances.ResolveOne(r.Context(), h.queries, appUUID)
-	if err != nil {
+	if rows, err := h.queries.ListInstancesWithProcessTypeByApplication(r.Context(), appUUID); err != nil || len(rows) == 0 {
 		writeServerError(w, r, "application has no container instance", err)
 		return
 	}
-	containerName := inst.ContainerName
 
-	// Resolved once for the life of the stream: placement does not change under
-	// a live connection, and re-resolving every tick would be a query per tick.
+	// The RUNTIME is resolved once for the life of the stream: which host an
+	// application is placed on does not change under a live connection. The
+	// INSTANCES are not -- someone can scale the application while this page is open,
+	// and a list resolved at connect would report one container for ever -- so they are
+	// re-read every tick below. One indexed query per tick, next to the status re-read
+	// that was already there; a change signal would be more machinery than a 4s query.
 	rt, err := h.runtimes.For(r.Context(), appRow.ServerID)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "failed to reach the application's server")
@@ -118,7 +117,7 @@ func (h *Handler) StreamApplicationMetrics(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	ticker := time.NewTicker(2 * time.Second)
+	ticker := time.NewTicker(instances.MetricsInterval)
 	defer ticker.Stop()
 	heartbeat := time.NewTicker(30 * time.Second)
 	defer heartbeat.Stop()
@@ -142,19 +141,19 @@ func (h *Handler) StreamApplicationMetrics(w http.ResponseWriter, r *http.Reques
 				continue
 			}
 
-			stats, err := rt.ContainerStats(ctx, containerName)
+			rows, err := h.queries.ListInstancesWithProcessTypeByApplication(ctx, appUUID)
 			if err != nil {
-				slog.Debug("failed to collect container stats for stream", "container", containerName, "error", err)
+				slog.Debug("failed to list instances for stream", "application_id", applicationID, "error", err)
 				continue
 			}
-
-			point := appMetricPoint{
-				CPUPercent:     &stats.CPUPercent,
-				MemoryUsage:    &stats.MemoryUsage,
-				MemoryLimit:    &stats.MemoryLimit,
-				NetworkRxBytes: &stats.NetworkRxBytes,
-				NetworkTxBytes: &stats.NetworkTxBytes,
-				RecordedAt:     time.Now().Format(time.RFC3339),
+			live := instances.LiveInstances(rows)
+			names := make([]string, 0, len(live))
+			for _, l := range live {
+				names = append(names, l.ContainerName)
+			}
+			point, ok := instances.BuildPoint(live, instances.FetchStats(ctx, rt, names), time.Now())
+			if !ok {
+				continue
 			}
 			data, _ := json.Marshal(point)
 			if err := writer.SendData(string(data)); err != nil {

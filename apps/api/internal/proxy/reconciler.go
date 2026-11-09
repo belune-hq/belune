@@ -714,7 +714,7 @@ func (r *Reconciler) buildExpected(ctx context.Context) (configs, held []RouteCo
 		// it is still serving.
 		network := naming.ProjectNetworkName(row.ProjectSlug)
 
-		inst, err := instances.ResolveOne(ctx, r.queries, app.ID)
+		containerNames, err := instances.RoutableContainerNames(ctx, r.queries, app.ID)
 		if err != nil {
 			slog.Error("proxy reconciler: could not resolve a running application's container; leaving its routes untouched",
 				"application_id", app.ID, "domains", len(domains), "error", err)
@@ -726,7 +726,7 @@ func (r *Reconciler) buildExpected(ctx context.Context) (configs, held []RouteCo
 		}
 
 		for _, domain := range domains {
-			cfg, err := BuildRouteConfigFromDB(ctx, r.queries, r.dec, domain, []string{inst.ContainerName}, app.HealthCheckPath.String)
+			cfg, err := BuildRouteConfigFromDB(ctx, r.queries, r.dec, domain, containerNames, app.HealthCheckPath.String)
 			if err != nil {
 				slog.Error("proxy reconciler: could not build a route; leaving it untouched",
 					"hostname", domain.Hostname, "path", domain.Path, "error", err)

@@ -53,12 +53,46 @@ type deployTarget struct {
 	instanceIdx   int32
 	containerName string // read from the instance row, never minted
 	containerID   string // set once the container is created
+	// cpuLimit and memoryLimit are what the container is created with: the process
+	// type's own when set, otherwise the application's (NULL on the type means
+	// inherit). 0 is unlimited, as on the application.
+	cpuLimit    float64
+	memoryLimit int64
 }
 
-// all returns every target, workers first and the routable one last: the order
+// limitsFor resolves a type's effective CPU and memory limits.
+func limitsFor(app generated.Application, pt generated.ApplicationProcessType) (cpu float64, memory int64) {
+	cpu, memory = app.CpuLimit, app.MemoryLimit
+	if pt.CpuLimit.Valid {
+		cpu = pt.CpuLimit.Float64
+	}
+	if pt.MemoryLimit.Valid {
+		memory = pt.MemoryLimit.Int64
+	}
+	return cpu, memory
+}
+
+// all returns every target, workers first and the routable ones last: the order
 // they are deployed in.
 func (dc *deployContext) all() []*deployTarget {
-	return append(append([]*deployTarget{}, dc.workers...), dc.routable)
+	out := append(append([]*deployTarget{}, dc.workers...), dc.routable)
+	return append(out, dc.routableRest...)
+}
+
+// routables returns every instance of the routable type in idx order, the first being
+// dc.routable. This is the route's upstream list.
+func (dc *deployContext) routables() []*deployTarget {
+	return append([]*deployTarget{dc.routable}, dc.routableRest...)
+}
+
+// routableNames is the upstream container list, in idx order.
+func (dc *deployContext) routableNames() []string {
+	ts := dc.routables()
+	names := make([]string, 0, len(ts))
+	for _, t := range ts {
+		names = append(names, t.containerName)
+	}
+	return names
 }
 
 // deployContext holds all state accumulated across deploy stages.
@@ -79,12 +113,18 @@ type deployContext struct {
 	// process type, in deterministic (name) order. All run the SAME image. The
 	// routable path -- create, wire proxy, verify, finalize -- is the sequence proven
 	// on a real install, so workers are wrapped around it and never mixed into it.
-	routable  *deployTarget
-	workers   []*deployTarget
-	env       map[string]string
-	imageName string
-	commitSHA string
-	domains   []generated.Domain
+	//
+	// With replicas the routable type has several instances: routable is the lowest
+	// idx (the one the health gate probes first and the logs name) and routableRest
+	// the others, in idx order. workers holds one target per INSTANCE of every
+	// non-routable type with replicas > 0.
+	routable     *deployTarget
+	routableRest []*deployTarget
+	workers      []*deployTarget
+	env          map[string]string
+	imageName    string
+	commitSHA    string
+	domains      []generated.Domain
 	// cleanedUp is set once the previous container has been torn down. Before
 	// that point a failed deploy has left the old container serving, so the
 	// application is still up and must not be flagged as errored.
@@ -231,14 +271,21 @@ func (h *TaskHandler) HandleDeployTask(ctx context.Context, t *asynq.Task) error
 	// the workers had proven the image.
 	_ = runStage(ctx, "deploy.cleanup_existing", func(ctx context.Context) error {
 		h.cleanupLegacyNames(ctx, dc)
-		removeContainer(ctx, dc, dc.routable.containerName)
+		for _, t := range dc.routables() {
+			removeContainer(ctx, dc, t.containerName)
+		}
 		dc.cleanedUp = true
 		return nil
 	})
 
 	// create and start container — appends a compensator on success
 	if err := runStage(ctx, "deploy.create_and_start", func(ctx context.Context) error {
-		return h.createAndStart(ctx, dc, dc.routable)
+		for _, t := range dc.routables() {
+			if err := h.createAndStart(ctx, dc, t); err != nil {
+				return err
+			}
+		}
+		return nil
 	}); err != nil {
 		h.runCompensators(dc)
 		h.failDeployment(ctx, dc, "deploy", fmt.Sprintf("create container: %v", err))
@@ -350,29 +397,44 @@ func (h *TaskHandler) loadApplication(ctx context.Context, dc *deployContext) er
 		ContainerPort:                 appRow.ContainerPort,
 		RootDirectory:                 appRow.RootDirectory,
 	}
-	// READ the name from the instance row; never mint one. Deploy is stop ->
-	// remove -> create, all on this one name, so minting a different name here
-	// would leave the old container beside the new one. In 0.3.0 the row holds the
-	// legacy name (applications.slug), which is what keeps Phase A invisible.
-	inst, err := instances.ResolveOne(ctx, h.Queries, appRow.ID)
+	// READ the names from the instance rows; never mint one. Deploy is stop ->
+	// remove -> create, all on one name, so minting a different name here would leave
+	// the old container beside the new one. A row written before the roll holds the
+	// legacy name (applications.slug), which is what keeps old installs invisible.
+	//
+	// Every instance of the routable type, in idx order (SQL's order, not re-sorted:
+	// it is the route's upstream order).
+	routableRows, err := h.Queries.ListRoutableInstancesByApplication(ctx, appRow.ID)
 	if err != nil {
-		return fmt.Errorf("resolve instance: %w", err)
+		return fmt.Errorf("resolve instances: %w", err)
 	}
-	pt, err := h.Queries.GetProcessType(ctx, inst.ProcessTypeID)
+	if len(routableRows) == 0 {
+		return fmt.Errorf("resolve instance: %w", instances.ErrNoInstance)
+	}
+	pt, err := h.Queries.GetProcessType(ctx, routableRows[0].ProcessTypeID)
 	if err != nil {
 		return fmt.Errorf("load process type: %w", err)
 	}
-	dc.routable = &deployTarget{
-		typeName:      pt.Name,
-		command:       pt.Command,
-		health:        resolveHealthCheck(dc.app, pt),
-		instanceID:    inst.ID,
-		instanceIdx:   inst.Idx,
-		containerName: inst.ContainerName,
+	cpu, mem := limitsFor(dc.app, pt)
+	target := func(t generated.ApplicationProcessType, in generated.ApplicationInstance, cpu float64, mem int64) *deployTarget {
+		return &deployTarget{
+			typeName:      t.Name,
+			command:       t.Command,
+			health:        resolveHealthCheck(dc.app, t),
+			instanceID:    in.ID,
+			instanceIdx:   in.Idx,
+			containerName: in.ContainerName,
+			cpuLimit:      cpu,
+			memoryLimit:   mem,
+		}
+	}
+	dc.routable = target(pt, routableRows[0], cpu, mem)
+	for _, in := range routableRows[1:] {
+		dc.routableRest = append(dc.routableRest, target(pt, in, cpu, mem))
 	}
 
 	// Every other process type, from the same image. Resolved HERE, before anything
-	// is torn down, so a type with no instance row fails the deploy while the old
+	// is torn down, so a type that cannot be resolved fails the deploy while the old
 	// generation is still serving. No instance row is ever created by a deploy.
 	types, err := h.Queries.ListProcessTypesByApplication(ctx, dc.applicationID)
 	if err != nil {
@@ -386,18 +448,20 @@ func (h *TaskHandler) loadApplication(ctx context.Context, dc *deployContext) er
 		if err != nil {
 			return fmt.Errorf("list instances of process type %q: %w", t.Name, err)
 		}
+		// replicas = 0 is a PAUSED type: zero rows is its correct state, and it must
+		// not fail the deploy (it would make every deploy after a pause fail). The
+		// error is kept for the case it was written for: a type that should run and
+		// has no row, which is a bug.
+		if t.Replicas == 0 {
+			continue
+		}
 		if len(rows) == 0 {
 			return fmt.Errorf("process type %q has no instance row", t.Name)
 		}
-		// Replicas are fixed at 1 in 0.3.0: the first (lowest idx) is the instance.
-		dc.workers = append(dc.workers, &deployTarget{
-			typeName:      t.Name,
-			command:       t.Command,
-			health:        resolveHealthCheck(dc.app, t),
-			instanceID:    rows[0].ID,
-			instanceIdx:   rows[0].Idx,
-			containerName: rows[0].ContainerName,
-		})
+		cpu, mem := limitsFor(dc.app, t)
+		for _, in := range rows { // ORDER BY idx
+			dc.workers = append(dc.workers, target(t, in, cpu, mem))
+		}
 	}
 
 	rt, err := h.Runtimes.For(ctx, appRow.ServerID)
@@ -864,8 +928,8 @@ func (h *TaskHandler) createAndStart(ctx context.Context, dc *deployContext, t *
 			runtime.LabelProcessType: t.typeName,
 			runtime.LabelInstanceIdx: strconv.Itoa(int(t.instanceIdx)),
 		},
-		CPULimit:        dc.app.CpuLimit,
-		MemoryLimit:     dc.app.MemoryLimit,
+		CPULimit:        t.cpuLimit,
+		MemoryLimit:     t.memoryLimit,
 		HealthCheckPath: dc.app.HealthCheckPath.String,
 		// Native Docker HEALTHCHECK — set only for the command type; empty
 		// command leaves the image's own HEALTHCHECK untouched.
@@ -1081,7 +1145,18 @@ const (
 // This is the ROUTABLE type's gate only: it is the one with a port and domains, and
 // the only one that records the deployment's health. Workers go through verifyWorker.
 func (h *TaskHandler) verifyHealth(ctx context.Context, dc *deployContext) error {
-	t := dc.routable
+	// Every replica must pass: a route with one broken upstream would serve it a share
+	// of the traffic. The first failure fails the deploy (and is what gets recorded).
+	for _, t := range dc.routables() {
+		if err := h.verifyRoutableHealth(ctx, dc, t); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// verifyRoutableHealth is verifyHealth for one instance of the routable type.
+func (h *TaskHandler) verifyRoutableHealth(ctx context.Context, dc *deployContext, t *deployTarget) error {
 	// The command type does not probe over HTTP — Docker runs the check inside
 	// the container. The gate here waits for Docker's own verdict so a broken
 	// command fails the deploy, exactly as a failing HTTP probe does; after
@@ -1172,7 +1247,7 @@ func (h *TaskHandler) wireProxy(ctx context.Context, dc *deployContext) error {
 	}
 
 	for _, domain := range dc.domains {
-		cfg, err := proxy.BuildRouteConfigFromDB(ctx, h.Queries, h.Keyring, domain, []string{dc.routable.containerName}, dc.app.HealthCheckPath.String)
+		cfg, err := proxy.BuildRouteConfigFromDB(ctx, h.Queries, h.Keyring, domain, dc.routableNames(), dc.app.HealthCheckPath.String)
 		if err != nil {
 			return fmt.Errorf("build route config for %s: %w", domain.Hostname, err)
 		}

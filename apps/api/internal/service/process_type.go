@@ -59,28 +59,120 @@ const (
 	dockerNameLimit = 255
 )
 
-// ProcessTypeInput is what a caller may set when creating a type. Replicas and the
-// per-type CPU/memory limits are deliberately absent: nothing reads them in 0.3.0
-// (replicas are fixed at 1 and a deploy applies only the application's limits), and a
-// setting that is stored but silently ignored is worse than no setting.
+// ProcessTypeInput is what a caller may set when creating a type. Replicas nil means
+// 1; the limits nil mean "inherit the application's".
 type ProcessTypeInput struct {
 	Name               string
 	Command            string
 	Routable           bool
 	HealthCheckType    string // "" = resolve by the rule: routable inherits, else none
 	HealthCheckCommand string // "" = inherit the application's
+	Replicas           *int32
+	CPULimit           *float64 // cores; 0 or nil = inherit
+	MemoryLimit        *int64   // bytes; 0 or nil = inherit
 }
 
 // ProcessTypePatch is a partial update. A nil field is ABSENT and keeps the stored
 // value; an explicit empty string clears HealthCheckType / HealthCheckCommand back
-// to NULL. (A JSON null is also nil, matching how every other optional field in this
-// API behaves: only an explicit empty value clears.) Name and routable are not
-// patchable: the name is an identity, and moving the routable flag moves the proxy's
-// upstream.
+// to NULL, and an explicit 0 clears a limit back to NULL (inherit). (A JSON null is
+// also nil, matching how every other optional field in this API behaves: only an
+// explicit empty value clears.) Name and routable are not patchable: the name is an
+// identity, and moving the routable flag moves the proxy's upstream.
 type ProcessTypePatch struct {
 	Command            *string
 	HealthCheckType    *string
 	HealthCheckCommand *string
+	Replicas           *int32
+	CPULimit           *float64
+	MemoryLimit        *int64
+}
+
+// ScalePlan is what the caller must do to the CONTAINERS after the rows changed: the
+// service only moves rows. Surplus containers are named here because their rows are
+// already gone and nothing else remembers the names.
+type ScalePlan struct {
+	ApplicationID    pgtype.UUID
+	ProcessTypeID    pgtype.UUID
+	RemoveContainers []string
+	// CreateContainers is true when rows were minted: their containers are created from
+	// the last successful deployment's image, if there is one.
+	CreateContainers bool
+}
+
+// Empty reports whether there is nothing to do to any container.
+func (p ScalePlan) Empty() bool { return len(p.RemoveContainers) == 0 && !p.CreateContainers }
+
+const (
+	maxReplicas = 20 // the CHECK in migration 000079
+	// minMemoryLimit is Docker's floor; below it container create fails far from here.
+	minMemoryLimit = 6 << 20
+)
+
+// validateScale holds the rules for how many instances a type may have.
+//
+// replicas = 0 is "paused" and is legal on a worker -- that is how you pause one
+// without deleting its config. It is REFUSED on the routable type, for the reason
+// DeleteProcessType refuses to delete it: at zero there are no instances, the upstream
+// list is empty, the proxy build refuses an empty route, and the reconciler would hold
+// the application's routes while nothing serves them. Pausing it is the same hole by
+// another name.
+//
+// replicas > 1 is refused for EVERY type of an application that has any volume, not
+// just the "type with volumes": volumes belong to the application and are mounted into
+// every process type's container, so two containers of any type would write the same
+// Docker volume. Read-only file mounts are safe to share and are not counted.
+func (s *ApplicationService) validateScale(ctx context.Context, appID pgtype.UUID, routable bool, replicas int32) error {
+	if replicas < 0 || replicas > maxReplicas {
+		return invalid("replicas must be between 0 and %d", maxReplicas)
+	}
+	if routable && replicas == 0 {
+		return invalid("the routable process type cannot be scaled to 0: every domain of this application routes to it, and with no instance the proxy would hold the routes while nothing serves them")
+	}
+	if replicas > 1 {
+		vols, err := s.queries.ListApplicationVolumes(ctx, appID)
+		if err != nil {
+			return fmt.Errorf("listing volumes: %w", err)
+		}
+		if len(vols) > 0 {
+			return invalid("this application has persistent volumes, and volumes are mounted into every process type, so more than one container would write the same volume; remove the volumes or keep replicas at 1")
+		}
+	}
+	return nil
+}
+
+func validateLimits(cpu *float64, memory *int64) error {
+	if cpu != nil && (*cpu < 0 || *cpu > 1024) {
+		return invalid("cpu_limit must be between 0 and 1024 cores (0 inherits the application's)")
+	}
+	if memory != nil && *memory != 0 && *memory < minMemoryLimit {
+		return invalid("memory_limit must be at least %d bytes (0 inherits the application's)", minMemoryLimit)
+	}
+	return nil
+}
+
+// optFloat / optInt turn an explicit 0 into NULL ("inherit").
+func optFloat(v *float64) pgtype.Float8 {
+	if v == nil || *v == 0 {
+		return pgtype.Float8{}
+	}
+	return pgtype.Float8{Float64: *v, Valid: true}
+}
+
+func optInt(v *int64) pgtype.Int8 {
+	if v == nil || *v == 0 {
+		return pgtype.Int8{}
+	}
+	return pgtype.Int8{Int64: *v, Valid: true}
+}
+
+// instanceName mints a container name: {appSlug}-{processType}-{idx}, with no
+// deployment suffix (that is for coexisting generations in a rolling deploy).
+func instanceName(appSlug, typeName string, idx int32) (string, error) {
+	n := fmt.Sprintf("%s-%s-%d", appSlug, typeName, idx)
+	if len(n) > dockerNameLimit {
+		return "", invalid("the container name %q would be %d characters, over Docker's %d limit; use a shorter process type name or application name", n, len(n), dockerNameLimit)
+	}
+	return n, nil
 }
 
 // validateHealth enforces the one rule the deploy cannot honour: a worker set to
@@ -149,54 +241,77 @@ func (s *ApplicationService) ListProcessTypes(ctx context.Context, appID pgtype.
 // are DATA on the row, so 0.3.1 can mint suffixed names for new generations with no
 // migration and no rename. Nothing is deployed by this call: the container appears
 // on the next deploy.
-func (s *ApplicationService) CreateProcessType(ctx context.Context, appID pgtype.UUID, in ProcessTypeInput) (generated.ApplicationProcessType, generated.ApplicationInstance, error) {
+func (s *ApplicationService) CreateProcessType(ctx context.Context, appID pgtype.UUID, in ProcessTypeInput) (generated.ApplicationProcessType, []generated.ApplicationInstance, ScalePlan, error) {
 	if !processTypeNameRe.MatchString(in.Name) {
-		return generated.ApplicationProcessType{}, generated.ApplicationInstance{}, invalid("name must start with a lowercase letter and contain only lowercase letters, digits and '-' (at most 20 characters)")
+		return generated.ApplicationProcessType{}, nil, ScalePlan{}, invalid("name must start with a lowercase letter and contain only lowercase letters, digits and '-' (at most 20 characters)")
 	}
 	if err := validateCommand(in.Command); err != nil {
-		return generated.ApplicationProcessType{}, generated.ApplicationInstance{}, err
+		return generated.ApplicationProcessType{}, nil, ScalePlan{}, err
 	}
 	app, err := s.queries.GetApplication(ctx, appID)
 	if err != nil {
-		return generated.ApplicationProcessType{}, generated.ApplicationInstance{}, fmt.Errorf("loading application: %w", err)
+		return generated.ApplicationProcessType{}, nil, ScalePlan{}, fmt.Errorf("loading application: %w", err)
 	}
 	if err := validateHealth(app, in.Routable, in.HealthCheckType, in.HealthCheckCommand); err != nil {
-		return generated.ApplicationProcessType{}, generated.ApplicationInstance{}, err
+		return generated.ApplicationProcessType{}, nil, ScalePlan{}, err
 	}
 
-	const idx = 1 // replicas are fixed at 1 in 0.3.0
-	containerName := fmt.Sprintf("%s-%s-%d", app.Slug, in.Name, idx)
-	if len(containerName) > dockerNameLimit {
-		return generated.ApplicationProcessType{}, generated.ApplicationInstance{}, invalid(
-			"the container name %q would be %d characters, over Docker's %d limit; use a shorter process type name or application name", containerName, len(containerName), dockerNameLimit)
+	replicas := int32(1)
+	if in.Replicas != nil {
+		replicas = *in.Replicas
+	}
+	if err := s.validateScale(ctx, appID, in.Routable, replicas); err != nil {
+		return generated.ApplicationProcessType{}, nil, ScalePlan{}, err
+	}
+	if err := validateLimits(in.CPULimit, in.MemoryLimit); err != nil {
+		return generated.ApplicationProcessType{}, nil, ScalePlan{}, err
+	}
+	// Checked for the highest idx: a longer idx makes the longer name.
+	names := make([]string, 0, replicas)
+	for idx := int32(1); idx <= replicas; idx++ {
+		n, err := instanceName(app.Slug, in.Name, idx)
+		if err != nil {
+			return generated.ApplicationProcessType{}, nil, ScalePlan{}, err
+		}
+		names = append(names, n)
 	}
 
 	var pt generated.ApplicationProcessType
-	var inst generated.ApplicationInstance
+	var insts []generated.ApplicationInstance
 	err = store.WithTx(ctx, s.db, func(q *generated.Queries) error {
 		var err error
 		pt, err = q.CreateProcessType(ctx, generated.CreateProcessTypeParams{
 			ApplicationID:      appID,
 			Name:               in.Name,
 			Command:            in.Command,
-			Replicas:           1,
+			Replicas:           replicas,
 			Routable:           in.Routable,
+			CpuLimit:           optFloat(in.CPULimit),
+			MemoryLimit:        optInt(in.MemoryLimit),
 			HealthCheckType:    optText(in.HealthCheckType),
 			HealthCheckCommand: optText(in.HealthCheckCommand),
 		})
 		if err != nil {
 			return err
 		}
-		inst, err = q.CreateInstance(ctx, generated.CreateInstanceParams{
-			ApplicationID: appID, ProcessTypeID: pt.ID, Idx: idx, ContainerName: containerName, Status: "pending",
-		})
-		return err
+		for i, n := range names {
+			inst, err := q.CreateInstance(ctx, generated.CreateInstanceParams{
+				ApplicationID: appID, ProcessTypeID: pt.ID, Idx: int32(i + 1), ContainerName: n, Status: "pending",
+			})
+			if err != nil {
+				return err
+			}
+			insts = append(insts, inst)
+		}
+		return nil
 	})
 	if err != nil {
-		return generated.ApplicationProcessType{}, generated.ApplicationInstance{}, mapProcessTypeUniqueViolation(err)
+		return generated.ApplicationProcessType{}, nil, ScalePlan{}, mapProcessTypeUniqueViolation(err)
 	}
 	s.MarkConfigChanged(ctx, appID)
-	return pt, inst, nil
+	// Nothing to do to any container: a new type's containers appear on the next
+	// deploy, as they always have. Only SCALING an existing type acts at once.
+	return pt, insts, ScalePlan{}, nil
 }
 
 // UpdateProcessType applies a patch.
@@ -205,16 +320,20 @@ func (s *ApplicationService) CreateProcessType(ctx context.Context, appID pgtype
 // first and falls back to it for EVERY column the statement writes: command, replicas,
 // routable, cpu_limit, memory_limit, health_check_type and health_check_command. A
 // partial body passed straight through would silently clear the command, flip
-// routable to false and null both health columns. The columns the API does not expose
-// (replicas and the limits) are carried over from the row, not written from a default.
-func (s *ApplicationService) UpdateProcessType(ctx context.Context, appID, typeID pgtype.UUID, p ProcessTypePatch) (generated.ApplicationProcessType, generated.ApplicationInstance, error) {
+// routable to false, null both health columns and reset the scale and the limits.
+//
+// A changed replicas count also moves the instance ROWS, in the same transaction:
+// surplus rows (idx above the new count) are deleted and missing ones minted, pending.
+// The returned plan says what must happen to the containers.
+func (s *ApplicationService) UpdateProcessType(ctx context.Context, appID, typeID pgtype.UUID, p ProcessTypePatch) (generated.ApplicationProcessType, []generated.ApplicationInstance, ScalePlan, error) {
+	none := ScalePlan{}
 	cur, err := s.queries.GetProcessType(ctx, typeID)
 	if err != nil || cur.ApplicationID != appID {
-		return generated.ApplicationProcessType{}, generated.ApplicationInstance{}, ErrProcessTypeNotFound
+		return generated.ApplicationProcessType{}, nil, none, ErrProcessTypeNotFound
 	}
 	app, err := s.queries.GetApplication(ctx, appID)
 	if err != nil {
-		return generated.ApplicationProcessType{}, generated.ApplicationInstance{}, fmt.Errorf("loading application: %w", err)
+		return generated.ApplicationProcessType{}, nil, none, fmt.Errorf("loading application: %w", err)
 	}
 
 	command := cur.Command
@@ -228,37 +347,98 @@ func (s *ApplicationService) UpdateProcessType(ctx context.Context, appID, typeI
 	if p.HealthCheckCommand != nil {
 		healthCommand = optText(*p.HealthCheckCommand)
 	}
+	replicas := cur.Replicas
+	if p.Replicas != nil {
+		replicas = *p.Replicas
+	}
+	cpu, mem := cur.CpuLimit, cur.MemoryLimit
+	if p.CPULimit != nil {
+		cpu = optFloat(p.CPULimit)
+	}
+	if p.MemoryLimit != nil {
+		mem = optInt(p.MemoryLimit)
+	}
 
 	if err := validateCommand(command); err != nil {
-		return generated.ApplicationProcessType{}, generated.ApplicationInstance{}, err
+		return generated.ApplicationProcessType{}, nil, none, err
 	}
 	if err := validateHealth(app, cur.Routable, healthType.String, healthCommand.String); err != nil {
-		return generated.ApplicationProcessType{}, generated.ApplicationInstance{}, err
+		return generated.ApplicationProcessType{}, nil, none, err
+	}
+	if err := validateLimits(p.CPULimit, p.MemoryLimit); err != nil {
+		return generated.ApplicationProcessType{}, nil, none, err
+	}
+	if p.Replicas != nil {
+		if err := s.validateScale(ctx, appID, cur.Routable, replicas); err != nil {
+			return generated.ApplicationProcessType{}, nil, none, err
+		}
 	}
 
-	pt, err := s.queries.UpdateProcessType(ctx, generated.UpdateProcessTypeParams{
-		ID:                 typeID,
-		Command:            command,
-		Replicas:           cur.Replicas,
-		Routable:           cur.Routable,
-		CpuLimit:           cur.CpuLimit,
-		MemoryLimit:        cur.MemoryLimit,
-		HealthCheckType:    healthType,
-		HealthCheckCommand: healthCommand,
+	plan := ScalePlan{ApplicationID: appID, ProcessTypeID: typeID}
+	var pt generated.ApplicationProcessType
+	err = store.WithTx(ctx, s.db, func(q *generated.Queries) error {
+		var err error
+		pt, err = q.UpdateProcessType(ctx, generated.UpdateProcessTypeParams{
+			ID:                 typeID,
+			Command:            command,
+			Replicas:           replicas,
+			Routable:           cur.Routable,
+			CpuLimit:           cpu,
+			MemoryLimit:        mem,
+			HealthCheckType:    healthType,
+			HealthCheckCommand: healthCommand,
+		})
+		if err != nil {
+			return err
+		}
+		if replicas == cur.Replicas {
+			return nil
+		}
+		rows, err := q.ListInstancesByProcessType(ctx, typeID)
+		if err != nil {
+			return fmt.Errorf("listing instances: %w", err)
+		}
+		have := make(map[int32]bool, len(rows))
+		for _, r := range rows {
+			if r.Idx > replicas {
+				if err := q.DeleteInstance(ctx, r.ID); err != nil {
+					return fmt.Errorf("deleting instance %d: %w", r.Idx, err)
+				}
+				plan.RemoveContainers = append(plan.RemoveContainers, r.ContainerName)
+				continue
+			}
+			have[r.Idx] = true
+		}
+		for idx := int32(1); idx <= replicas; idx++ {
+			if have[idx] {
+				continue
+			}
+			name, err := instanceName(app.Slug, cur.Name, idx)
+			if err != nil {
+				return err
+			}
+			if _, err := q.CreateInstance(ctx, generated.CreateInstanceParams{
+				ApplicationID: appID, ProcessTypeID: typeID, Idx: idx, ContainerName: name, Status: "pending",
+			}); err != nil {
+				return fmt.Errorf("creating instance %d: %w", idx, err)
+			}
+			plan.CreateContainers = true
+		}
+		return nil
 	})
 	if err != nil {
-		return generated.ApplicationProcessType{}, generated.ApplicationInstance{}, mapProcessTypeUniqueViolation(err)
+		var verr *ProcessTypeValidationError
+		if errors.As(err, &verr) {
+			return generated.ApplicationProcessType{}, nil, none, err
+		}
+		return generated.ApplicationProcessType{}, nil, none, mapProcessTypeUniqueViolation(err)
 	}
 	insts, err := s.queries.ListInstancesByProcessType(ctx, typeID)
 	if err != nil {
-		return generated.ApplicationProcessType{}, generated.ApplicationInstance{}, fmt.Errorf("listing instances: %w", err)
-	}
-	var inst generated.ApplicationInstance
-	if len(insts) > 0 {
-		inst = insts[0]
+		return generated.ApplicationProcessType{}, nil, none, fmt.Errorf("listing instances: %w", err)
 	}
 	s.MarkConfigChanged(ctx, appID)
-	return pt, inst, nil
+	return pt, insts, plan, nil
 }
 
 // DeleteProcessType removes a non-routable type, its instance row (cascade) and its

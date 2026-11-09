@@ -20806,6 +20806,12 @@
           "command": {
             "type": "string"
           },
+          "cpu_limit": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
           "created_at": {
             "type": "string"
           },
@@ -20830,8 +20836,17 @@
             },
             "type": "array"
           },
+          "memory_limit": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "name": {
             "type": "string"
+          },
+          "replicas": {
+            "type": "integer"
           },
           "resolved_health": {
             "$ref": "#/components/schemas/resolvedHealthResponse"

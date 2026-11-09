@@ -800,12 +800,12 @@ func (h *Handler) UpdateDomain(w http.ResponseWriter, r *http.Request) {
 	// Resolved BEFORE touching Caddy: AddRoute removes any existing route first, so
 	// a failure after that point would leave the domain with no route at all. On a
 	// resolve failure the live route is left exactly as it is.
-	inst, resolveErr := instances.ResolveOne(r.Context(), h.queries, domain.ApplicationID)
+	containerNames, resolveErr := instances.RoutableContainerNames(r.Context(), h.queries, domain.ApplicationID)
 	if resolveErr != nil {
 		slog.Error("failed to resolve container for proxy route; live route left untouched", "hostname", req.Hostname, "error", resolveErr)
 	} else if err := h.proxy.AddRoute(r.Context(), proxy.RouteConfig{
 		Hostname:       req.Hostname,
-		Upstreams:      proxy.UpstreamURLs(port, inst.ContainerName),
+		Upstreams:      proxy.UpstreamURLs(port, containerNames...),
 		TLS:            sslEnabled,
 		ForceHTTPS:     forceHTTPS,
 		SSLMode:        sslMode,
@@ -1104,7 +1104,7 @@ func (h *Handler) rebuildDomainRoute(r *http.Request, domainID pgtype.UUID) {
 
 	// Resolved before the removal below, never after: remove-then-fail would leave
 	// the domain with no route at all.
-	inst, err := instances.ResolveOne(r.Context(), h.queries, domain.ApplicationID)
+	containerNames, err := instances.RoutableContainerNames(r.Context(), h.queries, domain.ApplicationID)
 	if err != nil {
 		slog.Error("rebuildDomainRoute: failed to resolve container; live route left untouched", "hostname", domain.Hostname, "path", domain.Path, "error", err)
 		return
@@ -1117,7 +1117,7 @@ func (h *Handler) rebuildDomainRoute(r *http.Request, domainID pgtype.UUID) {
 		Hostname:       domain.Hostname,
 		Path:           domain.Path,
 		StripPath:      domain.StripPath,
-		Upstreams:      proxy.UpstreamURLs(port, inst.ContainerName),
+		Upstreams:      proxy.UpstreamURLs(port, containerNames...),
 		TLS:            domain.SslEnabled,
 		ForceHTTPS:     domain.ForceHttps,
 		SSLMode:        domain.SslMode,
@@ -1227,11 +1227,10 @@ func (h *Handler) createDomainRecord(ctx context.Context, applicationID string, 
 
 	port := proxy.ResolveUpstreamPort(params.ContainerPort, row.ContainerPort)
 	cert := h.domainCertificate(ctx, domain)
-	inst, err := instances.ResolveOne(ctx, h.queries, applicationUUID)
+	containerNames, err := instances.RoutableContainerNames(ctx, h.queries, applicationUUID)
 	if err != nil {
 		return generated.Domain{}, fmt.Errorf("%w: %v", errDomainResolveFailed, err)
 	}
-	containerName := inst.ContainerName
 
 	if domain.SslMode == proxy.SSLModeDNSChallenge {
 		h.syncDNSPolicies(ctx)
@@ -1239,7 +1238,7 @@ func (h *Handler) createDomainRecord(ctx context.Context, applicationID string, 
 
 	if err := h.proxy.AddRoute(ctx, proxy.RouteConfig{
 		Hostname:       params.Hostname,
-		Upstreams:      proxy.UpstreamURLs(port, containerName),
+		Upstreams:      proxy.UpstreamURLs(port, containerNames...),
 		TLS:            params.SslEnabled,
 		ForceHTTPS:     params.ForceHttps,
 		SSLMode:        params.SslMode,
@@ -1247,7 +1246,7 @@ func (h *Handler) createDomainRecord(ctx context.Context, applicationID string, 
 		KeyPEM:         cert.KeyPEM,
 		AdvancedConfig: params.AdvancedConfig,
 	}); err != nil {
-		slog.Error("failed to add proxy route for domain", "hostname", params.Hostname, "container", containerName, "error", err)
+		slog.Error("failed to add proxy route for domain", "hostname", params.Hostname, "containers", containerNames, "error", err)
 		if delErr := h.queries.DeleteDomain(ctx, domain.ID); delErr != nil {
 			slog.Error("failed to rollback domain insert after proxy failure", "domain_id", domain.ID, "error", delErr)
 		}

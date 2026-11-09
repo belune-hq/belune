@@ -32,8 +32,9 @@ func TestRestartInstance_StillStartsTheContainerWhenTheRequestContextDiesMidStop
 		Type: "image", SourceImage: "nginx:alpine", BuildType: "image",
 	})
 	require.NoError(t, err)
-	_, worker, err := svc.CreateProcessType(context.Background(), app.ID, service.ProcessTypeInput{Name: "worker", Command: "a | b"})
+	_, workerInsts, _, err := svc.CreateProcessType(context.Background(), app.ID, service.ProcessTypeInput{Name: "worker", Command: "a | b"})
 	require.NoError(t, err)
+	worker := workerInsts[0]
 
 	rt.StopFunc = func(ctx context.Context, _ string) error {
 		cancelReq()                       // the handler timeout fires while the container is being stopped
@@ -63,8 +64,9 @@ func TestRestartInstance_AnInstanceOfAnotherApplicationIsNotFound(t *testing.T) 
 	require.NoError(t, err)
 	b, err := svc.Create(context.Background(), mk("B", "b"))
 	require.NoError(t, err)
-	_, bInst, err := svc.CreateProcessType(context.Background(), b.ID, service.ProcessTypeInput{Name: "worker", Command: "run"})
+	_, bInstInsts, _, err := svc.CreateProcessType(context.Background(), b.ID, service.ProcessTypeInput{Name: "worker", Command: "run"})
 	require.NoError(t, err)
+	bInst := bInstInsts[0]
 
 	_, err = svc.RestartInstance(context.Background(), a.ID, bInst.ID)
 	assert.ErrorIs(t, err, service.ErrInstanceNotFound)
@@ -90,8 +92,9 @@ func TestRestartInstance_StillStartsWhenTheStopFailsOrTimesOut(t *testing.T) {
 				Type: "image", SourceImage: "nginx:alpine", BuildType: "image",
 			})
 			require.NoError(t, err)
-			_, worker, err := svc.CreateProcessType(context.Background(), app.ID, service.ProcessTypeInput{Name: "worker", Command: "a && b"})
+			_, workerInsts, _, err := svc.CreateProcessType(context.Background(), app.ID, service.ProcessTypeInput{Name: "worker", Command: "a && b"})
 			require.NoError(t, err)
+			worker := workerInsts[0]
 
 			_, err = svc.RestartInstance(context.Background(), app.ID, worker.ID)
 
@@ -115,8 +118,9 @@ func TestRestartInstance_ARemovedContainerSaysSo(t *testing.T) {
 		Type: "image", SourceImage: "nginx:alpine", BuildType: "image",
 	})
 	require.NoError(t, err)
-	_, worker, err := svc.CreateProcessType(context.Background(), app.ID, service.ProcessTypeInput{Name: "worker", Command: "run"})
+	_, workerInsts, _, err := svc.CreateProcessType(context.Background(), app.ID, service.ProcessTypeInput{Name: "worker", Command: "run"})
 	require.NoError(t, err)
+	worker := workerInsts[0]
 
 	_, err = svc.RestartInstance(context.Background(), app.ID, worker.ID)
 	assert.ErrorIs(t, err, service.ErrInstanceContainerGone)

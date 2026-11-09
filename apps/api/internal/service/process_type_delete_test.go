@@ -33,8 +33,9 @@ func TestDeleteProcessType_StillRemovesTheContainerWhenTheRequestContextDiesMidS
 		Type: "image", SourceImage: "nginx:alpine", BuildType: "image",
 	})
 	require.NoError(t, err)
-	pt, inst, err := svc.CreateProcessType(context.Background(), app.ID, service.ProcessTypeInput{Name: "worker", Command: "a | b"})
+	pt, instInsts, _, err := svc.CreateProcessType(context.Background(), app.ID, service.ProcessTypeInput{Name: "worker", Command: "a | b"})
 	require.NoError(t, err)
+	inst := instInsts[0]
 
 	rt.StopFunc = func(_ context.Context, _ string) error {
 		cancelReq() // the handler timeout fires while the container is being stopped

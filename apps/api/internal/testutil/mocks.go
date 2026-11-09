@@ -38,11 +38,12 @@ type MockContainerRuntime struct {
 	// CreateFunc, when set, backs CreateContainer: lets a test return a distinct id
 	// per container, or fail one by name. Nil keeps the single fixed id.
 	CreateFunc        func(cfg runtime.ContainerConfig) (string, error)
-	PullCalls         []string // image tags passed to PullImage
-	HealthStatus_     string   // returned by ContainerHealth (empty → "healthy")
-	HealthCalls       []string // container names ContainerHealth was asked about
-	ImageMissing_     bool     // when true, ImageExists reports false
-	ContainerMissing_ bool     // when true, ContainerExists reports false
+	PullCalls         []string        // image tags passed to PullImage
+	HealthStatus_     string          // returned by ContainerHealth (empty → "healthy")
+	HealthCalls       []string        // container names ContainerHealth was asked about
+	ImageMissing_     bool            // when true, ImageExists reports false
+	ContainerMissing_ bool            // when true, ContainerExists reports false
+	MissingNames      map[string]bool // ContainerExists reports false for these names only
 	ListContainers_   []runtime.ContainerInfo
 	// LogsRequested records the container names ContainerLogs was asked for, and
 	// ContainerLogsBody_ (by name) is what it returns, so a test can tell WHICH
@@ -293,7 +294,10 @@ func (m *MockContainerRuntime) ImageExists(_ context.Context, _ string) (bool, e
 // ContainerExists returns ContainerMissing_ inverted: it reports true (present)
 // by default so existing tests are unaffected; set ContainerMissing_ to simulate
 // a deleted container.
-func (m *MockContainerRuntime) ContainerExists(_ context.Context, _ string) (bool, error) {
+func (m *MockContainerRuntime) ContainerExists(_ context.Context, name string) (bool, error) {
+	if m.MissingNames[name] {
+		return false, nil
+	}
 	return !m.ContainerMissing_, nil
 }
 
@@ -450,10 +454,13 @@ func (m *MockProxyManager) ListRoutes(_ context.Context) ([]proxy.RouteConfig, e
 type MockReconciler struct {
 	mu                sync.Mutex
 	ReconcileNowCalls int
-	Status_           proxy.ReconcilerStatus
-	ReconcileErr      error
-	WAF_              proxy.WAFState
-	CrowdSec_         proxy.CrowdSecState
+	// OnCall, when set, is told "reconcile" on every ReconcileNow, so a test can record
+	// the order of calls across mocks.
+	OnCall       func(string)
+	Status_      proxy.ReconcilerStatus
+	ReconcileErr error
+	WAF_         proxy.WAFState
+	CrowdSec_    proxy.CrowdSecState
 }
 
 func (m *MockReconciler) WAF() proxy.WAFState {
@@ -478,6 +485,9 @@ func (m *MockReconciler) ReconcileNow(_ context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.ReconcileNowCalls++
+	if m.OnCall != nil {
+		m.OnCall("reconcile")
+	}
 	return m.ReconcileErr
 }
 
@@ -630,6 +640,8 @@ type MockTaskEnqueuer struct {
 	Tasks       []EnqueuedTask
 	EnqueueErr  error // when set, Enqueue returns this error
 	EnqueueOnce bool  // when true, EnqueueErr is cleared after first use
+	// OnCall, when set, is told "enqueue:<type>" on every successful Enqueue.
+	OnCall func(string)
 }
 
 func (m *MockTaskEnqueuer) Enqueue(task *asynq.Task, opts ...asynq.Option) (*asynq.TaskInfo, error) {
@@ -644,6 +656,9 @@ func (m *MockTaskEnqueuer) Enqueue(task *asynq.Task, opts ...asynq.Option) (*asy
 		return nil, err
 	}
 
+	if m.OnCall != nil {
+		m.OnCall("enqueue:" + task.Type())
+	}
 	et := EnqueuedTask{
 		TypeName: task.Type(),
 		Payload:  task.Payload(),

@@ -18,7 +18,7 @@ Every application starts with exactly one process type, **web**. It is the **rou
 - **Health check** — `None` or `Command` for a worker (`HTTP` is offered only on the routable type). See [Health Checks](#health-checks).
 - **Health check command** — only for a command check.
 
-Each type runs exactly one container. Replicas and per-type CPU and memory limits are not available: every type uses the application's limits.
+Each type runs one container by default. Set **replicas** to run more, and give a type its own CPU and memory limits if it should not use the application's. See [Scaling](#scaling).
 
 ## The Routable Type
 
@@ -71,6 +71,24 @@ A container that ignores its stop signal is killed after a 30-second grace perio
 The Processes tab updates after an action you take. If a worker crashes on its own, the tab shows that on its next refresh rather than instantly.
 
 A container that was added since the last deploy has nothing to restart yet, so its control is disabled until the next deploy creates it. If a container has been removed, Restart tells you to redeploy.
+
+## Scaling
+
+A type's **replicas** is how many containers it runs, from 0 to 20. Each replica is its own container, named `<application>-<type>-<number>`.
+
+- **Scaling down** acts immediately. For the routable type the proxy stops sending traffic to the removed replicas first; then the surplus containers are stopped, given up to 30 seconds to finish what they are doing, and then removed. Replica 1 is never touched.
+- **Scaling up** creates the new containers right away from the image of the last successful deploy. If the application has never deployed, the new replicas appear on the next deploy, as a new type does.
+- **0 pauses a worker** without deleting its configuration. A paused type is skipped by deploys instead of failing them.
+- **The routable type cannot be scaled to 0.** Every domain routes to it, and with no container the proxy would have nothing to send traffic to.
+- **Routable replicas share the traffic.** The proxy sends requests to every replica of the routable type, and stops sending to one that fails its health check.
+- **Set a health check before scaling the routable type above 1.** The proxy can only stop sending traffic to a replica that fails an HTTP health check, which needs a health check path on the application. Without one, a crashed replica stays in the pool and a share of requests fail quietly.
+- **Applications with volumes run one replica.** Volumes are mounted into every process type, so a second container of any type would write the same volume. Remove the volumes or keep replicas at 1.
+
+A deploy replaces every replica of every type. Replicas are not rolled one at a time yet, so a deploy still briefly takes the routable type down.
+
+## Resource Limits
+
+Each type can set its own **CPU** and **memory** limits. A type with none inherits the application's. Clearing a limit (setting it to 0) goes back to inheriting.
 
 ## Health Checks
 

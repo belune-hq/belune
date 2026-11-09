@@ -121,8 +121,8 @@ func TestReconcilerDiff_AddsMissing(t *testing.T) {
 	// the reconciler's exported diff logic indirectly through a test-local
 	// reconcile helper.
 	expected := []proxy.RouteConfig{
-		{Hostname: "a.example.com", TargetURL: "http://container-a:8080"},
-		{Hostname: "b.example.com", TargetURL: "http://container-b:8080"},
+		{Hostname: "a.example.com", Upstreams: []string{"http://container-a:8080"}},
+		{Hostname: "b.example.com", Upstreams: []string{"http://container-b:8080"}},
 	}
 
 	reconcileDiff(t, mock, expected, mock.routes)
@@ -135,7 +135,7 @@ func TestReconcilerDiff_AddsMissing(t *testing.T) {
 func TestReconcilerDiff_RemovesStale(t *testing.T) {
 	mock := &mockProxy{
 		routes: []proxy.RouteConfig{
-			{Hostname: "stale.example.com", TargetURL: "http://dead:8080"},
+			{Hostname: "stale.example.com", Upstreams: []string{"http://dead:8080"}},
 		},
 	}
 
@@ -152,7 +152,7 @@ func TestReconcilerDiff_RemovesStale(t *testing.T) {
 
 func TestReconcilerDiff_NoOpWhenInSync(t *testing.T) {
 	existing := []proxy.RouteConfig{
-		{Hostname: "ok.example.com", TargetURL: "http://container:8080"},
+		{Hostname: "ok.example.com", Upstreams: []string{"http://container:8080"}},
 	}
 	mock := &mockProxy{routes: existing}
 

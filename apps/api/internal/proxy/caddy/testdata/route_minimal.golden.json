@@ -1,0 +1,20 @@
+{
+  "@id": "route-app.example.com",
+  "match": [
+    {
+      "host": [
+        "app.example.com"
+      ]
+    }
+  ],
+  "handle": [
+    {
+      "handler": "reverse_proxy",
+      "upstreams": [
+        {
+          "dial": "proj-app-1234abcd:8080"
+        }
+      ]
+    }
+  ]
+}

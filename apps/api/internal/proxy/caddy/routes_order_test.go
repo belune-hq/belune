@@ -43,8 +43,8 @@ func TestSortRoutes_RootNeverShadowsPath(t *testing.T) {
 	// Deliberately created worst-case: root first, exactly as an operator who
 	// added their frontend before their API would produce.
 	got := routeOrder(t, []proxy.RouteConfig{
-		{Hostname: "shop.com", Path: "/", TargetURL: "http://web:3000"},
-		{Hostname: "shop.com", Path: "/api", TargetURL: "http://api:8080"},
+		{Hostname: "shop.com", Path: "/", Upstreams: []string{"http://web:3000"}},
+		{Hostname: "shop.com", Path: "/api", Upstreams: []string{"http://api:8080"}},
 	})
 
 	assert.Equal(t, []string{"shop.com /api", "shop.com /"}, got)
@@ -52,9 +52,9 @@ func TestSortRoutes_RootNeverShadowsPath(t *testing.T) {
 
 func TestSortRoutes_DeeperPrefixFirst(t *testing.T) {
 	got := routeOrder(t, []proxy.RouteConfig{
-		{Hostname: "shop.com", Path: "/", TargetURL: "http://web:3000"},
-		{Hostname: "shop.com", Path: "/api", TargetURL: "http://api:8080"},
-		{Hostname: "shop.com", Path: "/api/v2", TargetURL: "http://api2:8080"},
+		{Hostname: "shop.com", Path: "/", Upstreams: []string{"http://web:3000"}},
+		{Hostname: "shop.com", Path: "/api", Upstreams: []string{"http://api:8080"}},
+		{Hostname: "shop.com", Path: "/api/v2", Upstreams: []string{"http://api2:8080"}},
 	})
 
 	assert.Equal(t, []string{"shop.com /api/v2", "shop.com /api", "shop.com /"}, got)
@@ -65,8 +65,8 @@ func TestSortRoutes_DeeperPrefixFirst(t *testing.T) {
 // — which is only wrong when it matters.
 func TestSortRoutes_DepthIsSegmentsNotLength(t *testing.T) {
 	got := routeOrder(t, []proxy.RouteConfig{
-		{Hostname: "shop.com", Path: "/abcdefgh", TargetURL: "http://a:80"},
-		{Hostname: "shop.com", Path: "/a/b", TargetURL: "http://b:80"},
+		{Hostname: "shop.com", Path: "/abcdefgh", Upstreams: []string{"http://a:80"}},
+		{Hostname: "shop.com", Path: "/a/b", Upstreams: []string{"http://b:80"}},
 	})
 
 	assert.Equal(t, []string{"shop.com /a/b", "shop.com /abcdefgh"}, got)
@@ -76,10 +76,10 @@ func TestSortRoutes_DepthIsSegmentsNotLength(t *testing.T) {
 // config every time and report drift for ever.
 func TestSortRoutes_IsDeterministic(t *testing.T) {
 	cfgs := []proxy.RouteConfig{
-		{Hostname: "b.com", Path: "/api", TargetURL: "http://x:80"},
-		{Hostname: "a.com", Path: "/api", TargetURL: "http://y:80"},
-		{Hostname: "c.com", Path: "/", TargetURL: "http://z:80"},
-		{Hostname: "a.com", Path: "/", TargetURL: "http://w:80"},
+		{Hostname: "b.com", Path: "/api", Upstreams: []string{"http://x:80"}},
+		{Hostname: "a.com", Path: "/api", Upstreams: []string{"http://y:80"}},
+		{Hostname: "c.com", Path: "/", Upstreams: []string{"http://z:80"}},
+		{Hostname: "a.com", Path: "/", Upstreams: []string{"http://w:80"}},
 	}
 
 	first := routeOrder(t, cfgs)

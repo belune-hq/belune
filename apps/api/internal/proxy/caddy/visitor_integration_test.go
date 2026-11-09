@@ -122,7 +122,7 @@ func TestRealCaddy_IPAllowlistMatchesTheVisitorAndCannotBeForged(t *testing.T) {
 	const host = "allowlist-visitor.belune.local"
 	t.Cleanup(func() { _ = c.RemoveRoute(ctx, host, "/") })
 	addOrSkip(t, c, proxy.RouteConfig{
-		Hostname: host, Path: "/", TargetURL: "http://127.0.0.1:9",
+		Hostname: host, Path: "/", Upstreams: []string{"http://127.0.0.1:9"},
 		Features: []proxy.RouteFeature{{
 			Type: proxy.FeatureIPAllowlist, Enabled: true,
 			Config: json.RawMessage(`{"ranges":["203.0.113.0/24"]}`),

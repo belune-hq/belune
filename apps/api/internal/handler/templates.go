@@ -583,7 +583,7 @@ func (h *Handler) addTemplateDomain(r *http.Request, project generated.Project, 
 	containerName := inst.ContainerName
 	if err := h.proxy.AddRoute(ctx, proxy.RouteConfig{
 		Hostname:   hostname,
-		TargetURL:  fmt.Sprintf("http://%s:%d", containerName, port),
+		Upstreams:  proxy.UpstreamURLs(port, containerName),
 		TLS:        true,
 		ForceHTTPS: true,
 		SSLMode:    templateSSLMode,

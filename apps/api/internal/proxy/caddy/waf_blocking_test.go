@@ -126,7 +126,7 @@ func TestRealCaddy_WAF_BlockingIsPerHost(t *testing.T) {
 	ctx := context.Background()
 	const otherHost = "waf-e2e-other.belune.local"
 	upstream := rigUpstream(t, rig)
-	require.NoError(t, rig.c.AddRoute(ctx, proxy.RouteConfig{Hostname: otherHost, TargetURL: upstream, SSLMode: proxy.SSLModeOff}))
+	require.NoError(t, rig.c.AddRoute(ctx, proxy.RouteConfig{Hostname: otherHost, Upstreams: []string{upstream}, SSLMode: proxy.SSLModeOff}))
 	t.Cleanup(func() { _ = rig.c.RemoveRoute(ctx, otherHost, "/") })
 
 	// Trips 941100, 941110, 941160 and 941390 (observed against CRS 4.25.0) and
@@ -179,7 +179,8 @@ func rigUpstream(t *testing.T, rig *wafRig) string {
 	require.NoError(t, err)
 	for _, r := range routes {
 		if r.Hostname == wafAppHost {
-			return r.TargetURL
+			require.Len(t, r.Upstreams, 1)
+			return r.Upstreams[0]
 		}
 	}
 	t.Fatal("the rig's route is missing")

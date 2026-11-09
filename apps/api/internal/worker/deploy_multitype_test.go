@@ -117,8 +117,8 @@ func TestHandleDeployTask_DeploysEveryProcessTypeFromTheOneImage(t *testing.T) {
 
 	// Only the routable type is wired to the proxy.
 	require.Len(t, pm.AddedRoutes, 1)
-	assert.Contains(t, pm.AddedRoutes[0].TargetURL, app.Slug+":")
-	assert.NotContains(t, pm.AddedRoutes[0].TargetURL, "-worker-")
+	assert.Contains(t, pm.AddedRoutes[0].Upstreams[0], app.Slug+":")
+	assert.NotContains(t, pm.AddedRoutes[0].Upstreams[0], "-worker-")
 
 	// Only a type that asked for a command check is polled. None of the others, in
 	// particular no worker that merely INHERITED a check, is gated by anything: an

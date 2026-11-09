@@ -94,7 +94,7 @@ func newCrowdSecRig(t *testing.T) *csRig {
 
 	c.InitCatchAll(ctx)
 	require.NoError(t, c.AddRoute(ctx, proxy.RouteConfig{
-		Hostname: csAppHost, TargetURL: "http://" + upstreamHost + ":" + u.Port(), SSLMode: proxy.SSLModeOff,
+		Hostname: csAppHost, Upstreams: []string{"http://" + upstreamHost + ":" + u.Port()}, SSLMode: proxy.SSLModeOff,
 	}))
 
 	// Start from a clean local API, and finish by leaving one.
@@ -174,7 +174,7 @@ func TestRealCaddy_CrowdSec_AcceptsTheConfigAndKeepsItFirst(t *testing.T) {
 	assert.Equal(t, crowdsecRouteID, first.ID)
 
 	// And it survives the reorder the next AddRoute does.
-	require.NoError(t, rig.c.AddRoute(ctx, proxy.RouteConfig{Hostname: "other-" + csAppHost, TargetURL: "http://127.0.0.1:9", SSLMode: proxy.SSLModeOff}))
+	require.NoError(t, rig.c.AddRoute(ctx, proxy.RouteConfig{Hostname: "other-" + csAppHost, Upstreams: []string{"http://127.0.0.1:9"}, SSLMode: proxy.SSLModeOff}))
 	t.Cleanup(func() { _ = rig.c.RemoveRoute(ctx, "other-"+csAppHost, "/") })
 	routes, err = rig.c.fetchRawRoutes(ctx)
 	require.NoError(t, err)

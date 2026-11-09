@@ -60,8 +60,8 @@ func TestReconcile_UnresolvableRunningAppKeepsItsRoutes_StoppedAppLosesThem(t *t
 	require.NoError(t, err)
 
 	mock := &mockProxy{routes: []proxy.RouteConfig{
-		{Hostname: "held.belune.local", Path: "/", TargetURL: "reconcile-project-app:8080"},
-		{Hostname: "stopped.belune.local", Path: "/", TargetURL: "reconcile-project-stopped:8080"},
+		{Hostname: "held.belune.local", Path: "/", Upstreams: []string{"reconcile-project-app:8080"}},
+		{Hostname: "stopped.belune.local", Path: "/", Upstreams: []string{"reconcile-project-stopped:8080"}},
 	}}
 	r := proxy.NewReconciler(queries, mock, nil, time.Second).
 		WithCapabilities(&countingProvider{set: capability.NewSet()})

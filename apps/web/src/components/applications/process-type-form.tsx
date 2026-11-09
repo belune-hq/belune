@@ -20,7 +20,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useApplication } from "@/lib/hooks/use-applications";
 import { useDialogBody } from "@/lib/hooks/use-dialog-body";
+import { useVolumes } from "@/lib/hooks/use-volumes";
 import {
   useCreateProcessType,
   useUpdateProcessType,
@@ -29,6 +31,9 @@ import { fieldError } from "@/lib/utils/field-error";
 import {
   PROCESS_TYPE_NAME,
   allowedHealthKinds,
+  validateLimit,
+  validateMemoryMb,
+  validateReplicas,
   type HealthKind,
 } from "@/lib/utils/process-types";
 import type { ProcessType } from "@/lib/types";
@@ -93,17 +98,40 @@ function TypeForm({
   const routable = processType?.routable ?? false;
   const create = useCreateProcessType(projectId, applicationId);
   const update = useUpdateProcessType(projectId, applicationId);
+  // Volumes are application-level and mount into every container, so any volume
+  // caps EVERY type at one replica. The server refuses it too; this tells the
+  // operator first.
+  const { data: volumes } = useVolumes(projectId, applicationId);
+  const hasVolumes = (volumes?.length ?? 0) > 0;
+  const { data: application } = useApplication(projectId, applicationId);
+  const inheritedCpu = application?.cpu_limit ?? 0;
+  const inheritedMemory = application?.memory_limit ?? 0;
 
   const form = useForm({
     defaultValues: {
       name: processType?.name ?? "",
       command: processType?.command ?? "",
+      replicas: String(processType?.replicas ?? 1),
+      // Blank = inherit the application's (a stored NULL), not zero.
+      cpu: processType?.cpu_limit != null ? String(processType.cpu_limit) : "",
+      memoryMb:
+        processType?.memory_limit != null
+          ? String(Math.round(processType.memory_limit / (1024 * 1024)))
+          : "",
       healthType: processType?.health_check_type ?? DEFAULT,
       healthCommand: processType?.health_check_command ?? "",
     },
     onSubmit: ({ value }) => {
       const healthType = value.healthType === DEFAULT ? "" : value.healthType;
+      // Blank limits are sent as 0, which the API reads as "clear back to the
+      // application's"; an absent field would keep the stored value.
       const data = {
+        replicas: Number(value.replicas),
+        cpu_limit: value.cpu.trim() === "" ? 0 : Number(value.cpu),
+        memory_limit:
+          value.memoryMb.trim() === ""
+            ? 0
+            : Math.round(Number(value.memoryMb) * 1024 * 1024),
         command: value.command.trim(),
         health_check_type: healthType,
         // Only meaningful for a command check; cleared otherwise so a stale
@@ -119,7 +147,7 @@ function TypeForm({
         success: () => {
           onDone();
           return editing
-            ? "Process type saved — deploy to apply"
+            ? "Process type saved — command and health changes apply on the next deploy"
             : "Process type created — deploy to start it";
         },
         error: (err) => err.message,
@@ -220,6 +248,142 @@ function TypeForm({
             </Field>
           )}
         </form.Field>
+
+        <form.Field
+          name="replicas"
+          validators={{
+            onChange: ({ value }) =>
+              validateReplicas(value, { routable, hasVolumes }),
+          }}
+        >
+          {(field) => {
+            const error = fieldError(field.state.meta.errors);
+            const invalid =
+              !!error && (field.state.meta.isBlurred || attempted);
+            const paused = !routable && field.state.value.trim() === "0";
+            return (
+              <Field data-invalid={invalid}>
+                <FieldLabel htmlFor="process-type-replicas">
+                  Replicas
+                </FieldLabel>
+                <Input
+                  id="process-type-replicas"
+                  type="number"
+                  inputMode="numeric"
+                  min={routable ? 1 : 0}
+                  max={20}
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  className="w-28"
+                  aria-invalid={invalid}
+                />
+                {invalid ? (
+                  <FieldError>{error}</FieldError>
+                ) : paused ? (
+                  <p className="text-muted-foreground text-xs">
+                    <strong>Paused.</strong> Its containers are stopped and
+                    removed right away; the configuration is kept, and setting
+                    replicas above 0 starts it again.
+                  </p>
+                ) : (
+                  <p className="text-muted-foreground text-xs">
+                    {routable
+                      ? "Containers behind the domains; the proxy shares traffic between them. At least 1."
+                      : "Containers of this type, 0 to 20. 0 pauses it."}
+                    {hasVolumes &&
+                      " This application has volumes, so it stays at 1."}
+                  </p>
+                )}
+              </Field>
+            );
+          }}
+        </form.Field>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <form.Field
+            name="cpu"
+            validators={{
+              onChange: ({ value }) => validateLimit(value, "CPU"),
+            }}
+          >
+            {(field) => {
+              const error = fieldError(field.state.meta.errors);
+              const invalid =
+                !!error && (field.state.meta.isBlurred || attempted);
+              return (
+                <Field data-invalid={invalid}>
+                  <FieldLabel htmlFor="process-type-cpu">
+                    CPU (cores)
+                  </FieldLabel>
+                  <Input
+                    id="process-type-cpu"
+                    type="number"
+                    inputMode="decimal"
+                    step="0.1"
+                    min="0"
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                    placeholder={
+                      inheritedCpu > 0
+                        ? `Inherit — ${inheritedCpu} cores`
+                        : "Inherit — unlimited"
+                    }
+                    aria-invalid={invalid}
+                  />
+                  {invalid ? (
+                    <FieldError>{error}</FieldError>
+                  ) : (
+                    <p className="text-muted-foreground text-xs">
+                      Empty uses the application&apos;s limit.
+                    </p>
+                  )}
+                </Field>
+              );
+            }}
+          </form.Field>
+
+          <form.Field
+            name="memoryMb"
+            validators={{ onChange: ({ value }) => validateMemoryMb(value) }}
+          >
+            {(field) => {
+              const error = fieldError(field.state.meta.errors);
+              const invalid =
+                !!error && (field.state.meta.isBlurred || attempted);
+              return (
+                <Field data-invalid={invalid}>
+                  <FieldLabel htmlFor="process-type-memory">
+                    Memory (MB)
+                  </FieldLabel>
+                  <Input
+                    id="process-type-memory"
+                    type="number"
+                    inputMode="numeric"
+                    min="0"
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                    placeholder={
+                      inheritedMemory > 0
+                        ? `Inherit — ${Math.round(inheritedMemory / (1024 * 1024))} MB`
+                        : "Inherit — unlimited"
+                    }
+                    aria-invalid={invalid}
+                  />
+                  {invalid ? (
+                    <FieldError>{error}</FieldError>
+                  ) : (
+                    <p className="text-muted-foreground text-xs">
+                      Empty uses the application&apos;s limit.
+                    </p>
+                  )}
+                </Field>
+              );
+            }}
+          </form.Field>
+        </div>
 
         <form.Field name="healthType">
           {(field) => {

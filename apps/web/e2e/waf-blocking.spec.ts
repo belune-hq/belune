@@ -32,7 +32,11 @@ async function api<T>(
         },
         body: body === undefined ? undefined : JSON.stringify(body),
       });
-      if (!res.ok) throw new Error(`${method} ${path}: ${res.status}`);
+      // The body carries the server's reason (writeError), which is the only
+      // server-side evidence a green smoke-prod leaves: its logs are not dumped
+      // when it passes, and the stack is gone by the time the browser half fails.
+      if (!res.ok)
+        throw new Error(`${method} ${path}: ${res.status} ${await res.text()}`);
       return res.json();
     },
     { method, path, body },

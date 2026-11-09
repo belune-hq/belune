@@ -4,6 +4,8 @@ import { useApplication } from "@/lib/hooks/use-applications";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LiveIndicator } from "@/components/ui/live-indicator";
 import { useAppMetricsContext } from "@/lib/contexts/app-metrics-context";
+import { useProcessTypes } from "@/lib/hooks/use-process-types";
+import { InstanceBreakdown } from "@/components/applications/instance-breakdown";
 import type { AppMetricPoint } from "@/lib/types";
 import { UPlotAreaChart } from "@/components/ui/uplot-area-chart";
 
@@ -41,6 +43,12 @@ function ApplicationMetricsPage() {
   // promises something that is never going to arrive, and beats "Connecting…",
   // which suggests a connection problem rather than a stopped container.
   const isRunning = application?.status === "running";
+  const { data: processTypes } = useProcessTypes(projectId, applicationId);
+  const webReplicas = processTypes?.find((t) => t.routable)?.replicas ?? 1;
+  const latest =
+    streamData && streamData.length > 0
+      ? streamData[streamData.length - 1]
+      : null;
 
   return (
     <Card>
@@ -48,7 +56,7 @@ function ApplicationMetricsPage() {
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
             <Activity aria-hidden="true" className="size-4" />
-            Application Metrics
+            Web Process Metrics
           </CardTitle>
           <LiveIndicator
             active={connected && isRunning}
@@ -57,6 +65,21 @@ function ApplicationMetricsPage() {
         </div>
       </CardHeader>
       <CardContent>
+        {/* These totals are the routable (web) process only: the sum over its
+            replicas. A worker is deliberately NOT folded in, so adding one never
+            silently changes what the charts mean; workers are listed below. The
+            heading must not claim to be the whole application.
+
+            "Web" holds only because the routable type is always named `web` today:
+            it is created that way, its name is not patchable, it cannot be deleted
+            and a second routable type is refused. The schema deliberately does NOT
+            assume it (`routable` is a flag, not the magic name), so if a routable
+            type can ever be named otherwise, this heading needs revisiting. */}
+        <p className="text-muted-foreground mb-4 text-sm">
+          Totals for the web process
+          {webReplicas > 1 ? `, summed across its ${webReplicas} replicas` : ""}
+          . Worker processes are listed below and are not included.
+        </p>
         {streamData && streamData.length > 0 ? (
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <AppChart
@@ -91,10 +114,11 @@ function ApplicationMetricsPage() {
         ) : (
           <p className="text-muted-foreground py-8 text-center text-sm">
             {isRunning
-              ? "Waiting for metrics data. Data streams in real-time every 2 seconds."
+              ? "Waiting for metrics data. Data streams in real-time, every few seconds."
               : "No live metrics — this application is not running. Start it to begin collecting again."}
           </p>
         )}
+        <InstanceBreakdown point={latest} />
       </CardContent>
     </Card>
   );

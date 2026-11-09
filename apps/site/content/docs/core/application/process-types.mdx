@@ -74,7 +74,7 @@ A container that was added since the last deploy has nothing to restart yet, so 
 
 ## Scaling
 
-A type's **replicas** is how many containers it runs, from 0 to 20. Each replica is its own container, named `<application>-<type>-<number>`.
+A type's **replicas** is how many containers it runs, from 0 to 20. Set it, and the type's own CPU and memory limits, from the type's **Edit** dialog on the **Processes** tab. Each replica is its own container, named `<application>-<type>-<number>`.
 
 - **Scaling down** acts immediately. For the routable type the proxy stops sending traffic to the removed replicas first; then the surplus containers are stopped, given up to 30 seconds to finish what they are doing, and then removed. Replica 1 is never touched.
 - **Scaling up** creates the new containers right away from the image of the last successful deploy. If the application has never deployed, the new replicas appear on the next deploy, as a new type does.

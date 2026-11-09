@@ -68,7 +68,13 @@ function ApplicationMetricsPage() {
         {/* These totals are the routable (web) process only: the sum over its
             replicas. A worker is deliberately NOT folded in, so adding one never
             silently changes what the charts mean; workers are listed below. The
-            heading must not claim to be the whole application. */}
+            heading must not claim to be the whole application.
+
+            "Web" holds only because the routable type is always named `web` today:
+            it is created that way, its name is not patchable, it cannot be deleted
+            and a second routable type is refused. The schema deliberately does NOT
+            assume it (`routable` is a flag, not the magic name), so if a routable
+            type can ever be named otherwise, this heading needs revisiting. */}
         <p className="text-muted-foreground mb-4 text-sm">
           Totals for the web process
           {webReplicas > 1 ? `, summed across its ${webReplicas} replicas` : ""}

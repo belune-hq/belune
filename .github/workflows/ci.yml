@@ -67,7 +67,7 @@ jobs:
       # spec that silently drifts from the real API is worse than the MDX
       # tables it replaced: MDX was read by people, a spec is meant to be
       # consumed by codegen and client tooling directly.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: npm
@@ -158,7 +158,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: npm
@@ -352,7 +352,7 @@ jobs:
 
       # For the browser half below. The frontend job installs these too, but
       # jobs do not share a filesystem.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: npm

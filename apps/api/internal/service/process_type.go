@@ -185,6 +185,11 @@ func newGeneration() string {
 
 // instanceName mints a container name: {appSlug}-{processType}-{idx}-{generation}.
 //
+// The suffix is a random token, NOT the deployment id that migration 000079's comment
+// describes: rows are minted outside any deploy (a new type, a scale-up), and a
+// deployment-derived token can collide with a container still inside its 30s stop
+// grace (3 -> 1 -> 3). Nothing may parse a container name, so it only has to be unique.
+//
 // ⛔ Only for NEW rows. A stored container_name is data and is never recomputed: the
 // install still has a routable container named after the pre-0.3.0 slug beside rows
 // minted later, and a name derived from parts would point at a container that does

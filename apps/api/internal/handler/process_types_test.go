@@ -80,8 +80,8 @@ func TestProcessTypes_ListShowsTheBackfilledRoutableWebType(t *testing.T) {
 	require.Len(t, list, 1)
 	assert.Equal(t, "web", list[0]["name"])
 	assert.Equal(t, true, list[0]["routable"])
-	_, hasReplicas := list[0]["replicas"]
-	assert.False(t, hasReplicas, "replicas is not shown: nothing honours it")
+	assert.EqualValues(t, 1, list[0]["replicas"], "replicas is shown")
+	assert.Nil(t, list[0]["cpu_limit"], "a type with no limit of its own reports null (inherits the application's)")
 }
 
 // ⛔ The one to look at first. UpdateProcessType is a FULL-ROW update, so a PUT that
@@ -138,21 +138,12 @@ func TestProcessTypes_TheTwoConflictsAreDistinguishedByIndex(t *testing.T) {
 	assert.NotContains(t, second["error"], "name already exists", "a user adding a second routable type must not be told their name is taken")
 }
 
-func TestProcessTypes_ReplicasAndLimitsAreRejectedNotStored(t *testing.T) {
+func TestProcessTypes_NameAndRoutableAreNotPatchable(t *testing.T) {
 	f := newPTFixture(t)
-	for _, field := range []string{"replicas", "cpu_limit", "memory_limit"} {
-		code, out := f.do(t, "POST", "", map[string]any{"name": "w-" + strings.ReplaceAll(field, "_", "-"), field: 2})
-		assert.Equal(t, http.StatusBadRequest, code, field)
-		assert.NotEmpty(t, out["error"])
-	}
 	id := f.createWorker(t, "worker", nil)
-	before := f.row(t, id)
-	code, _ := f.do(t, "PUT", "/"+id, map[string]any{"replicas": 4})
-	assert.Equal(t, http.StatusBadRequest, code)
-	assert.Equal(t, before.Replicas, f.row(t, id).Replicas, "a rejected request stores nothing")
 
 	// Name and routable are identities, not patchable.
-	code, _ = f.do(t, "PUT", "/"+id, map[string]any{"routable": true})
+	code, _ := f.do(t, "PUT", "/"+id, map[string]any{"routable": true})
 	assert.Equal(t, http.StatusBadRequest, code)
 	code, _ = f.do(t, "PUT", "/"+id, map[string]any{"name": "renamed"})
 	assert.Equal(t, http.StatusBadRequest, code)

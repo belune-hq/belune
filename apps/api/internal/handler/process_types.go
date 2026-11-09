@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/hibiken/asynq"
 	"log/slog"
 	"net/http"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/belune-hq/belune/internal/instances"
 	"github.com/belune-hq/belune/internal/service"
 	"github.com/belune-hq/belune/internal/store/generated"
+	"github.com/belune-hq/belune/internal/worker"
 )
 
 type processInstanceResponse struct {
@@ -24,16 +26,18 @@ type processInstanceResponse struct {
 	Status        string  `json:"status"`
 }
 
-// processTypeResponse deliberately omits replicas, cpu_limit and memory_limit:
-// nothing reads them in 0.3.0, so showing them would imply a control that does not
-// exist.
+// processTypeResponse carries replicas and the type's own limits. CPULimit and
+// MemoryLimit are null when the type inherits the application's.
 type processTypeResponse struct {
-	ID                 string  `json:"id"`
-	Name               string  `json:"name"`
-	Command            string  `json:"command"`
-	Routable           bool    `json:"routable"`
-	HealthCheckType    *string `json:"health_check_type"`
-	HealthCheckCommand *string `json:"health_check_command"`
+	ID                 string   `json:"id"`
+	Name               string   `json:"name"`
+	Command            string   `json:"command"`
+	Routable           bool     `json:"routable"`
+	Replicas           int32    `json:"replicas"`
+	CPULimit           *float64 `json:"cpu_limit"`
+	MemoryLimit        *int64   `json:"memory_limit"`
+	HealthCheckType    *string  `json:"health_check_type"`
+	HealthCheckCommand *string  `json:"health_check_command"`
 	// ResolvedHealth is what the type ACTUALLY runs with, computed by the one
 	// server-side rule (instances.ResolveHealth). The UI renders from it rather than
 	// mirroring the rule, because a copy that drifts would tell the operator the wrong
@@ -57,9 +61,18 @@ func toProcessTypeResponse(app generated.Application, pt generated.ApplicationPr
 		Name:           pt.Name,
 		Command:        pt.Command,
 		Routable:       pt.Routable,
+		Replicas:       pt.Replicas,
 		Instances:      make([]processInstanceResponse, 0, len(insts)),
 		CreatedAt:      pt.CreatedAt.Time.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:      pt.UpdatedAt.Time.Format("2006-01-02T15:04:05Z07:00"),
+	}
+	if pt.CpuLimit.Valid {
+		v := pt.CpuLimit.Float64
+		out.CPULimit = &v
+	}
+	if pt.MemoryLimit.Valid {
+		v := pt.MemoryLimit.Int64
+		out.MemoryLimit = &v
 	}
 	if pt.HealthCheckType.Valid {
 		v := pt.HealthCheckType.String
@@ -80,32 +93,16 @@ func toProcessTypeResponse(app generated.Application, pt generated.ApplicationPr
 	return out
 }
 
-// notConfigurable holds the three columns that exist but that nothing honours yet.
-// They are accepted in no request body: a value stored and silently ignored is worse
-// than a field that is not there. Any non-null value is a 400.
-type notConfigurable struct {
-	Replicas    *json.RawMessage `json:"replicas"`
-	CPULimit    *json.RawMessage `json:"cpu_limit"`
-	MemoryLimit *json.RawMessage `json:"memory_limit"`
-}
-
-func (n notConfigurable) rejected() string {
-	switch {
-	case n.Replicas != nil:
-		return "replicas is not configurable in this release: every process type runs one instance"
-	case n.CPULimit != nil, n.MemoryLimit != nil:
-		return "per-process-type cpu_limit and memory_limit are not supported: the application's limits apply to every process type"
-	}
-	return ""
-}
-
 type createProcessTypeRequest struct {
 	Name               string `json:"name"`
 	Command            string `json:"command"`
 	Routable           bool   `json:"routable"`
 	HealthCheckType    string `json:"health_check_type"`
 	HealthCheckCommand string `json:"health_check_command"`
-	notConfigurable
+	// Replicas absent = 1. CPULimit / MemoryLimit absent or 0 = inherit.
+	Replicas    *int32   `json:"replicas"`
+	CPULimit    *float64 `json:"cpu_limit"`
+	MemoryLimit *int64   `json:"memory_limit"`
 }
 
 // updateProcessTypeRequest has no name and no routable: the name is an identity and
@@ -115,7 +112,11 @@ type updateProcessTypeRequest struct {
 	Command            *string `json:"command"`
 	HealthCheckType    *string `json:"health_check_type"`
 	HealthCheckCommand *string `json:"health_check_command"`
-	notConfigurable
+	// Replicas absent keeps the stored count. For the limits, absent keeps and an
+	// explicit 0 clears back to inheriting the application's.
+	Replicas    *int32   `json:"replicas"`
+	CPULimit    *float64 `json:"cpu_limit"`
+	MemoryLimit *int64   `json:"memory_limit"`
 }
 
 func decodeStrict(r *http.Request, v any) error {
@@ -199,14 +200,11 @@ func (h *Handler) CreateProcessType(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
 		return
 	}
-	if msg := req.rejected(); msg != "" {
-		writeError(w, http.StatusBadRequest, msg)
-		return
-	}
 
-	pt, inst, err := h.appService.CreateProcessType(r.Context(), appUUID, service.ProcessTypeInput{
+	pt, insts, plan, err := h.appService.CreateProcessType(r.Context(), appUUID, service.ProcessTypeInput{
 		Name: req.Name, Command: req.Command, Routable: req.Routable,
 		HealthCheckType: req.HealthCheckType, HealthCheckCommand: req.HealthCheckCommand,
+		Replicas: req.Replicas, CPULimit: req.CPULimit, MemoryLimit: req.MemoryLimit,
 	})
 	if err != nil {
 		h.writeProcessTypeError(w, r, "failed to create process type", err)
@@ -222,8 +220,12 @@ func (h *Handler) CreateProcessType(w http.ResponseWriter, r *http.Request) {
 		"application_id": uuidToString(appUUID),
 		"name":           pt.Name,
 		"routable":       pt.Routable,
+		"replicas":       pt.Replicas,
 	})
-	writeJSON(w, http.StatusCreated, toProcessTypeResponse(app, pt, []generated.ApplicationInstance{inst}))
+	// A new type's containers appear on the next deploy, exactly as before; a type
+	// created with replicas > 1 on an already-deployed application gets them now.
+	h.enqueueScale(plan)
+	writeJSON(w, http.StatusCreated, toProcessTypeResponse(app, pt, insts))
 }
 
 //apidoc:tag applications/process-types
@@ -238,13 +240,9 @@ func (h *Handler) UpdateProcessType(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
 		return
 	}
-	if msg := req.rejected(); msg != "" {
-		writeError(w, http.StatusBadRequest, msg)
-		return
-	}
-
-	pt, inst, err := h.appService.UpdateProcessType(r.Context(), appUUID, typeUUID, service.ProcessTypePatch{
+	pt, insts, plan, err := h.appService.UpdateProcessType(r.Context(), appUUID, typeUUID, service.ProcessTypePatch{
 		Command: req.Command, HealthCheckType: req.HealthCheckType, HealthCheckCommand: req.HealthCheckCommand,
+		Replicas: req.Replicas, CPULimit: req.CPULimit, MemoryLimit: req.MemoryLimit,
 	})
 	if err != nil {
 		h.writeProcessTypeError(w, r, "failed to update process type", err)
@@ -259,8 +257,10 @@ func (h *Handler) UpdateProcessType(w http.ResponseWriter, r *http.Request) {
 	h.audit(r, "update_process_type", "process_type", uuidToString(pt.ID), map[string]any{
 		"application_id": uuidToString(appUUID),
 		"name":           pt.Name,
+		"replicas":       pt.Replicas,
 	})
-	writeJSON(w, http.StatusOK, toProcessTypeResponse(app, pt, []generated.ApplicationInstance{inst}))
+	h.enqueueScale(plan)
+	writeJSON(w, http.StatusOK, toProcessTypeResponse(app, pt, insts))
 }
 
 //apidoc:tag applications/process-types
@@ -360,5 +360,23 @@ func (h *Handler) RestartInstance(w http.ResponseWriter, r *http.Request) {
 	case <-r.Context().Done():
 		// Nothing to write to: the client or the timeout handler has gone. The
 		// restart carries on in its own context.
+	}
+}
+
+// enqueueScale hands the container half of a scale change to the worker. The rows are
+// already committed; if the queue is unavailable the next deploy still converges the
+// containers on the rows, so this is logged, not failed.
+func (h *Handler) enqueueScale(plan service.ScalePlan) {
+	if plan.Empty() || h.asynq == nil {
+		return
+	}
+	task, err := worker.NewScaleTask(plan)
+	if err != nil {
+		slog.Error("scale: could not build the container task", "error", err)
+		return
+	}
+	if _, err := h.asynq.Enqueue(task, asynq.MaxRetry(0)); err != nil {
+		slog.Error("scale: could not queue the container changes; the next deploy will converge them",
+			"application_id", uuidToString(plan.ApplicationID), "error", err)
 	}
 }

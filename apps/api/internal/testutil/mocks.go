@@ -38,11 +38,12 @@ type MockContainerRuntime struct {
 	// CreateFunc, when set, backs CreateContainer: lets a test return a distinct id
 	// per container, or fail one by name. Nil keeps the single fixed id.
 	CreateFunc        func(cfg runtime.ContainerConfig) (string, error)
-	PullCalls         []string // image tags passed to PullImage
-	HealthStatus_     string   // returned by ContainerHealth (empty → "healthy")
-	HealthCalls       []string // container names ContainerHealth was asked about
-	ImageMissing_     bool     // when true, ImageExists reports false
-	ContainerMissing_ bool     // when true, ContainerExists reports false
+	PullCalls         []string        // image tags passed to PullImage
+	HealthStatus_     string          // returned by ContainerHealth (empty → "healthy")
+	HealthCalls       []string        // container names ContainerHealth was asked about
+	ImageMissing_     bool            // when true, ImageExists reports false
+	ContainerMissing_ bool            // when true, ContainerExists reports false
+	MissingNames      map[string]bool // ContainerExists reports false for these names only
 	ListContainers_   []runtime.ContainerInfo
 	// LogsRequested records the container names ContainerLogs was asked for, and
 	// ContainerLogsBody_ (by name) is what it returns, so a test can tell WHICH
@@ -293,7 +294,10 @@ func (m *MockContainerRuntime) ImageExists(_ context.Context, _ string) (bool, e
 // ContainerExists returns ContainerMissing_ inverted: it reports true (present)
 // by default so existing tests are unaffected; set ContainerMissing_ to simulate
 // a deleted container.
-func (m *MockContainerRuntime) ContainerExists(_ context.Context, _ string) (bool, error) {
+func (m *MockContainerRuntime) ContainerExists(_ context.Context, name string) (bool, error) {
+	if m.MissingNames[name] {
+		return false, nil
+	}
 	return !m.ContainerMissing_, nil
 }
 

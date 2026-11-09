@@ -335,11 +335,16 @@ func (q *Queries) ListAllInstanceContainerNames(ctx context.Context) ([]ListAllI
 }
 
 const listInstancesByApplication = `-- name: ListInstancesByApplication :many
-SELECT id, application_id, process_type_id, deployment_id, idx, container_name, container_id, status, created_at, updated_at FROM application_instances
-WHERE application_id = $1
-ORDER BY idx, id
+SELECT i.id, i.application_id, i.process_type_id, i.deployment_id, i.idx, i.container_name, i.container_id, i.status, i.created_at, i.updated_at
+FROM application_instances i
+JOIN application_process_types pt ON pt.id = i.process_type_id
+WHERE i.application_id = $1
+ORDER BY pt.routable DESC, pt.name, i.idx, i.id
 `
 
+// Ordered by process type, then idx, NOT by idx alone: with several types a bare idx
+// order interleaves them (web-1, worker-1, web-2, worker-2). The routable type comes
+// first, as in ListInstancesWithProcessTypeByApplication.
 func (q *Queries) ListInstancesByApplication(ctx context.Context, applicationID pgtype.UUID) ([]ApplicationInstance, error) {
 	rows, err := q.db.Query(ctx, listInstancesByApplication, applicationID)
 	if err != nil {

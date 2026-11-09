@@ -310,6 +310,22 @@ export interface AppMetricPoint {
   network_rx_bytes: number | null;
   network_tx_bytes: number | null;
   recorded_at: string;
+  // The live stream also carries a point per instance (history does not). The totals
+  // above are the sum over the routable type's replicas; a breakdown in the UI is a
+  // separate piece of work.
+  instances?: AppInstanceMetricPoint[];
+}
+
+export interface AppInstanceMetricPoint {
+  instance_id: string;
+  process_type: string;
+  idx: number;
+  routable: boolean;
+  cpu_percent: number;
+  memory_usage: number;
+  memory_limit: number;
+  network_rx_bytes: number;
+  network_tx_bytes: number;
 }
 
 export interface SettingEntry {

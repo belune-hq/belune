@@ -175,7 +175,9 @@ func TestScaleTask_ScaleUpCreatesOnlyTheMissingContainersFromTheLastImage(t *tes
 	require.NoError(t, err)
 	require.Len(t, rows, 3)
 	assert.Equal(t, "pending", rows[0].Status, "idx 1 untouched")
+	assert.False(t, rows[0].DeploymentID.Valid, "a row nothing created stays NULL, and nothing breaks")
 	for _, r := range rows[1:] {
+		assert.Equal(t, dep.ID, r.DeploymentID, "scale-up records the deployment whose image it ran")
 		assert.Equal(t, status.ApplicationRunning, r.Status)
 		assert.Equal(t, "id-"+r.ContainerName, r.ContainerID.String)
 	}

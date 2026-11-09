@@ -48,6 +48,7 @@ func TestScale_ZeroReplicasIsRefusedOnTheRoutableTypeAndAllowedOnAWorker(t *test
 	assert.Len(t, f.instances(t, web), 1)
 
 	id := f.createWorker(t, "worker", nil)
+	stored := f.instances(t, id)[0].ContainerName
 	env.Asynq.Tasks = nil
 	code, out = f.do(t, "PUT", "/"+id, map[string]any{"replicas": 0})
 	require.Equal(t, http.StatusOK, code, "%v", out)
@@ -57,7 +58,7 @@ func TestScale_ZeroReplicasIsRefusedOnTheRoutableTypeAndAllowedOnAWorker(t *test
 
 	tasks := scaleTasks()
 	require.Len(t, tasks, 1)
-	assert.Equal(t, []string{f.appSlug + "-worker-1"}, tasks[0].RemoveContainers, "the container to stop is named, since its row is gone")
+	assert.Equal(t, []string{stored}, tasks[0].RemoveContainers, "the container to stop is named, since its row is gone")
 	assert.False(t, tasks[0].CreateContainers)
 }
 
@@ -70,9 +71,10 @@ func TestScale_UpMintsRowsInIdxOrderAndDownDeletesTheSurplus(t *testing.T) {
 	require.Equal(t, http.StatusOK, code, "%v", out)
 	rows := f.instances(t, id)
 	require.Len(t, rows, 3)
+	surplus := []string{rows[1].ContainerName, rows[2].ContainerName}
 	for i, r := range rows {
 		assert.EqualValues(t, i+1, r.Idx)
-		assert.Equal(t, f.appSlug+"-worker-"+string(rune('1'+i)), r.ContainerName)
+		assert.Regexp(t, "^"+f.appSlug+"-worker-"+string(rune('1'+i))+"-[0-9a-f]{8}$", r.ContainerName)
 		assert.Equal(t, "pending", r.Status)
 	}
 	tasks := scaleTasks()
@@ -88,7 +90,7 @@ func TestScale_UpMintsRowsInIdxOrderAndDownDeletesTheSurplus(t *testing.T) {
 	assert.EqualValues(t, 1, rows[0].Idx, "idx 1 is untouched")
 	tasks = scaleTasks()
 	require.Len(t, tasks, 1)
-	assert.Equal(t, []string{f.appSlug + "-worker-2", f.appSlug + "-worker-3"}, tasks[0].RemoveContainers)
+	assert.Equal(t, surplus, tasks[0].RemoveContainers, "the stored names, as minted")
 
 	// An unchanged count touches nothing and enqueues nothing.
 	env.Asynq.Tasks = nil

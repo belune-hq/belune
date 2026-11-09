@@ -102,6 +102,13 @@ SET container_id = $2, status = $3, updated_at = NOW()
 WHERE id = $1
 RETURNING *;
 
+-- Which deployment created the instance's current container. Nullable by design:
+-- backfilled rows and a restored database have no deployment to point at.
+-- name: SetInstanceDeployment :exec
+UPDATE application_instances
+SET deployment_id = $2, updated_at = NOW()
+WHERE id = $1;
+
 -- name: DeleteInstance :exec
 DELETE FROM application_instances WHERE id = $1;
 

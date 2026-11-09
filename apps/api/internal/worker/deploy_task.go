@@ -921,7 +921,7 @@ func (h *TaskHandler) createAndStart(ctx context.Context, dc *deployContext, t *
 		// redeploy/rebuild/rollback from the next.
 		Labels: map[string]string{
 			runtime.LabelApplicationID: dc.payload.ApplicationID,
-			"deployment-id":            dc.payload.DeploymentID,
+			runtime.LabelDeploymentID:  dc.payload.DeploymentID,
 			// Which container of the application this is. Written on create only, so
 			// an existing container has neither until it is redeployed -- readers
 			// identify those by stored container name instead.
@@ -954,6 +954,17 @@ func (h *TaskHandler) createAndStart(ctx context.Context, dc *deployContext, t *
 	})
 	if err != nil {
 		return fmt.Errorf("create container: %w", err)
+	}
+
+	// Stamp the generation BEFORE the container starts, so its first events already
+	// resolve against a row that knows which deployment it belongs to. Best-effort:
+	// the column is nullable and D1 changes nothing for an operator if it stays so.
+	if t.instanceID.Valid {
+		if err := h.Queries.SetInstanceDeployment(ctx, generated.SetInstanceDeploymentParams{
+			ID: t.instanceID, DeploymentID: dc.deploymentID,
+		}); err != nil {
+			slog.Warn("createAndStart: could not record the deployment on the instance", "container", t.containerName, "error", err)
+		}
 	}
 
 	if err := dc.runtime.StartContainer(ctx, containerID); err != nil {

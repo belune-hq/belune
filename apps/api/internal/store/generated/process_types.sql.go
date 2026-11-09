@@ -591,6 +591,24 @@ func (q *Queries) ListRoutableInstancesByApplication(ctx context.Context, applic
 	return items, nil
 }
 
+const setInstanceDeployment = `-- name: SetInstanceDeployment :exec
+UPDATE application_instances
+SET deployment_id = $2, updated_at = NOW()
+WHERE id = $1
+`
+
+type SetInstanceDeploymentParams struct {
+	ID           pgtype.UUID `json:"id"`
+	DeploymentID pgtype.UUID `json:"deployment_id"`
+}
+
+// Which deployment created the instance's current container. Nullable by design:
+// backfilled rows and a restored database have no deployment to point at.
+func (q *Queries) SetInstanceDeployment(ctx context.Context, arg SetInstanceDeploymentParams) error {
+	_, err := q.db.Exec(ctx, setInstanceDeployment, arg.ID, arg.DeploymentID)
+	return err
+}
+
 const updateInstanceContainer = `-- name: UpdateInstanceContainer :one
 UPDATE application_instances
 SET container_id = $2, status = $3, updated_at = NOW()

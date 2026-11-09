@@ -51,12 +51,17 @@ type processTypeResponse struct {
 type resolvedHealthResponse struct {
 	Kind   string `json:"kind"`   // http | command | none
 	Source string `json:"source"` // set | inherited | default
+	// Inert is true when the check resolves to http but has no path, so nothing is
+	// probed and a deploy is not verified. Kind stays "http": it is what the operator
+	// chose. Reason says why, in a sentence.
+	Inert  bool   `json:"inert"`
+	Reason string `json:"reason,omitempty"`
 }
 
 func toProcessTypeResponse(app generated.Application, pt generated.ApplicationProcessType, insts []generated.ApplicationInstance) processTypeResponse {
 	rh := instances.ResolveHealth(app, pt)
 	out := processTypeResponse{
-		ResolvedHealth: resolvedHealthResponse{Kind: rh.Type, Source: rh.Source},
+		ResolvedHealth: resolvedHealthResponse{Kind: rh.Type, Source: rh.Source, Inert: rh.Inert, Reason: rh.Reason},
 		ID:             uuidToString(pt.ID),
 		Name:           pt.Name,
 		Command:        pt.Command,

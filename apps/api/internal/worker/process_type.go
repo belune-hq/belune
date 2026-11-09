@@ -50,11 +50,14 @@ func commandOverride(command string) (entrypoint, cmd []string) {
 type resolvedHealth struct {
 	typ     string // "http", "command" or "none"
 	command pgtype.Text
+	// inert: resolves to http but there is no path, so nothing is probed. Read by the
+	// deploy gate; the same flag the API reports (instances.Health.Inert).
+	inert bool
 }
 
 // resolveHealthCheck reads the one health-check rule, which lives in
 // instances.ResolveHealth so the API reports exactly what this worker runs.
 func resolveHealthCheck(app generated.Application, pt generated.ApplicationProcessType) resolvedHealth {
 	h := instances.ResolveHealth(app, pt)
-	return resolvedHealth{typ: h.Type, command: h.Command}
+	return resolvedHealth{typ: h.Type, command: h.Command, inert: h.Inert}
 }

@@ -18,6 +18,27 @@ type Health struct {
 	Type    string // "http", "command" or "none"
 	Command pgtype.Text
 	Source  string
+	// Inert means the check resolves to something that can never run: an http check
+	// with no path. Type stays "http" -- the operator chose it, they just have not
+	// said WHERE to probe -- so this is a separate fact, not a flattening to "none".
+	// The deploy gate and the UI both read it, so neither can disagree about whether
+	// a deploy is actually verified. Reason says why, for display.
+	Inert  bool
+	Reason string
+}
+
+// HealthInertNoPath is Reason for an http check with no path.
+const HealthInertNoPath = "no health check path is set, so nothing is probed"
+
+// withInert is the ONE definition of "configured but checks nothing". It is applied to
+// every return of ResolveHealth so the gate (worker.verifyRoutableHealth) and the API
+// read the same answer. A rolling deploy's safety is this gate: without a check the
+// new generation is never verified before the old one is removed.
+func withInert(app generated.Application, h Health) Health {
+	if h.Type == "http" && (!app.HealthCheckPath.Valid || app.HealthCheckPath.String == "") {
+		h.Inert, h.Reason = true, HealthInertNoPath
+	}
+	return h
 }
 
 // ResolveHealth is the ONE place the health-check rule lives. The deploy worker
@@ -44,10 +65,10 @@ func ResolveHealth(app generated.Application, pt generated.ApplicationProcessTyp
 		if pt.HealthCheckCommand.Valid {
 			cmd = pt.HealthCheckCommand
 		}
-		return Health{Type: pt.HealthCheckType.String, Command: cmd, Source: HealthSourceSet}
+		return withInert(app, Health{Type: pt.HealthCheckType.String, Command: cmd, Source: HealthSourceSet})
 	}
 	if pt.Routable {
-		return Health{Type: app.HealthCheckType, Command: app.HealthCheckCommand, Source: HealthSourceInherited}
+		return withInert(app, Health{Type: app.HealthCheckType, Command: app.HealthCheckCommand, Source: HealthSourceInherited})
 	}
 	return Health{Type: "none", Source: HealthSourceDefault}
 }

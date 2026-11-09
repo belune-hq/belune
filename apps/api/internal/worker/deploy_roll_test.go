@@ -7,9 +7,11 @@ import (
 	"testing"
 
 	"github.com/hibiken/asynq"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/belune-hq/belune/internal/instances"
 	"github.com/belune-hq/belune/internal/proxy"
 	"github.com/belune-hq/belune/internal/runtime"
 	"github.com/belune-hq/belune/internal/status"
@@ -293,4 +295,50 @@ func indexOf(s []string, v string) int {
 		}
 	}
 	return -1
+}
+
+// The deploy gate and the API's `inert` flag are ONE predicate (instances.ResolveHealth),
+// so they agree by construction; this asserts it on the cases that matter. An inert http
+// check records 'skipped' -- the gate ran nothing -- while http with a path really
+// probes (here it fails: nothing listens on the mock container's name).
+func TestRoll_TheGateSkipsExactlyWhatTheResolverCallsInert(t *testing.T) {
+	cases := []struct {
+		name       string
+		kind, path string
+		inert      bool
+	}{
+		{"http with no path is inert", "http", "", true},
+		{"none is a choice, not a gap", "none", "", false},
+		{"http with a path is probed", "http", "/up", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := newRollRig(t, c.kind, func(a *generated.CreateApplicationParams, _ *generated.CreateDeploymentParams) {
+				if c.path != "" {
+					a.HealthCheckPath = pgtype.Text{String: c.path, Valid: true}
+				}
+			})
+			// Short budget: the probed case must fail fast rather than wait two minutes.
+			_, err := testPool.Exec(context.Background(), `UPDATE applications SET health_check_timeout_seconds = 1 WHERE id = $1`, r.app.ID)
+			require.NoError(t, err)
+
+			app, err := testQueries.GetApplication(context.Background(), r.app.ID)
+			require.NoError(t, err)
+			pt, err := testQueries.GetProcessTypeByName(context.Background(), generated.GetProcessTypeByNameParams{ApplicationID: r.app.ID, Name: "web"})
+			require.NoError(t, err)
+			// The type's own setting (the rig writes it) wins, as in a real deploy.
+			resolved := instances.ResolveHealth(app, pt)
+			require.Equal(t, c.inert, resolved.Inert, "the resolver's verdict")
+
+			_ = r.deploy(t)
+
+			dep, err := testQueries.GetDeployment(context.Background(), r.dep.ID)
+			require.NoError(t, err)
+			if c.inert || c.kind == "none" {
+				assert.Equal(t, "skipped", dep.HealthStatus.String, "the gate checked nothing")
+			} else {
+				assert.Equal(t, "failing", dep.HealthStatus.String, "the gate really probed")
+			}
+		})
+	}
 }

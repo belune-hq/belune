@@ -79,3 +79,15 @@ func TestBuildRoute_UpstreamsKeepTheirOrderAndAreByteStable(t *testing.T) {
 		t.Fatalf("upstreams out of order or missing: %v", dials)
 	}
 }
+
+// A route with nothing to proxy to is refused, not written. Caddy accepts
+// "upstreams": [] and the route would 502 every request while the reconciler saw it
+// as correct; the single empty target this replaced was rejected by Caddy, so the
+// loudness is kept here.
+func TestBuildRoute_RefusesAZeroUpstreamRoute(t *testing.T) {
+	for _, ups := range [][]string{nil, {}} {
+		if _, err := buildRoute(proxy.RouteConfig{Hostname: "app.example.com", Upstreams: ups}); err == nil {
+			t.Fatalf("buildRoute accepted a route with upstreams %#v", ups)
+		}
+	}
+}

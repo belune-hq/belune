@@ -174,6 +174,14 @@ func (c *Client) InitCatchAll(ctx context.Context) {
 // Pulled out of AddRoute so the same construction can be compared against what
 // Caddy actually holds — see EnsureRoute.
 func buildRoute(cfg proxy.RouteConfig) (caddyRoute, error) {
+	// ⛔ Refuse a route with nothing to proxy to. An empty list renders as
+	// "upstreams": [], which Caddy ACCEPTS: the route is written, serves a 502 on every
+	// request, and the reconciler sees it as correct, with no error and no drift. The
+	// single empty target this replaced (dial "") was REJECTED by Caddy, so this keeps
+	// that loudness. Nothing should be able to construct it: it is a programming error.
+	if len(cfg.Upstreams) == 0 {
+		return caddyRoute{}, fmt.Errorf("route %s%s has no upstreams", cfg.Hostname, cfg.Path)
+	}
 	// Build the handler chain: feature handlers first, then reverse_proxy as the terminal handler.
 	handlers, err := buildFeatureHandlers(cfg)
 	if err != nil {

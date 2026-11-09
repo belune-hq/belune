@@ -1,7 +1,7 @@
 import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
 import { z } from "zod";
-import { HeartPulse } from "lucide-react";
+import { HeartPulse, TriangleAlert } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -143,6 +143,27 @@ export function HealthCheckSection({
         }}
       >
         <CardContent className="space-y-4">
+          {/* The SAVED state, not the form's: the legacy/default shape is http with no
+              path, which probes nothing. The form refuses to save it, so this only
+              shows for an application that has never been given a path. */}
+          {application.health_check_type === "http" &&
+            !application.health_check_path && (
+              <p
+                role="status"
+                data-testid="health-inert-hint"
+                className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400"
+              >
+                <TriangleAlert
+                  aria-hidden="true"
+                  className="mt-0.5 size-4 shrink-0"
+                />
+                <span>
+                  HTTP is selected but no path is saved, so nothing is checked.
+                  A deploy replaces the running version without verifying the
+                  new one. Set a path below, or choose Command.
+                </span>
+              </p>
+            )}
           <form.Field
             name="type"
             children={(field) => (

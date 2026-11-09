@@ -45,6 +45,25 @@ describe("HealthCheckSection", () => {
     domains = [];
   });
 
+  // The saved state, not the form's: http with no saved path probes nothing, and the
+  // section must say so rather than let the HTTP selection read as protection.
+  it("says nothing is checked when http is saved without a path", () => {
+    renderIt(app({ health_check_type: "http", health_check_path: null }));
+    expect(screen.getByTestId("health-inert-hint").textContent).toContain(
+      "nothing is checked",
+    );
+  });
+
+  it("shows no such hint once a path is saved, or for another method", () => {
+    renderIt(app({ health_check_type: "http", health_check_path: "/up" }));
+    expect(screen.queryByTestId("health-inert-hint")).toBeNull();
+  });
+
+  it("shows no such hint for method None or Command", () => {
+    renderIt(app({ health_check_type: "none", health_check_path: null }));
+    expect(screen.queryByTestId("health-inert-hint")).toBeNull();
+  });
+
   // The bug: onChangeListenTo on "type" ran the validator as the field
   // unmounted, so the parked error rendered when the method came back.
   it("never flags an untouched required field while the method changes", () => {

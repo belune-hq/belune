@@ -198,21 +198,34 @@ func uuidStr(u pgtype.UUID) string { return u.String() }
 func TestListProcessTypes_ReportsTheResolvedHealth(t *testing.T) {
 	token, projectID, appID, appUUID, _, _ := seedTypedLogApp(t)
 	ctx := context.Background()
-	_, err := env.Pool.Exec(ctx, `UPDATE applications SET health_check_type = 'http' WHERE id = $1`, appUUID)
+	_, err := env.Pool.Exec(ctx, `UPDATE applications SET health_check_type = 'http', health_check_path = '/up' WHERE id = $1`, appUUID)
 	require.NoError(t, err)
 	// web: routable, unset (inherits http). queue: non-routable, unset (none).
 	// scheduler: non-routable, sets command.
 	_, err = env.Pool.Exec(ctx, `UPDATE application_process_types SET health_check_type = 'command', health_check_command = 'true' WHERE application_id = $1 AND name = 'scheduler'`, appUUID)
 	require.NoError(t, err)
 
-	resp := env.DoRequest(t, "GET", fmt.Sprintf("/api/projects/%s/applications/%s/process-types", projectID, appID), nil, testutil.AuthHeader(token))
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-	got := map[string]map[string]any{}
-	for _, row := range testutil.ReadJSONArray(t, resp) {
-		m := row.(map[string]any)
-		got[m["name"].(string)] = m["resolved_health"].(map[string]any)
+	list := func() map[string]map[string]any {
+		resp := env.DoRequest(t, "GET", fmt.Sprintf("/api/projects/%s/applications/%s/process-types", projectID, appID), nil, testutil.AuthHeader(token))
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		got := map[string]map[string]any{}
+		for _, row := range testutil.ReadJSONArray(t, resp) {
+			m := row.(map[string]any)
+			got[m["name"].(string)] = m["resolved_health"].(map[string]any)
+		}
+		return got
 	}
-	assert.Equal(t, map[string]any{"kind": "http", "source": "inherited"}, got["web"])
-	assert.Equal(t, map[string]any{"kind": "none", "source": "default"}, got["queue"], "a worker never inherits http")
-	assert.Equal(t, map[string]any{"kind": "command", "source": "set"}, got["scheduler"])
+	got := list()
+	assert.Equal(t, map[string]any{"kind": "http", "source": "inherited", "inert": false}, got["web"])
+	assert.Equal(t, map[string]any{"kind": "none", "source": "default", "inert": false}, got["queue"], "a worker never inherits http")
+	assert.Equal(t, map[string]any{"kind": "command", "source": "set", "inert": false}, got["scheduler"])
+
+	// http with no path: still kind http (the operator chose it), but flagged inert with
+	// a reason, so the UI cannot imply a deploy is verified when nothing is probed.
+	_, err = env.Pool.Exec(ctx, `UPDATE applications SET health_check_path = NULL WHERE id = $1`, appUUID)
+	require.NoError(t, err)
+	web := list()["web"]
+	assert.Equal(t, "http", web["kind"])
+	assert.Equal(t, true, web["inert"])
+	assert.NotEmpty(t, web["reason"])
 }

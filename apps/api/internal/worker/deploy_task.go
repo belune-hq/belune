@@ -1223,10 +1223,12 @@ func (h *TaskHandler) verifyRoutableHealth(ctx context.Context, dc *deployContex
 		return h.verifyCommandHealth(ctx, dc, t)
 	}
 
-	// 'none', or 'http' with no path, is not an error — there is simply nothing
-	// to verify.
-	if t.health.typ == "none" ||
-		!dc.app.HealthCheckPath.Valid || dc.app.HealthCheckPath.String == "" {
+	// 'none', or an inert http check (no path), is not an error — there is simply
+	// nothing to verify. The inert test is the resolver's, shared with the API, so
+	// what the operator is told and what this gate does cannot drift. ⚠️ With a
+	// rolling deploy this gate is the whole safety mechanism: skipping it means the
+	// new generation is never verified before the old one is removed.
+	if t.health.typ == "none" || t.health.inert {
 		h.recordHealth(ctx, dc.deploymentID, healthStatusSkipped, "no health check configured")
 		return nil
 	}

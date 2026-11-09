@@ -91,7 +91,7 @@ func TestResolveType_UnknownTypeIsItsOwnError(t *testing.T) {
 
 // The health rule's four cases, which the API now reports and the deploy worker runs.
 func TestResolveHealth_FourCases(t *testing.T) {
-	app := generated.Application{HealthCheckType: "http"}
+	app := generated.Application{HealthCheckType: "http", HealthCheckPath: pgtype.Text{String: "/up", Valid: true}}
 	set := func(kind string) pgtype.Text { return pgtype.Text{String: kind, Valid: true} }
 
 	got := instances.ResolveHealth(app, generated.ApplicationProcessType{Routable: true})
@@ -133,4 +133,34 @@ func TestResolvers_ReturnStoredNamesUnchangedWhateverTheirShape(t *testing.T) {
 	names, err := instances.RoutableContainerNames(ctx, q, pgtype.UUID{})
 	require.NoError(t, err)
 	assert.Equal(t, []string{legacy}, names)
+}
+
+// Inert is the one definition of "configured but checks nothing": http with no path.
+// Type stays "http" (the operator chose it); only Inert says nothing will be probed.
+func TestResolveHealth_InertOnlyForHTTPWithNoPath(t *testing.T) {
+	path := func(p pgtype.Text) generated.Application {
+		return generated.Application{HealthCheckType: "http", HealthCheckPath: p}
+	}
+	routable := generated.ApplicationProcessType{Routable: true}
+
+	for name, p := range map[string]pgtype.Text{"NULL": {}, "empty": {String: "", Valid: true}} {
+		got := instances.ResolveHealth(path(p), routable)
+		assert.Equal(t, "http", got.Type, "%s path: never flattened to none", name)
+		assert.True(t, got.Inert, name)
+		assert.Equal(t, instances.HealthInertNoPath, got.Reason, name)
+	}
+
+	got := instances.ResolveHealth(path(pgtype.Text{String: "/up", Valid: true}), routable)
+	assert.False(t, got.Inert, "http with a path is probed")
+	assert.Empty(t, got.Reason)
+
+	cmd := generated.Application{HealthCheckType: "command"}
+	assert.False(t, instances.ResolveHealth(cmd, routable).Inert, "command is not inert")
+	none := generated.Application{HealthCheckType: "none"}
+	assert.False(t, instances.ResolveHealth(none, routable).Inert, "an explicit none is a choice, not a gap")
+	assert.False(t, instances.ResolveHealth(path(pgtype.Text{}), generated.ApplicationProcessType{}).Inert, "a worker resolves to none")
+
+	// A type that sets http itself, over an application with no path, is inert too.
+	set := generated.ApplicationProcessType{Routable: true, HealthCheckType: pgtype.Text{String: "http", Valid: true}}
+	assert.True(t, instances.ResolveHealth(generated.Application{HealthCheckType: "none"}, set).Inert)
 }

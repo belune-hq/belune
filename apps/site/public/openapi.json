@@ -21168,7 +21168,13 @@
       },
       "resolvedHealthResponse": {
         "properties": {
+          "inert": {
+            "type": "boolean"
+          },
           "kind": {
+            "type": "string"
+          },
+          "reason": {
             "type": "string"
           },
           "source": {

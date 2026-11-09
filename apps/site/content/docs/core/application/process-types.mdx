@@ -129,6 +129,8 @@ On every deploy, the worker types are started first and the routable type last. 
 
 If a deploy fails, the containers it created are removed. A worker whose previous container had already been removed is left **without a running container** rather than running the old version.
 
-The routable type is replaced without a gap. Each new container is started beside the old one and must pass its health check before the route moves to it; the old one is stopped only after the route has moved. If the new container fails, it is removed and the old one keeps serving. Replicas are checked one after another, so a deploy of several replicas takes correspondingly longer. The exception is an application with persistent volumes, which stops the old container first so two containers never write one volume.
+The routable type is replaced without a gap. Each new container is started beside the old one and must pass its health check before the route moves to it; the old one is stopped only after the route has moved. If the new container fails, it is removed and the old one keeps serving. Replicas are checked one after another, so a deploy of several replicas takes correspondingly longer.
+
+This protection depends on a health check existing. With no check, or an HTTP check that has no path, the new container is never verified: the route moves to it and the old one is removed. The Processes tab says so on the row ("no path set, so nothing is checked"). Set a path, or use a command check, to be protected. The exception is an application with persistent volumes, which stops the old container first so two containers never write one volume.
 
 Other applications on the project network reach the routable type by the application's slug, which follows the live container across deploys. For the few seconds the old and new containers overlap, the name resolves to both.

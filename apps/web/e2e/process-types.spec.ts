@@ -74,9 +74,13 @@ test("the Processes tab shows the routable type, adds a worker, and offers no wa
   // its container, and NO remove control.
   const webRow = page.getByRole("listitem").filter({ hasText: "Routable" });
   await expect(webRow).toBeVisible();
-  await expect(
-    webRow.getByText("HTTP probe (the application's)"),
-  ).toBeVisible();
+  // This application was created with no health check path, so the inherited http
+  // check probes nothing. The row must SAY so, visibly (a jsdom run cannot tell
+  // opacity 0 from shown), rather than read as a configured check.
+  const inert = webRow.getByTestId("health-inert");
+  await expect(inert).toContainText("no path set, so nothing is checked");
+  expect((await settled(inert)).height).toBeGreaterThan(10);
+  expect((await rendered(inert)).opacity).toBe(1);
   await expect(webRow.getByText(app.slug, { exact: true })).toBeVisible();
   await expect(webRow.getByRole("button", { name: "Edit web" })).toBeVisible();
   await expect(webRow.getByRole("button", { name: /^Remove/ })).toHaveCount(0);

@@ -161,6 +161,10 @@ export interface ProcessType {
     // "set" = the type chose it; "inherited" = the application's; "default" =
     // the fallback for a non-routable type.
     source: "set" | "inherited" | "default";
+    // true = this resolves to an HTTP probe that has no path, so nothing is probed
+    // and a deploy is not verified. `kind` stays "http": it is what was chosen.
+    inert: boolean;
+    reason?: string;
   };
   instances: ProcessInstance[];
   created_at: string;

@@ -7,6 +7,7 @@ import {
   RotateCwIcon,
   PlusIcon,
   Trash2Icon,
+  TriangleAlertIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -188,6 +189,9 @@ function healthText(pt: ProcessType): string {
   if (h.kind === "command" && pt.health_check_command) {
     return `${label}: ${pt.health_check_command}`;
   }
+  // Said in the operator's words, and before the source suffix: someone reading this
+  // must not conclude a deploy is verified when nothing is checked.
+  if (h.inert) return `${label} — no path set, so nothing is checked`;
   if (h.source === "inherited") return `${label} (the application's)`;
   if (h.source === "default") return `${label} (default)`;
   return label;
@@ -253,7 +257,23 @@ function TypeRow({
         <dt>Resources</dt>
         <dd className="min-w-0 truncate">{limitsText(pt)}</dd>
         <dt>Health check</dt>
-        <dd className="min-w-0 truncate">{healthText(pt)}</dd>
+        {pt.resolved_health.inert ? (
+          <dd
+            className="flex min-w-0 items-start gap-1.5 text-amber-700 dark:text-amber-400"
+            data-testid="health-inert"
+          >
+            <TriangleAlertIcon
+              aria-hidden="true"
+              className="mt-0.5 size-3.5 shrink-0"
+            />
+            <span>
+              {healthText(pt)}. A deploy replaces the running version without
+              checking the new one.
+            </span>
+          </dd>
+        ) : (
+          <dd className="min-w-0 truncate">{healthText(pt)}</dd>
+        )}
         <dt>Container</dt>
         <dd className="space-y-1">
           {pt.instances.length === 0 ? (

@@ -50,8 +50,8 @@ const pt = (over: Partial<ProcessType>): ProcessType => ({
   // What the server resolves for a type with nothing set: the routable one inherits
   // http, a worker gets none. The component renders this; it does not recompute it.
   resolved_health: over.routable
-    ? { kind: "http", source: "inherited" }
-    : { kind: "none", source: "default" },
+    ? { kind: "http", source: "inherited", inert: false }
+    : { kind: "none", source: "default", inert: false },
   instances: [],
   created_at: "",
   updated_at: "",
@@ -211,13 +211,42 @@ describe("ProcessTypesSection", () => {
       pt({
         id: "k",
         name: "worker",
-        resolved_health: { kind: "command", source: "set" },
+        resolved_health: { kind: "command", source: "set", inert: false },
         health_check_command: "pgrep worker",
       }),
     ];
     renderIt();
     expect(screen.getByText("Command: pgrep worker")).toBeTruthy();
     expect(screen.queryByText("None (default)")).toBeNull();
+  });
+
+  // The server says nothing is probed (http, no path). The row must say so in words a
+  // person cannot misread as protection, and keep the chosen kind visible.
+  it("warns when the health check resolves to http with no path", () => {
+    types = [
+      pt({
+        id: "w",
+        resolved_health: {
+          kind: "http",
+          source: "inherited",
+          inert: true,
+          reason: "no health check path is set, so nothing is probed",
+        },
+      }),
+    ];
+    renderIt();
+    const warn = screen.getByTestId("health-inert");
+    expect(warn.textContent).toContain(
+      "HTTP probe — no path set, so nothing is checked",
+    );
+    expect(warn.textContent).toContain("without checking the new one");
+  });
+
+  it("shows the plain label, no warning, for a probe that can run", () => {
+    types = [pt({ id: "ok", routable: true })];
+    renderIt();
+    expect(screen.queryByTestId("health-inert")).toBeNull();
+    expect(screen.getByText("HTTP probe (the application's)")).toBeTruthy();
   });
 
   it("restarts exactly the instance whose control was used", async () => {

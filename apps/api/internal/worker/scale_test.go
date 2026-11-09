@@ -55,7 +55,7 @@ func TestHandleDeployTask_APausedWorkerDoesNotFailTheDeploy(t *testing.T) {
 	require.NoError(t, deploy(t, app, dep, rt, &testutil.MockProxyManager{}))
 
 	require.Len(t, rt.CreateCalls, 1, "only the routable container; nothing for the paused type")
-	assert.Equal(t, app.Slug, rt.CreateCalls[0].Name)
+	assert.Equal(t, newRoutable(app, dep, 1), rt.CreateCalls[0].Name)
 }
 
 // Every replica of every type is created, each with its own idx label and name; the
@@ -83,13 +83,16 @@ func TestHandleDeployTask_RollsEveryReplicaAndRoutesToAllRoutableOnes(t *testing
 		created = append(created, c.Name)
 		idxOf[c.Name] = c.Labels[runtime.LabelInstanceIdx]
 	}
-	assert.ElementsMatch(t, append(append([]string{app.Slug, app.Slug + "-worker-1"}, webRest...), workerRest...), created)
-	assert.Equal(t, "3", idxOf[webRest[1]])
+	webNew := []string{newRoutable(app, dep, 1), newRoutable(app, dep, 2), newRoutable(app, dep, 3)}
+	assert.ElementsMatch(t, append(append(append([]string{}, webNew...), app.Slug+"-worker-1"), workerRest...), created)
+	assert.Equal(t, "3", idxOf[webNew[2]])
 
-	require.Len(t, pm.AddedRoutes, 1)
-	assert.Equal(t, []string{
-		"http://" + app.Slug + ":8080", "http://" + webRest[0] + ":8080", "http://" + webRest[1] + ":8080",
-	}, pm.AddedRoutes[0].Upstreams, "every routable replica, in idx order")
+	// Old and new together, then the new generation alone: every replica, idx order.
+	require.Len(t, pm.AddedRoutes, 2)
+	oldUp := []string{"http://" + app.Slug + ":8080", "http://" + webRest[0] + ":8080", "http://" + webRest[1] + ":8080"}
+	newUp := []string{"http://" + webNew[0] + ":8080", "http://" + webNew[1] + ":8080", "http://" + webNew[2] + ":8080"}
+	assert.Equal(t, append(oldUp, newUp...), pm.AddedRoutes[0].Upstreams)
+	assert.Equal(t, newUp, pm.AddedRoutes[1].Upstreams)
 
 	rows, err := testQueries.ListInstancesByApplication(ctx, app.ID)
 	require.NoError(t, err)
@@ -123,7 +126,7 @@ func TestHandleDeployTask_PerTypeLimitsOverrideAndNullInheritsTheApplications(t 
 	assert.EqualValues(t, 134217728, by[own].MemoryLimit)
 	assert.InDelta(t, 2, by[inherit].CPULimit, 0.0001, "NULL inherits the application's")
 	assert.EqualValues(t, 1<<30, by[inherit].MemoryLimit)
-	assert.InDelta(t, 2, by[app.Slug].CPULimit, 0.0001)
+	assert.InDelta(t, 2, by[newRoutable(app, dep, 1)].CPULimit, 0.0001)
 }
 
 func scaleTask(t *testing.T, app generated.Application, typeName string, remove []string, create bool) error {

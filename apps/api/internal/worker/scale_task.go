@@ -168,7 +168,8 @@ func (h *TaskHandler) scaleUp(ctx context.Context, appID, typeID pgtype.UUID) er
 			}
 		}
 		if _, err := h.Queries.UpdateInstanceContainer(ctx, generated.UpdateInstanceContainerParams{
-			ID: tg.instanceID, ContainerID: pgtype.Text{String: tg.containerID, Valid: tg.containerID != ""}, Status: status.ApplicationRunning,
+			ID: tg.instanceID, ContainerName: tg.containerName, DeploymentID: dep.ID,
+			ContainerID: pgtype.Text{String: tg.containerID, Valid: tg.containerID != ""}, Status: status.ApplicationRunning,
 		}); err != nil {
 			slog.Warn("scale up: could not record the container", "container", tg.containerName, "error", err)
 		}

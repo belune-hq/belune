@@ -116,7 +116,7 @@ func (c *Client) CreateContainer(ctx context.Context, cfg runtime.ContainerConfi
 					return nil
 				}
 				return map[string]*network.EndpointSettings{
-					cfg.Network: {},
+					cfg.Network: {Aliases: cfg.NetworkAliases},
 				}
 			}(),
 		},

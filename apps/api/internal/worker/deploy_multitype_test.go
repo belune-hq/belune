@@ -3,6 +3,7 @@ package worker_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/hibiken/asynq"
@@ -58,6 +59,12 @@ func seedDomain(t *testing.T, app generated.Application, host string) {
 	require.NoError(t, err)
 }
 
+// newRoutable is the name a roll gives the routable container of instance idx: the
+// application slug, type, idx and the first 8 characters of the deployment's id.
+func newRoutable(app generated.Application, dep generated.Deployment, idx int) string {
+	return fmt.Sprintf("%s-web-%d-%s", app.Slug, idx, uuidString(dep.ID)[:8])
+}
+
 func countOf(haystack []string, needle string) int {
 	n := 0
 	for _, s := range haystack {
@@ -99,7 +106,7 @@ func TestHandleDeployTask_DeploysEveryProcessTypeFromTheOneImage(t *testing.T) {
 	for _, c := range rt.CreateCalls {
 		names = append(names, c.Name)
 	}
-	assert.Equal(t, []string{mailer, scheduler, worker, app.Slug}, names, "workers by name, the routable type LAST, all from instance rows")
+	assert.Equal(t, []string{mailer, scheduler, worker, newRoutable(app, dep, 1)}, names, "workers by name, the routable type LAST, all from instance rows")
 
 	byName := map[string]runtime.ContainerConfig{}
 	for _, c := range rt.CreateCalls {
@@ -110,15 +117,19 @@ func TestHandleDeployTask_DeploysEveryProcessTypeFromTheOneImage(t *testing.T) {
 	assert.Nil(t, byName[scheduler].Entrypoint)
 	assert.Equal(t, []string{"sh", "-c", "bundle exec sidekiq"}, byName[worker].Cmd)
 	assert.NotNil(t, byName[worker].Entrypoint)
-	assert.Nil(t, byName[app.Slug].Cmd)
+	assert.Nil(t, byName[newRoutable(app, dep, 1)].Cmd)
 	assert.Equal(t, "worker", byName[worker].Labels[runtime.LabelProcessType])
-	assert.Equal(t, "web", byName[app.Slug].Labels[runtime.LabelProcessType])
+	assert.Equal(t, "web", byName[newRoutable(app, dep, 1)].Labels[runtime.LabelProcessType])
 	assert.Equal(t, "1", byName[worker].Labels[runtime.LabelInstanceIdx])
 
 	// Only the routable type is wired to the proxy.
-	require.Len(t, pm.AddedRoutes, 1)
-	assert.Contains(t, pm.AddedRoutes[0].Upstreams[0], app.Slug+":")
-	assert.NotContains(t, pm.AddedRoutes[0].Upstreams[0], "-worker-")
+	// Written twice: old + new, then new only. Never a worker.
+	require.Len(t, pm.AddedRoutes, 2)
+	for _, r := range pm.AddedRoutes {
+		for _, u := range r.Upstreams {
+			assert.NotContains(t, u, "-worker-")
+		}
+	}
 
 	// Only a type that asked for a command check is polled. None of the others, in
 	// particular no worker that merely INHERITED a check, is gated by anything: an
@@ -167,7 +178,7 @@ func TestHandleDeployTask_ALateFailureRemovesEveryContainerThisDeployCreated(t *
 	require.Error(t, deploy(t, app, dep, rt, pm), "wire_proxy fails after both containers exist")
 
 	require.Len(t, rt.CreateCalls, 2, "the worker and the routable container were both created")
-	webID, workerID := "id-"+app.Slug, "id-"+worker
+	webID, workerID := "id-"+newRoutable(app, dep, 1), "id-"+worker
 	assert.Equal(t, 1, countOf(rt.RemoveCalls, workerID), "the worker's container must not be orphaned")
 	assert.Equal(t, 1, countOf(rt.RemoveCalls, webID), "and the routable one removed exactly once, not twice")
 	assert.Equal(t, 1, countOf(rt.StopCalls, workerID))

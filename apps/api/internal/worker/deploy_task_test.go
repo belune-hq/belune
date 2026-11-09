@@ -167,9 +167,11 @@ func newTestHandler(rt runtime.ContainerRuntime, pm proxy.ProxyManager) *worker.
 		// which is exactly what the single-server resolver does in production.
 		Runtimes: runtime.NewLocalRuntimes(rt),
 		Proxy:    pm,
-		DB:       testPool,
-		Queries:  testQueries,
-		Keyring:  keyring,
+		// A nanosecond, not the default: the drain wait is real time in a test.
+		RollDrainDelay: time.Nanosecond,
+		DB:             testPool,
+		Queries:        testQueries,
+		Keyring:        keyring,
 		Config: &config.Config{
 			ImagePullTimeoutMinutes: 5,
 			BuildTimeoutMinutes:     10,
@@ -403,7 +405,8 @@ func TestHandleDeployTask_LabelsTheContainerAndRecordsItOnTheInstance(t *testing
 	require.Len(t, insts, 1)
 	assert.Equal(t, "mock-container-id", insts[0].ContainerID.String, "the container the deploy created")
 	assert.Equal(t, status.ApplicationRunning, insts[0].Status)
-	assert.Equal(t, app.Slug, insts[0].ContainerName, "the name is read from the row and not changed")
+	assert.Equal(t, newRoutable(app, dep, 1), insts[0].ContainerName, "the row now describes the new generation")
+	assert.Equal(t, dep.ID, insts[0].DeploymentID)
 }
 
 // B1 invisibility: the backfilled web type has command ”, and ” must leave the

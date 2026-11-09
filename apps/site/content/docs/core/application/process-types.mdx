@@ -128,3 +128,7 @@ That is deliberate. A web process and a worker sharing an uploads directory is a
 On every deploy, the worker types are started first and the routable type last. They all run the same image, so a worker that cannot start on it is an early sign the web process could not either — and because the routable container has not been touched yet, your application is still serving the previous version when the deploy fails.
 
 If a deploy fails, the containers it created are removed. A worker whose previous container had already been removed is left **without a running container** rather than running the old version.
+
+The routable type is replaced without a gap. Each new container is started beside the old one and must pass its health check before the route moves to it; the old one is stopped only after the route has moved. If the new container fails, it is removed and the old one keeps serving. Replicas are checked one after another, so a deploy of several replicas takes correspondingly longer. The exception is an application with persistent volumes, which stops the old container first so two containers never write one volume.
+
+Other applications on the project network reach the routable type by the application's slug, which follows the live container across deploys. For the few seconds the old and new containers overlap, the name resolves to both.

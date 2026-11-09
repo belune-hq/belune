@@ -71,6 +71,10 @@ type TaskHandler struct {
 	// real belune.dev manifest; tests point it at an httptest.Server so the
 	// daily check never makes a real outbound request.
 	UpdateManifestURL string
+	// RollDrainDelay is how long a rolling deploy waits, after the route carries only
+	// the new generation, before it stops the old one. Zero means the default; tests
+	// set a nanosecond.
+	RollDrainDelay time.Duration
 }
 
 // runtimeForDatabase and runtimeForApplication resolve the host a resource runs

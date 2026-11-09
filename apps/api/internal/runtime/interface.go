@@ -29,7 +29,13 @@ type ContainerConfig struct {
 	Volumes       map[string]string // host:container
 	ReadOnlyBinds []BindMount       // host-file → container-path, mounted read-only (file/config mounts)
 	Network       string
-	Cmd           []string
+	// NetworkAliases are extra DNS names for the container on Network. A container's
+	// own name is always resolvable; an alias lets a STABLE name follow whichever
+	// generation is live, which a rolling deploy needs because the generations have
+	// different container names. An alias equal to the container's own name is
+	// harmless.
+	NetworkAliases []string
+	Cmd            []string
 	// Entrypoint overrides the image's ENTRYPOINT. ⚠️ nil and empty are DIFFERENT
 	// here, and must never be conflated on the way to Docker: nil inherits the
 	// image's entrypoint, while an empty non-nil slice CLEARS it. Leave it nil

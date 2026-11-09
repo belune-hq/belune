@@ -191,3 +191,51 @@ func TestEntrypoint_ClearedRunsTheCommandInheritedSwallowsIt(t *testing.T) {
 	inherited := runToCompletion(t, c, runtime.ContainerConfig{Image: tag})
 	assert.Contains(t, inherited, "IMAGE_DEFAULT_CMD", "nil for both leaves the image exactly as built")
 }
+
+// A rolling deploy gives each generation its own container name, so the STABLE name
+// siblings address must follow the live one as a network alias. Two properties are
+// asserted against a real daemon, because they are Docker's behaviour, not ours:
+// an alias equal to the container's own name is harmless (existing installs already
+// run the bare-slug container), and while two generations share an alias the name
+// resolves to BOTH (the mid-roll round-robin D2 accepts on purpose).
+func TestNetworkAliases_FollowTheContainerAndBothGenerationsResolveMidRoll(t *testing.T) {
+	c := newTestDockerClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	require.NoError(t, c.PullImage(ctx, containerTestImage))
+
+	netName := uniqueTestContainerName(t) + "-net"
+	require.NoError(t, c.CreateNetwork(ctx, netName))
+	t.Cleanup(func() { _ = c.RemoveNetwork(context.Background(), netName) })
+
+	stable := uniqueTestContainerName(t) + "-svc"
+	start := func(name string, aliases []string) string {
+		id, err := c.CreateContainer(ctx, runtime.ContainerConfig{
+			Name: name, Image: containerTestImage, Cmd: []string{"sleep", "3600"},
+			Network: netName, NetworkAliases: aliases,
+		})
+		require.NoError(t, err, name)
+		t.Cleanup(func() { _ = c.RemoveContainer(context.Background(), id) })
+		require.NoError(t, c.StartContainer(ctx, id))
+		return id
+	}
+
+	// Generation 1 is named the stable name itself and aliases it too.
+	start(stable, []string{stable})
+	// Generation 2 has a different name and the same alias.
+	gen2 := stable + "-0f9b521e"
+	start(gen2, []string{stable})
+
+	var out, errb bytes.Buffer
+	code, err := c.ContainerExec(ctx, gen2, []string{"nslookup", stable}, nil, &out, &errb)
+	require.NoError(t, err)
+	require.Zero(t, code, "nslookup: %s %s", out.String(), errb.String())
+	addrs := 0
+	for _, line := range bytes.Split(out.Bytes(), []byte("\n")) {
+		// "Address: 192.x" answers; the resolver's own "Address:\t127.0.0.11:53" does not.
+		if bytes.HasPrefix(line, []byte("Address: ")) {
+			addrs++
+		}
+	}
+	assert.Equal(t, 2, addrs, "the shared alias resolves to both generations: %s", out.String())
+}

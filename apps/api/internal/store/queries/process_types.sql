@@ -50,10 +50,15 @@ RETURNING *;
 -- name: GetInstance :one
 SELECT * FROM application_instances WHERE id = $1;
 
+-- Ordered by process type, then idx, NOT by idx alone: with several types a bare idx
+-- order interleaves them (web-1, worker-1, web-2, worker-2). The routable type comes
+-- first, as in ListInstancesWithProcessTypeByApplication.
 -- name: ListInstancesByApplication :many
-SELECT * FROM application_instances
-WHERE application_id = $1
-ORDER BY idx, id;
+SELECT i.*
+FROM application_instances i
+JOIN application_process_types pt ON pt.id = i.process_type_id
+WHERE i.application_id = $1
+ORDER BY pt.routable DESC, pt.name, i.idx, i.id;
 
 -- name: ListInstancesByProcessType :many
 SELECT * FROM application_instances

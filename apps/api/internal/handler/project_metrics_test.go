@@ -80,7 +80,7 @@ func TestProjectMetrics_StatsRunConcurrently(t *testing.T) {
 		}
 		assert.EqualValues(t, 12.5, m["cpu_percent"])
 		assert.EqualValues(t, 1024, m["memory_used"])
-		assert.EqualValues(t, 4096, m["memory_limit"])
+		assert.EqualValues(t, 0, m["memory_limit"], "the configured limit, never a sampled one")
 	}
 }
 
@@ -166,7 +166,7 @@ func TestProjectMetrics_FindsRenamedContainerThroughInstanceRow(t *testing.T) {
 	m := f.get(t)
 	assert.EqualValues(t, 7.5, m["cpu_percent"])
 	assert.EqualValues(t, 2048, m["memory_used"])
-	assert.EqualValues(t, 8192, m["memory_limit"])
+	assert.EqualValues(t, 0, m["memory_limit"], "the configured limit, not a sampled one")
 	assert.Equal(t, "running", m["status"])
 	assert.GreaterOrEqual(t, m["uptime_seconds"], float64(3500), "uptime comes from the container, not the row")
 }
@@ -226,5 +226,5 @@ func TestProjectMetrics_SumsRoutableReplicasAndExcludesWorkers(t *testing.T) {
 	m := f.get(t)
 	assert.EqualValues(t, 15, m["cpu_percent"], "10 + 5; the worker's 80 is not the web's")
 	assert.EqualValues(t, 1500, m["memory_used"])
-	assert.EqualValues(t, 8000, m["memory_limit"])
+	assert.EqualValues(t, 0, m["memory_limit"], "not the sum of replica limits (an unlimited container reports the host's memory)")
 }

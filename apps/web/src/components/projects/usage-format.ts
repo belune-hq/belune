@@ -14,5 +14,5 @@ export function formatCpuCell(m: ServiceMetrics | null | undefined): string {
 }
 
 export function formatMemoryCell(m: ServiceMetrics | null | undefined): string {
-  return m && m.memory_used ? formatBytes(m.memory_used) : "—";
+  return m && m.memory_used != null ? formatBytes(m.memory_used) : "—";
 }

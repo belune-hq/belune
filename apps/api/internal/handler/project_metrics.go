@@ -7,20 +7,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/belune-hq/belune/internal/instances"
 	"github.com/belune-hq/belune/internal/runtime"
 	"github.com/belune-hq/belune/internal/store/generated"
 )
-
-// maxConcurrentStats bounds in-flight Docker stats calls per overview request.
-// Each is a two-sample collection (~2.0s measured against a real daemon, of
-// which transport is ~8ms) rather than CPU work, and dockerd serves them fully
-// in parallel: 8 calls took 1.97s concurrently against 15.26s serially. So the
-// cap protects the daemon, not this process; 16 keeps a 50-app project (four
-// waves, ~8s) inside the 15s handler timeout.
-const maxConcurrentStats = 16
 
 // serviceMetrics is a per-service runtime snapshot for the project overview.
 //
@@ -143,6 +134,8 @@ func (h *Handler) GetProjectMetrics(w http.ResponseWriter, r *http.Request) {
 				liveByApp[i] = append(liveByApp[i], in)
 			}
 		}
+		// A roll updates the instance row's container_name in place (one row per
+		// type+idx), so this samples the old container or the new one, never both.
 		var pick *runtime.ContainerInfo
 		if len(liveByApp[i]) > 0 {
 			c := containerByName[liveByApp[i][0].ContainerName]
@@ -175,41 +168,37 @@ func (h *Handler) GetProjectMetrics(w http.ResponseWriter, r *http.Request) {
 
 	// A one-shot stats call costs about two seconds (Docker samples twice, ~1s
 	// apart, to compute the CPU delta), so a serial loop needs 2s x N and blew
-	// the 15s handler timeout from 8 apps up. Fan out with a cap so the wall
-	// time stays roughly one call however many apps run. No errgroup context:
-	// a failed stats call must degrade only its own row, never cancel the rest.
-	// Each app's replicas are sampled in one pass (FetchStats fans out within it);
-	// the outer cap bounds apps, so a very wide project can exceed
-	// maxConcurrentStats calls briefly -- bounded by instances.MaxConcurrentStats
-	// per app, which is acceptable for the daemon.
-	var g errgroup.Group
-	g.SetLimit(maxConcurrentStats)
+	// the 15s handler timeout from 8 apps up. So every running container of every
+	// app goes through ONE FetchStats call: a single errgroup capped at
+	// instances.MaxConcurrentStats (16 keeps a 50-app project, four waves, ~8s
+	// inside the 15s timeout). ⛔ Do not nest a per-app fan-out inside another
+	// capped one -- that multiplies the bound (16 x 16 calls on one daemon).
+	// A failed call drops only its own container, never cancels the rest.
+	var names []string
 	for _, i := range running {
-		g.Go(func() error {
-			live := liveByApp[i]
-			names := make([]string, len(live))
-			for j, in := range live {
-				names[j] = in.ContainerName
-			}
-			stats := instances.FetchStats(ctx, rt, names)
-			// The routable type's SUM, per instances.BuildPoint: workers are never
-			// folded in (a queue worker's CPU is not the web's). Null when no
-			// replica answered -- logged, because a failing stats call must stay
-			// distinguishable from a real idle container.
-			p, ok := instances.BuildPoint(live, stats, time.Now())
-			if !ok || p.CPUPercent == nil {
-				slog.Debug("project metrics: container stats unavailable", "application", apps[i].Slug)
-				return nil
-			}
-			metrics[i].CPUPercent = p.CPUPercent
-			metrics[i].MemoryUsed = p.MemoryUsage
-			if p.MemoryLimit != nil && *p.MemoryLimit > 0 {
-				metrics[i].MemoryLimit = *p.MemoryLimit
-			}
-			return nil
-		})
+		for _, in := range liveByApp[i] {
+			names = append(names, in.ContainerName)
+		}
 	}
-	_ = g.Wait()
+	stats := instances.FetchStats(ctx, rt, names)
+	now := time.Now()
+	for _, i := range running {
+		// The routable type's SUM, per instances.BuildPoint: workers are never
+		// folded in (a queue worker's CPU is not the web's). Null when no replica
+		// answered -- logged, because a failing stats call must stay
+		// distinguishable from a real idle container.
+		p, ok := instances.BuildPoint(liveByApp[i], stats, now)
+		if !ok || p.CPUPercent == nil {
+			slog.Debug("project metrics: container stats unavailable", "application", apps[i].Slug)
+			continue
+		}
+		metrics[i].CPUPercent = p.CPUPercent
+		metrics[i].MemoryUsed = p.MemoryUsage
+		// MemoryLimit stays the configured app.MemoryLimit. Not overwritten from
+		// stats: an unlimited container reports the HOST's memory as its limit, so
+		// summing replicas gives a number that means nothing, and the field would
+		// change meaning (and scale by N) depending on whether Docker answered.
+	}
 
 	result := make(map[string]serviceMetrics, len(apps))
 	for i, app := range apps {

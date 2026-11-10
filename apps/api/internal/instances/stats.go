@@ -145,7 +145,13 @@ type InstancePoint struct {
 // container with no limit, indistinguishable in the stats from "limited to exactly host
 // RAM", so a sampled sum would read 24 GB for three unlimited replicas on an 8 GB host.
 // It spans the whole expected routable set, not just the replicas that answered: a
-// replica that missed a sample still has a ceiling.
+// replica that missed a sample still has a ceiling, and it is reported even when nothing
+// answered. Null therefore means ONLY "a routable replica is unlimited".
+//
+// ⚠️ Usage sums the SAMPLED routable set while the ceiling spans the EXPECTED one, so a
+// usage/ceiling ratio mixes denominators and understates utilisation under partial
+// coverage (two replicas' usage against three replicas' ceiling). It is only safe when
+// RoutableSampled == RoutableExpected; check the counts before drawing a percentage.
 type Point struct {
 	CPUPercent       *float64        `json:"cpu_percent"`
 	MemoryUsage      *int64          `json:"memory_usage"`
@@ -203,9 +209,14 @@ func BuildPoint(live []generated.ListInstancesWithProcessTypeByApplicationRow, s
 	}
 	if p.RoutableSampled > 0 {
 		p.CPUPercent, p.MemoryUsage, p.NetworkRxBytes, p.NetworkTxBytes = &cpu, &mem, &rx, &tx
-		if ceilingKnown {
-			p.MemoryLimit = &ceiling
-		}
+	}
+	// The ceiling is configuration, not a measurement, so it does not wait on sampling:
+	// null means exactly "at least one routable replica is unlimited". The
+	// RoutableExpected guard is load-bearing -- with no routable instance the loop never
+	// ran, ceiling is 0 and ceilingKnown is still true, and publishing &0 would read as
+	// "unlimited", which is what 0 means everywhere else.
+	if ceilingKnown && p.RoutableExpected > 0 {
+		p.MemoryLimit = &ceiling
 	}
 	return p, true
 }

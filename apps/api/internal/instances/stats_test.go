@@ -221,7 +221,7 @@ func TestBuildPoint_ProcessTypeLimitOverridesTheApplications(t *testing.T) {
 	assert.Nil(t, p.MemoryLimit, "an explicit 0 on the type means unlimited, whatever the application says")
 }
 
-// Nothing routable answered: the totals and the ceiling stay null and the routable count
+// Nothing routable answered: the usage totals stay null (the ceiling does not -- see below) and the routable count
 // is a real 0, not absent. Nothing at all answered: not published, but the counts are
 // still filled in for a caller that wants to log them.
 func TestBuildPoint_NothingSampledIsZeroCoverageNotMissing(t *testing.T) {
@@ -230,7 +230,9 @@ func TestBuildPoint_NothingSampledIsZeroCoverageNotMissing(t *testing.T) {
 	p, ok := build(t, live, "web-1")
 	require.True(t, ok, "the worker answered")
 	assert.Nil(t, p.CPUPercent)
-	assert.Nil(t, p.MemoryLimit, "no routable sample: every total is null together")
+	assert.Nil(t, p.MemoryUsage, "no routable sample: usage is unknown")
+	require.NotNil(t, p.MemoryLimit, "the ceiling is configuration: known even though nothing routable answered")
+	assert.EqualValues(t, 4096, *p.MemoryLimit)
 	assert.Equal(t, 0, p.RoutableSampled)
 	assert.Equal(t, 1, p.RoutableExpected)
 
@@ -252,4 +254,12 @@ func TestEffectiveLimits(t *testing.T) {
 	cpu, mem = instances.EffectiveLimits(1.5, 4096, pgtype.Float8{Float64: 0.25, Valid: true}, pgtype.Int8{Int64: 512, Valid: true})
 	assert.Equal(t, 0.25, cpu)
 	assert.EqualValues(t, 512, mem)
+}
+
+// No routable instance at all: the ceiling must be null, not &0 -- 0 means "unlimited".
+func TestBuildPoint_NoRoutableInstanceHasNoCeilingRatherThanZero(t *testing.T) {
+	p, ok := build(t, []row{mkL("worker", false, 1, 4096, pgtype.Int8{})})
+	require.True(t, ok)
+	assert.Equal(t, 0, p.RoutableExpected)
+	assert.Nil(t, p.MemoryLimit)
 }

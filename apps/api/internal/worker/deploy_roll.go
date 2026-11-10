@@ -151,6 +151,7 @@ func (h *TaskHandler) rollRoutable(ctx context.Context, dc *deployContext, rootS
 		return err
 	}
 
+	dc.log.Logf("Rolling %s: new containers start beside the old and are health-checked before traffic moves", targetLabels(dc.routables()))
 	if err := h.planRoll(ctx, dc); err != nil {
 		return fail("deploy", fmt.Sprintf("create container: %v", err), fmt.Errorf("create container: %w", err))
 	}

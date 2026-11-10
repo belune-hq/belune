@@ -35,6 +35,14 @@ export function Mermaid({ chart }: { chart: string }) {
         theme: isDark ? 'dark' : 'default',
         securityLevel: 'loose',
         fontFamily: 'inherit',
+        // mermaid 12 changed two defaults: ELK replaced dagre as the layout
+        // engine, and the 'neo' look replaced 'classic'. Both are pinned here
+        // because the change is invisible to CI — the diagram renders in the
+        // browser on one page, so a build that goes green says nothing about
+        // it. Under ELK the 'App Domains' edge label lands on the subgraph
+        // border and the Belune node's label wraps to five lines.
+        layout: 'dagre',
+        look: 'classic',
       });
       // Fresh id each render — mermaid injects a temp node keyed by id, and a
       // repeated id on theme change would collide.

@@ -244,6 +244,8 @@ func TestBuildPoint_NothingSampledIsZeroCoverageNotMissing(t *testing.T) {
 	assert.False(t, ok)
 	assert.Equal(t, 0, p.Sampled)
 	assert.Equal(t, 2, p.Expected)
+	require.NotNil(t, p.MemoryLimit, "null means only 'a replica is unlimited', on this return path too")
+	assert.EqualValues(t, 4096, *p.MemoryLimit)
 }
 
 // The rule the deploy path creates a container with is the rule the ceiling is built from.

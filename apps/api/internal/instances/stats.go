@@ -203,20 +203,20 @@ func BuildPoint(live []generated.ListInstancesWithProcessTypeByApplicationRow, s
 			tx += s.NetworkTxBytes
 		}
 	}
-	p.Sampled = len(p.Instances)
-	if p.Sampled == 0 {
-		return p, false
-	}
-	if p.RoutableSampled > 0 {
-		p.CPUPercent, p.MemoryUsage, p.NetworkRxBytes, p.NetworkTxBytes = &cpu, &mem, &rx, &tx
-	}
-	// The ceiling is configuration, not a measurement, so it does not wait on sampling:
+	// The ceiling is configuration, not a measurement, so it does not wait on sampling (set before the nothing-sampled return too):
 	// null means exactly "at least one routable replica is unlimited". The
 	// RoutableExpected guard is load-bearing -- with no routable instance the loop never
 	// ran, ceiling is 0 and ceilingKnown is still true, and publishing &0 would read as
 	// "unlimited", which is what 0 means everywhere else.
 	if ceilingKnown && p.RoutableExpected > 0 {
 		p.MemoryLimit = &ceiling
+	}
+	p.Sampled = len(p.Instances)
+	if p.Sampled == 0 {
+		return p, false
+	}
+	if p.RoutableSampled > 0 {
+		p.CPUPercent, p.MemoryUsage, p.NetworkRxBytes, p.NetworkTxBytes = &cpu, &mem, &rx, &tx
 	}
 	return p, true
 }

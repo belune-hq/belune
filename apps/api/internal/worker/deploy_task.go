@@ -99,6 +99,8 @@ func (dc *deployContext) routableNames() []string {
 
 // deployContext holds all state accumulated across deploy stages.
 type deployContext struct {
+	// log is the deploy's one operator-visible log; see deployLog. Nil-safe.
+	log           *deployLog
 	payload       deployPayload
 	applicationID pgtype.UUID
 	deploymentID  pgtype.UUID
@@ -198,6 +200,11 @@ func (h *TaskHandler) HandleDeployTask(ctx context.Context, t *asynq.Task) error
 		deploymentID:  deploymentID,
 	}
 
+	// One log for the whole deploy, closed on EVERY exit (the defer is the guarantee that a
+	// failed deploy still stores its build output).
+	h.openDeployLog(ctx, dc)
+	defer h.closeDeployLog(ctx, dc)
+
 	// Stage 1: load application and decrypt env vars — permanent failure if missing
 	if err := runStage(ctx, "deploy.load_application", func(ctx context.Context) error {
 		return h.loadApplication(ctx, dc)
@@ -251,6 +258,7 @@ func (h *TaskHandler) HandleDeployTask(ctx context.Context, t *asynq.Task) error
 	// its new one failed is DOWN, not old-generation-serving, exactly as a
 	// single-container deploy has always behaved.
 	for _, w := range dc.workers {
+		dc.log.Logf("Starting %s", targetLabel(w))
 		if err := runStage(ctx, "deploy.worker_"+w.typeName, func(ctx context.Context) error {
 			removeContainer(ctx, dc, w.containerName)
 			if err := h.createAndStart(ctx, dc, w); err != nil {
@@ -258,11 +266,13 @@ func (h *TaskHandler) HandleDeployTask(ctx context.Context, t *asynq.Task) error
 			}
 			return h.verifyWorker(ctx, dc, w)
 		}); err != nil {
+			dc.log.Logf("%s failed: %s", targetLabel(w), redact.Error(err.Error()))
 			h.runCompensators(dc)
 			h.failDeployment(ctx, dc, "deploy", fmt.Sprintf("process type %q: %v", w.typeName, err))
 			recordSpanErr(rootSpan, err)
 			return fmt.Errorf("process type %q: %w", w.typeName, err)
 		}
+		dc.log.Logf("%s is up", targetLabel(w))
 	}
 
 	// Stage 5: the routable type. A stateless application ROLLS: the new generation is
@@ -308,6 +318,7 @@ func (h *TaskHandler) recreateRoutable(ctx context.Context, dc *deployContext, r
 	// The application-scoped legacy names are swept once, here, with the container
 	// they belong to; sweeping them earlier would take that container down before
 	// the workers had proven the image.
+	dc.log.Logf("Replacing %s in place: the old container stops first", targetLabels(dc.routables()))
 	_ = runStage(ctx, "deploy.cleanup_existing", func(ctx context.Context) error {
 		h.cleanupLegacyNames(ctx, dc)
 		for _, t := range dc.routables() {
@@ -589,6 +600,7 @@ func (h *TaskHandler) prepareImage(ctx context.Context, dc *deployContext) error
 	if dc.payload.RollbackImageTag != "" {
 		dc.imageName = dc.payload.RollbackImageTag
 		slog.Info("rolling back to image", "image", dc.imageName, "application_id", dc.payload.ApplicationID)
+		dc.log.Logf("Redeploying image %s; deploying %s", dc.imageName, dc.processSummary())
 		h.updateDeploymentStatus(ctx, dc.deploymentID, status.DeploymentPending, status.DeploymentDeploying)
 		return nil
 	}
@@ -602,21 +614,8 @@ func (h *TaskHandler) prepareImage(ctx context.Context, dc *deployContext) error
 		// frontend subscribes and shows the live/persisted log instead of a blank
 		// panel.
 		h.updateDeploymentStatus(ctx, dc.deploymentID, status.DeploymentPending, status.DeploymentBuilding)
-		pub := buildlog.NewPublisher(h.RedisClient, dc.payload.DeploymentID)
-		sink := buildlog.NewLogSink(pub, ctx)
-		out := sink.Writer("stdout")
-		persistPullLog := func() {
-			sink.Flush()
-			pub.Close(ctx)
-			if b := sink.NDJSON(); b != "" {
-				if err := h.Queries.UpdateDeploymentBuildLogs(ctx, generated.UpdateDeploymentBuildLogsParams{
-					ID:        dc.deploymentID,
-					BuildLogs: pgtype.Text{String: b, Valid: true},
-				}); err != nil {
-					slog.Error("could not store the build logs", "error", err)
-				}
-			}
-		}
+		out := dc.log.Stdout()
+		persistPullLog := func() { dc.log.persist(ctx) }
 
 		fmt.Fprintf(out, "Pulling image %s\n", dc.imageName)
 		slog.Info("pulling image", "image", dc.imageName)
@@ -638,7 +637,6 @@ func (h *TaskHandler) prepareImage(ctx context.Context, dc *deployContext) error
 			dc.imageName = digest
 		}
 		pullCancel()
-		fmt.Fprintln(out, "Image ready; starting container")
 		persistPullLog()
 
 	case "git":
@@ -657,6 +655,10 @@ func (h *TaskHandler) prepareImage(ctx context.Context, dc *deployContext) error
 	}); err != nil {
 		slog.Error("could not record the image tag; rollback will have none", "error", err)
 	}
+	// Said once here, for both a pull and a build, and for EVERY process type: this used
+	// to be a singular "starting container" from when an application was one container.
+	dc.log.Logf("Image ready; deploying %s", dc.processSummary())
+	dc.log.persist(ctx)
 	return nil
 }
 
@@ -743,9 +745,6 @@ func (h *TaskHandler) buildFromGit(ctx context.Context, dc *deployContext) error
 		}
 	}
 
-	pub := buildlog.NewPublisher(h.RedisClient, dc.payload.DeploymentID)
-	sink := buildlog.NewLogSink(pub, buildCtx)
-
 	buildOpts := build.BuildOptions{
 		SourceDir:      buildDir,
 		ImageTag:       dc.imageName,
@@ -754,32 +753,21 @@ func (h *TaskHandler) buildFromGit(ctx context.Context, dc *deployContext) error
 		Buildpacks:     customBuildpacks,
 		Env:            dc.env,
 		BuildType:      dc.app.BuildType,
-		StdoutWriter:   sink.Writer("stdout"),
-		StderrWriter:   sink.Writer("stderr"),
+		StdoutWriter:   dc.log.Stdout(),
+		StderrWriter:   dc.log.Stderr(),
 		ApplicationID:  dc.payload.ApplicationID,
 	}
 
 	h.updateDeploymentStatus(ctx, dc.deploymentID, status.DeploymentPending, status.DeploymentBuilding)
 
 	slog.Info("building image", "tag", dc.imageName)
-	stopFlush := h.startBuildLogFlusher(ctx, dc.deploymentID, sink)
 	result, err := h.Chain.Build(buildCtx, buildOpts)
-	sink.Flush()
-	stopFlush()
-	pub.Close(ctx)
 
-	// Persist the structured (NDJSON) build log built from the streamed lines,
-	// so the stored log matches what live viewers received. Do this on failure
-	// too, so a failed deploy surfaces the full build output in the log viewer
-	// instead of only the (summarised) error message.
-	if buildLogs := sink.NDJSON(); buildLogs != "" {
-		if err := h.Queries.UpdateDeploymentBuildLogs(ctx, generated.UpdateDeploymentBuildLogsParams{
-			ID:        dc.deploymentID,
-			BuildLogs: pgtype.Text{String: buildLogs, Valid: true},
-		}); err != nil {
-			slog.Error("could not store the build logs", "error", err)
-		}
-	}
+	// Store the structured (NDJSON) log built from the streamed lines, so the stored log
+	// matches what live viewers received. Done on failure too, so a failed deploy surfaces
+	// the full build output in the log viewer instead of only the (summarised) error
+	// message. The deploy-wide log stays open: the container phase appends to it.
+	dc.log.persist(ctx)
 
 	if err != nil {
 		return fmt.Errorf("build: %w", err)
@@ -1323,6 +1311,10 @@ func (h *TaskHandler) wireProxy(ctx context.Context, dc *deployContext) error {
 
 // finalize atomically marks the deployment as succeeded and the application as running.
 func (h *TaskHandler) finalize(ctx context.Context, dc *deployContext) error {
+	// Persisted BEFORE the commit for the same reason as failDeployment: the status flip is
+	// what makes the UI read the stored log.
+	dc.log.Logf("Containers up: %s", targetLabels(dc.all()))
+	dc.log.persist(ctx)
 	return store.WithTx(ctx, h.DB, func(q *generated.Queries) error {
 		if !status.ValidTransition(status.DeploymentDeploying, status.DeploymentSuccess) {
 			slog.Warn("invalid deployment transition skipped", "from", status.DeploymentDeploying, "to", status.DeploymentSuccess)
@@ -1437,6 +1429,10 @@ func (h *TaskHandler) failDeployment(ctx context.Context, dc *deployContext, kin
 	maxRetry, _ := asynq.GetMaxRetry(ctx)
 
 	safeMsg := redact.Error(errMsg)
+
+	// Before the status write below: once the deployment reads "failed" the UI shows the
+	// stored log, so the stored log must already hold everything up to the failure.
+	dc.log.persist(ctx)
 
 	slog.Error("deployment failed",
 		"deployment_id", fmt.Sprintf("%v", deploymentID),

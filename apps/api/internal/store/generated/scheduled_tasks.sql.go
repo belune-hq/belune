@@ -163,7 +163,7 @@ func (q *Queries) GetScheduledTask(ctx context.Context, id pgtype.UUID) (Applica
 }
 
 const getScheduledTaskRun = `-- name: GetScheduledTaskRun :one
-SELECT id, task_id, trigger, status, exit_code, output, skip_reason, started_at, picked_up_at, finished_at FROM application_scheduled_task_runs WHERE id = $1
+SELECT id, task_id, trigger, status, exit_code, output, skip_reason, started_at, picked_up_at, finished_at, container_name, process_type_name, instance_idx FROM application_scheduled_task_runs WHERE id = $1
 `
 
 func (q *Queries) GetScheduledTaskRun(ctx context.Context, id pgtype.UUID) (ApplicationScheduledTaskRun, error) {
@@ -180,6 +180,9 @@ func (q *Queries) GetScheduledTaskRun(ctx context.Context, id pgtype.UUID) (Appl
 		&i.StartedAt,
 		&i.PickedUpAt,
 		&i.FinishedAt,
+		&i.ContainerName,
+		&i.ProcessTypeName,
+		&i.InstanceIdx,
 	)
 	return i, err
 }
@@ -187,7 +190,7 @@ func (q *Queries) GetScheduledTaskRun(ctx context.Context, id pgtype.UUID) (Appl
 const insertScheduledTaskRun = `-- name: InsertScheduledTaskRun :one
 INSERT INTO application_scheduled_task_runs (task_id, trigger)
 VALUES ($1, $2)
-RETURNING id, task_id, trigger, status, exit_code, output, skip_reason, started_at, picked_up_at, finished_at
+RETURNING id, task_id, trigger, status, exit_code, output, skip_reason, started_at, picked_up_at, finished_at, container_name, process_type_name, instance_idx
 `
 
 type InsertScheduledTaskRunParams struct {
@@ -209,6 +212,9 @@ func (q *Queries) InsertScheduledTaskRun(ctx context.Context, arg InsertSchedule
 		&i.StartedAt,
 		&i.PickedUpAt,
 		&i.FinishedAt,
+		&i.ContainerName,
+		&i.ProcessTypeName,
+		&i.InstanceIdx,
 	)
 	return i, err
 }
@@ -216,7 +222,7 @@ func (q *Queries) InsertScheduledTaskRun(ctx context.Context, arg InsertSchedule
 const insertSkippedScheduledTaskRun = `-- name: InsertSkippedScheduledTaskRun :one
 INSERT INTO application_scheduled_task_runs (task_id, trigger, status, skip_reason, finished_at)
 VALUES ($1, $2, 'skipped', $3, NOW())
-RETURNING id, task_id, trigger, status, exit_code, output, skip_reason, started_at, picked_up_at, finished_at
+RETURNING id, task_id, trigger, status, exit_code, output, skip_reason, started_at, picked_up_at, finished_at, container_name, process_type_name, instance_idx
 `
 
 type InsertSkippedScheduledTaskRunParams struct {
@@ -239,12 +245,15 @@ func (q *Queries) InsertSkippedScheduledTaskRun(ctx context.Context, arg InsertS
 		&i.StartedAt,
 		&i.PickedUpAt,
 		&i.FinishedAt,
+		&i.ContainerName,
+		&i.ProcessTypeName,
+		&i.InstanceIdx,
 	)
 	return i, err
 }
 
 const latestScheduledTaskRuns = `-- name: LatestScheduledTaskRuns :many
-SELECT DISTINCT ON (r.task_id) r.id, r.task_id, r.trigger, r.status, r.exit_code, r.output, r.skip_reason, r.started_at, r.picked_up_at, r.finished_at
+SELECT DISTINCT ON (r.task_id) r.id, r.task_id, r.trigger, r.status, r.exit_code, r.output, r.skip_reason, r.started_at, r.picked_up_at, r.finished_at, r.container_name, r.process_type_name, r.instance_idx
 FROM application_scheduled_task_runs r
 JOIN application_scheduled_tasks t ON t.id = r.task_id
 WHERE t.application_id = $1
@@ -272,6 +281,9 @@ func (q *Queries) LatestScheduledTaskRuns(ctx context.Context, applicationID pgt
 			&i.StartedAt,
 			&i.PickedUpAt,
 			&i.FinishedAt,
+			&i.ContainerName,
+			&i.ProcessTypeName,
+			&i.InstanceIdx,
 		); err != nil {
 			return nil, err
 		}
@@ -323,7 +335,7 @@ func (q *Queries) ListEnabledScheduledTasks(ctx context.Context) ([]ApplicationS
 }
 
 const listScheduledTaskRuns = `-- name: ListScheduledTaskRuns :many
-SELECT id, task_id, trigger, status, exit_code, output, skip_reason, started_at, picked_up_at, finished_at FROM application_scheduled_task_runs
+SELECT id, task_id, trigger, status, exit_code, output, skip_reason, started_at, picked_up_at, finished_at, container_name, process_type_name, instance_idx FROM application_scheduled_task_runs
 WHERE task_id = $1
 ORDER BY started_at DESC
 LIMIT $2
@@ -354,6 +366,9 @@ func (q *Queries) ListScheduledTaskRuns(ctx context.Context, arg ListScheduledTa
 			&i.StartedAt,
 			&i.PickedUpAt,
 			&i.FinishedAt,
+			&i.ContainerName,
+			&i.ProcessTypeName,
+			&i.InstanceIdx,
 		); err != nil {
 			return nil, err
 		}
@@ -468,6 +483,32 @@ func (q *Queries) ReapStaleScheduledTaskRuns(ctx context.Context) (int64, error)
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const recordScheduledTaskRunInstance = `-- name: RecordScheduledTaskRunInstance :exec
+UPDATE application_scheduled_task_runs
+SET container_name = $2, process_type_name = $3, instance_idx = $4
+WHERE id = $1 AND status = 'running'
+`
+
+type RecordScheduledTaskRunInstanceParams struct {
+	ID              pgtype.UUID `json:"id"`
+	ContainerName   pgtype.Text `json:"container_name"`
+	ProcessTypeName pgtype.Text `json:"process_type_name"`
+	InstanceIdx     pgtype.Int4 `json:"instance_idx"`
+}
+
+// Written as soon as the worker resolves the instance, not at finish, so an in-flight
+// run already shows which container it is executing in. Plain values on purpose: see
+// migration 000082 for why this is not a reference to the instance row.
+func (q *Queries) RecordScheduledTaskRunInstance(ctx context.Context, arg RecordScheduledTaskRunInstanceParams) error {
+	_, err := q.db.Exec(ctx, recordScheduledTaskRunInstance,
+		arg.ID,
+		arg.ContainerName,
+		arg.ProcessTypeName,
+		arg.InstanceIdx,
+	)
+	return err
 }
 
 const scheduledTaskRunInFlight = `-- name: ScheduledTaskRunInFlight :one

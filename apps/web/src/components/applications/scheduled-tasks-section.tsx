@@ -69,10 +69,13 @@ export function ScheduledTasksSection({ projectId, applicationId }: Props) {
               Scheduled Tasks
             </CardTitle>
             <CardDescription className="mt-1">
-              Run a command inside the running container on a cron schedule —
-              for example <code>php artisan schedule:run</code>. Tasks are
-              skipped while the app is stopped, and preview apps don&apos;t
-              inherit them.
+              Run a command on a cron schedule — for example{" "}
+              <code>php artisan schedule:run</code>. A task runs in exactly one
+              container: the web (routable) process, never every replica and
+              never a worker. With several replicas it is the lowest-numbered
+              one that is running, which can change between runs; Run history
+              shows where each one ran. Tasks are skipped while the app is
+              stopped, and preview apps don&apos;t inherit them.
             </CardDescription>
           </div>
           <Button

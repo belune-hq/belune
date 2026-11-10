@@ -144,16 +144,19 @@ type ApplicationScheduledTask struct {
 }
 
 type ApplicationScheduledTaskRun struct {
-	ID         pgtype.UUID        `json:"id"`
-	TaskID     pgtype.UUID        `json:"task_id"`
-	Trigger    string             `json:"trigger"`
-	Status     string             `json:"status"`
-	ExitCode   pgtype.Int4        `json:"exit_code"`
-	Output     string             `json:"output"`
-	SkipReason pgtype.Text        `json:"skip_reason"`
-	StartedAt  pgtype.Timestamptz `json:"started_at"`
-	PickedUpAt pgtype.Timestamptz `json:"picked_up_at"`
-	FinishedAt pgtype.Timestamptz `json:"finished_at"`
+	ID              pgtype.UUID        `json:"id"`
+	TaskID          pgtype.UUID        `json:"task_id"`
+	Trigger         string             `json:"trigger"`
+	Status          string             `json:"status"`
+	ExitCode        pgtype.Int4        `json:"exit_code"`
+	Output          string             `json:"output"`
+	SkipReason      pgtype.Text        `json:"skip_reason"`
+	StartedAt       pgtype.Timestamptz `json:"started_at"`
+	PickedUpAt      pgtype.Timestamptz `json:"picked_up_at"`
+	FinishedAt      pgtype.Timestamptz `json:"finished_at"`
+	ContainerName   pgtype.Text        `json:"container_name"`
+	ProcessTypeName pgtype.Text        `json:"process_type_name"`
+	InstanceIdx     pgtype.Int4        `json:"instance_idx"`
 }
 
 type ApplicationVolume struct {

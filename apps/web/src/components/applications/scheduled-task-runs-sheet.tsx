@@ -20,6 +20,7 @@ import { formatDateTimeShort } from "@/lib/utils/format";
 import { cn } from "@/lib/utils";
 import type { ScheduledTask } from "@/lib/types";
 import { runLabel, runTone } from "./scheduled-task-status";
+import { RunSite } from "./scheduled-run-site";
 
 interface Props {
   projectId: string;
@@ -119,6 +120,7 @@ export function ScheduledTaskRunsSheet({
                         {duration(r.started_at, r.finished_at) &&
                           ` · ${duration(r.started_at, r.finished_at)}`}
                       </p>
+                      <RunSite run={r} />
                       {r.skip_reason && (
                         <p className="text-text-faint mt-0.5 text-xs">
                           {r.skip_reason}

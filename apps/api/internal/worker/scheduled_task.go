@@ -176,6 +176,9 @@ func (h *TaskHandler) HandleScheduledTaskRun(ctx context.Context, t *asynq.Task)
 		return nil
 	}
 	containerName := inst.ContainerName
+	// Recorded now, before the exec, so an operator can go and look at the container
+	// while the run is still in flight. A failed write only loses the label.
+	h.recordScheduledRunInstance(ctx, run.ID, inst)
 
 	// The timeout is enforced INSIDE the container. ContainerExec blocks in
 	// stdcopy on a hijacked connection that ignores ctx, and Docker has no
@@ -214,6 +217,25 @@ func (h *TaskHandler) HandleScheduledTaskRun(ctx context.Context, t *asynq.Task)
 		h.notifyScheduledTaskFailure(ctx, task, appRow.Name, appRow.ProjectID, fmt.Sprintf("exited with code %d", exit))
 	}
 	return nil
+}
+
+// recordScheduledRunInstance stores where a run executed as plain values (see migration
+// 000082): the container name it has right now, and its stable {process_type}-{idx}
+// label, both of which outlive the instance row.
+func (h *TaskHandler) recordScheduledRunInstance(ctx context.Context, runID pgtype.UUID, inst generated.ApplicationInstance) {
+	p := generated.RecordScheduledTaskRunInstanceParams{
+		ID:            runID,
+		ContainerName: pgtype.Text{String: inst.ContainerName, Valid: true},
+		InstanceIdx:   pgtype.Int4{Int32: inst.Idx, Valid: true},
+	}
+	if pt, err := h.Queries.GetProcessType(ctx, inst.ProcessTypeID); err != nil {
+		slog.Warn("scheduled task: look up process type for run record", "run_id", formatUUID(runID), "error", err)
+	} else {
+		p.ProcessTypeName = pgtype.Text{String: pt.Name, Valid: true}
+	}
+	if err := h.Queries.RecordScheduledTaskRunInstance(ctx, p); err != nil {
+		slog.Warn("scheduled task: record run instance", "run_id", formatUUID(runID), "error", err)
+	}
 }
 
 // finishScheduledRun records the outcome and prunes history. note is appended to

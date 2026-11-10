@@ -58,8 +58,8 @@ export function ProcessTypesSection({ projectId, applicationId }: Props) {
         if (res.warning) toast.warning(res.warning);
       }),
       {
-        loading: "Removing process…",
-        success: "Process removed",
+        loading: "Removing process type…",
+        success: "Process type removed",
         error: (err) => err.message,
       },
     );
@@ -76,8 +76,8 @@ export function ProcessTypesSection({ projectId, applicationId }: Props) {
             </CardTitle>
             <CardDescription className="mt-1">
               Run a different command from the same built image — a queue worker
-              or a scheduler beside the web process. Each process gets its own
-              container. Only the routable process receives traffic.
+              or a scheduler beside the web process. Each type gets its own
+              container. Only the routable type receives traffic.
             </CardDescription>
           </div>
           <Button
@@ -89,7 +89,7 @@ export function ProcessTypesSection({ projectId, applicationId }: Props) {
             }}
           >
             <PlusIcon aria-hidden="true" className="size-4" />
-            Add Process
+            Add Process Type
           </Button>
         </div>
       </CardHeader>
@@ -97,7 +97,7 @@ export function ProcessTypesSection({ projectId, applicationId }: Props) {
         <div className="bg-muted/40 text-muted-foreground flex items-start gap-2 rounded-lg border p-3 text-sm">
           <InfoIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
           <span>
-            Adding or editing a process takes effect on the{" "}
+            Adding or editing a type takes effect on the{" "}
             <strong>next deploy</strong>, because a container needs a built
             image to start from. Removing one stops and removes its container{" "}
             <strong>immediately</strong>. Volumes and file mounts are mounted
@@ -113,7 +113,7 @@ export function ProcessTypesSection({ projectId, applicationId }: Props) {
           </div>
         ) : !types || types.length === 0 ? (
           <p className="text-muted-foreground py-4 text-center text-sm">
-            No processes.
+            No process types.
           </p>
         ) : (
           <ul className="space-y-3">
@@ -160,7 +160,7 @@ export function ProcessTypesSection({ projectId, applicationId }: Props) {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={submitRemove} disabled={del.isPending}>
-              Remove process
+              Remove process type
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

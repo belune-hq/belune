@@ -66,7 +66,7 @@ test("the Processes tab shows the routable type, adds a worker, and offers no wa
   await expect(
     page.getByRole("link", { name: "Processes", exact: true }),
   ).toBeVisible();
-  const heading = page.getByText("Process Types", { exact: true }).first();
+  const heading = page.getByText("Processes", { exact: true }).first();
   await expect(heading).toBeVisible();
   expect((await settled(heading)).height).toBeGreaterThan(10);
 

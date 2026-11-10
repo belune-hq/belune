@@ -241,7 +241,10 @@ function TerminalPage() {
             onValueChange={(v) => v && setProcessType(v === ROUTABLE ? "" : v)}
             disabled={isConnected || isConnecting}
           >
-            <SelectTrigger className="h-8 w-44 text-sm" aria-label="Process">
+            <SelectTrigger
+              className="h-8 w-44 text-sm"
+              aria-label="Process type"
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

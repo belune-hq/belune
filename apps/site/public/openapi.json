@@ -21231,6 +21231,20 @@
         },
         "type": "object"
       },
+      "scheduledRunInstance": {
+        "properties": {
+          "container_name": {
+            "type": "string"
+          },
+          "idx": {
+            "type": "integer"
+          },
+          "process_type": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "scheduledTaskRequest": {
         "properties": {
           "command": {
@@ -21344,6 +21358,16 @@
       },
       "scheduledTaskRunResponse": {
         "properties": {
+          "executed_in": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/scheduledRunInstance"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "exit_code": {
             "type": [
               "integer",

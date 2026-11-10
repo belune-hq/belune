@@ -210,3 +210,42 @@ func mustUUID(t *testing.T, s string) pgtype.UUID {
 	require.NoError(t, u.Scan(s))
 	return u
 }
+
+// executed_in is part of every run's shape: an object when the run recorded where it
+// executed, and an explicit null when it did not (a run from before 0.3.3, or one that
+// failed before resolving an instance). Null is an answer; an omitted key is not.
+func TestScheduledTask_RunsReportWhereTheyExecuted(t *testing.T) {
+	f := newTaskFixture(t)
+	_, created := f.do(t, "POST", "", map[string]any{"name": "t", "command": "true", "cron": "0 3 * * *"})
+	taskID := mustUUID(t, created["id"].(string))
+	ctx := context.Background()
+
+	unrecorded, err := env.Queries.InsertSkippedScheduledTaskRun(ctx, generated.InsertSkippedScheduledTaskRunParams{
+		TaskID: taskID, Trigger: "schedule", SkipReason: pgtype.Text{String: "application is not running", Valid: true},
+	})
+	require.NoError(t, err)
+	recorded, err := env.Queries.InsertScheduledTaskRun(ctx, generated.InsertScheduledTaskRunParams{TaskID: taskID, Trigger: "manual"})
+	require.NoError(t, err)
+	require.NoError(t, env.Queries.RecordScheduledTaskRunInstance(ctx, generated.RecordScheduledTaskRunInstanceParams{
+		ID: recorded.ID, ContainerName: pgtype.Text{String: "app-web-2-5726bda2", Valid: true},
+		ProcessTypeName: pgtype.Text{String: "web", Valid: true}, InstanceIdx: pgtype.Int4{Int32: 2, Valid: true},
+	}))
+
+	resp := env.DoRequest(t, "GET", f.base+"/"+created["id"].(string)+"/runs", nil, testutil.AuthHeader(f.token))
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	byID := map[string]map[string]any{}
+	for _, r := range testutil.ReadJSONArray(t, resp) {
+		m := r.(map[string]any)
+		byID[m["id"].(string)] = m
+	}
+
+	un := byID[uuidStr(unrecorded.ID)]
+	require.NotNil(t, un)
+	v, present := un["executed_in"]
+	assert.True(t, present, "the key is present, not omitted")
+	assert.Nil(t, v, "and null: not recorded")
+
+	rec := byID[uuidStr(recorded.ID)]
+	require.NotNil(t, rec)
+	assert.Equal(t, map[string]any{"container_name": "app-web-2-5726bda2", "process_type": "web", "idx": float64(2)}, rec["executed_in"])
+}

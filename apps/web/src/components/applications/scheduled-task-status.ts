@@ -38,3 +38,25 @@ export function runLabel(
       return "Skipped";
   }
 }
+
+/**
+ * What to say about where a run executed, or null when it executed nowhere. A skipped
+ * run never reached a container, so "not recorded" would be a false claim about it. The
+ * label is the stable {process_type}-{idx} (container names churn on every roll), with
+ * the name the container had at the time as the detail.
+ */
+export function describeRunSite(
+  run: Pick<ScheduledTaskRun, "status" | "executed_in">,
+): { label: string; detail?: string } | null {
+  if (run.status === "skipped") return null;
+  const site = run.executed_in;
+  if (site) {
+    if (!site.process_type) return { label: site.container_name };
+    return {
+      label: `${site.process_type}-${site.idx}`,
+      detail: site.container_name,
+    };
+  }
+  if (run.status === "running") return { label: "Finding container…" };
+  return { label: "Container not recorded" };
+}

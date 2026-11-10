@@ -62,6 +62,14 @@ WHERE id = $1 AND status = 'running';
 UPDATE application_scheduled_task_runs SET picked_up_at = NOW()
 WHERE id = $1 AND status = 'running';
 
+-- name: RecordScheduledTaskRunInstance :exec
+-- Written as soon as the worker resolves the instance, not at finish, so an in-flight
+-- run already shows which container it is executing in. Plain values on purpose: see
+-- migration 000082 for why this is not a reference to the instance row.
+UPDATE application_scheduled_task_runs
+SET container_name = $2, process_type_name = $3, instance_idx = $4
+WHERE id = $1 AND status = 'running';
+
 -- name: DeleteScheduledTaskRun :exec
 DELETE FROM application_scheduled_task_runs WHERE id = $1;
 

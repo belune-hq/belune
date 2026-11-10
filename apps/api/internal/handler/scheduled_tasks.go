@@ -41,6 +41,19 @@ type scheduledTaskRunResponse struct {
 	SkipReason string     `json:"skip_reason,omitempty"`
 	StartedAt  time.Time  `json:"started_at"`
 	FinishedAt *time.Time `json:"finished_at,omitempty"`
+	// ExecutedIn is where the run executed, or null when that was not recorded: every
+	// run from before 0.3.3, and any run that failed before an instance was resolved.
+	// Always present, never omitted: null is an answer ("not recorded"), absence is not.
+	ExecutedIn *scheduledRunInstance `json:"executed_in"`
+}
+
+// scheduledRunInstance is a run's execution site, copied at run time. ProcessType and
+// Idx form the stable label ({process_type}-{idx}); ContainerName is the detail, since
+// it changes on every roll. ProcessType is empty when its lookup failed at run time.
+type scheduledRunInstance struct {
+	ContainerName string `json:"container_name"`
+	ProcessType   string `json:"process_type"`
+	Idx           int32  `json:"idx"`
 }
 
 // toScheduledTaskRunResponse maps a run; withOutput is false for the list view,
@@ -65,6 +78,13 @@ func toScheduledTaskRunResponse(r generated.ApplicationScheduledTaskRun, withOut
 	if r.FinishedAt.Valid {
 		t := r.FinishedAt.Time
 		resp.FinishedAt = &t
+	}
+	if r.ContainerName.Valid {
+		resp.ExecutedIn = &scheduledRunInstance{
+			ContainerName: r.ContainerName.String,
+			ProcessType:   r.ProcessTypeName.String,
+			Idx:           r.InstanceIdx.Int32,
+		}
 	}
 	return resp
 }

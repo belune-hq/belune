@@ -1392,6 +1392,17 @@ export interface DockerNetwork {
 export type ScheduledTaskRunStatus =
   "running" | "succeeded" | "failed" | "skipped" | "timed_out";
 
+/**
+ * Where a run executed, copied at run time so it survives the instance being deleted
+ * or renamed. `process_type` + `idx` is the stable label; `container_name` changes on
+ * every roll.
+ */
+export interface ScheduledRunInstance {
+  container_name: string;
+  process_type: string;
+  idx: number;
+}
+
 export interface ScheduledTaskRun {
   id: string;
   trigger: "schedule" | "manual";
@@ -1401,6 +1412,8 @@ export interface ScheduledTaskRun {
   skip_reason?: string;
   started_at: string;
   finished_at?: string;
+  /** null = not recorded (runs from before 0.3.3, or one that failed before a container was chosen). */
+  executed_in: ScheduledRunInstance | null;
 }
 
 export interface ScheduledTask {

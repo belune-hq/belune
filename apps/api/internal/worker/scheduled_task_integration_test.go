@@ -343,3 +343,118 @@ func TestScheduledTaskRun_PrunesHistoryPerPool(t *testing.T) {
 	assert.Equal(t, 3, ran, "real runs are capped at keep_runs")
 	assert.Equal(t, 3, skipped, "skips are pruned on their own budget so they cannot evict real runs")
 }
+
+// execRecorder returns a runtime whose exec records the container it was pointed at, so
+// a test can compare "where the run says it executed" with "where it actually did".
+func execRecorder(execd *[]string) *testutil.MockContainerRuntime {
+	return &testutil.MockContainerRuntime{ExecFunc: func(_ context.Context, name string, cmd []string, _ io.Reader, _, _ io.Writer) (int, error) {
+		if cmd[0] == "env" {
+			*execd = append(*execd, name)
+		}
+		return 0, nil
+	}}
+}
+
+// replica adds a routable web instance with a name that tells it apart from its siblings.
+func replica(t *testing.T, appID pgtype.UUID, idx int32, name, status string) generated.ApplicationInstance {
+	t.Helper()
+	pts, err := testQueries.ListProcessTypesByApplication(context.Background(), appID)
+	require.NoError(t, err)
+	inst, err := testQueries.CreateInstance(context.Background(), generated.CreateInstanceParams{
+		ApplicationID: appID, ProcessTypeID: pts[0].ID, Idx: idx, ContainerName: name, Status: status,
+	})
+	require.NoError(t, err)
+	return inst
+}
+
+func setInstance(t *testing.T, appID pgtype.UUID, name, status string) {
+	t.Helper()
+	insts, err := testQueries.ListInstancesByApplication(context.Background(), appID)
+	require.NoError(t, err)
+	_, err = testPool.Exec(context.Background(), `UPDATE application_instances SET container_name = $2, status = $3 WHERE id = $1`, insts[0].ID, name, status)
+	require.NoError(t, err)
+}
+
+// The run records the container it resolved to, and that is the container exec was
+// actually pointed at -- not merely "something non-null".
+func TestScheduledTaskRun_RecordsTheContainerItExecutedIn(t *testing.T) {
+	app, _ := seedApp(t)
+	setAppStatus(t, app.ID, "running")
+	setInstance(t, app.ID, app.Slug+"-web-1-5726bda2", "running")
+	task := seedTask(t, app.ID, "0 3 1 1 *")
+
+	var execd []string
+	got := runTask(t, newTestHandler(execRecorder(&execd), nil), task)
+
+	require.Equal(t, []string{app.Slug + "-web-1-5726bda2"}, execd)
+	require.True(t, got.ContainerName.Valid)
+	assert.Equal(t, execd[0], got.ContainerName.String, "the record matches the container that was actually exec'd")
+	assert.Equal(t, "web", got.ProcessTypeName.String)
+	assert.EqualValues(t, 1, got.InstanceIdx.Int32)
+}
+
+// Two routable replicas: the lowest RUNNING idx wins, and the names differ so the
+// assertion can tell which one was recorded. idx 1 is stopped, so the answer is idx 2.
+func TestScheduledTaskRun_RecordsTheLowestRunningReplica(t *testing.T) {
+	app, _ := seedApp(t)
+	setAppStatus(t, app.ID, "running")
+	setInstance(t, app.ID, "replica-one", "stopped")
+	replica(t, app.ID, 2, "replica-two", "running")
+	replica(t, app.ID, 3, "replica-three", "running")
+	task := seedTask(t, app.ID, "0 3 1 1 *")
+
+	var execd []string
+	got := runTask(t, newTestHandler(execRecorder(&execd), nil), task)
+
+	assert.Equal(t, []string{"replica-two"}, execd, "exactly one container runs the command")
+	assert.Equal(t, "replica-two", got.ContainerName.String)
+	assert.EqualValues(t, 2, got.InstanceIdx.Int32)
+}
+
+// A run that fails before an instance is resolved keeps NULL: nothing was executed anywhere.
+func TestScheduledTaskRun_FailingBeforeResolveRecordsNothing(t *testing.T) {
+	app, _ := seedApp(t)
+	setAppStatus(t, app.ID, "running")
+	insts, err := testQueries.ListInstancesByApplication(context.Background(), app.ID)
+	require.NoError(t, err)
+	for _, in := range insts {
+		require.NoError(t, testQueries.DeleteInstance(context.Background(), in.ID))
+	}
+	task := seedTask(t, app.ID, "0 3 1 1 *")
+
+	var execd []string
+	got := runTask(t, newTestHandler(execRecorder(&execd), nil), task)
+
+	assert.Equal(t, "failed", got.Status)
+	assert.Contains(t, got.Output, "resolve instance")
+	assert.Empty(t, execd)
+	assert.False(t, got.ContainerName.Valid)
+	assert.False(t, got.ProcessTypeName.Valid)
+	assert.False(t, got.InstanceIdx.Valid)
+}
+
+// The record is history: it must survive the instance row being deleted (a scale-down),
+// which is the whole reason it is stored as plain values and not as a reference.
+func TestScheduledTaskRun_RecordSurvivesTheInstanceBeingDeleted(t *testing.T) {
+	app, _ := seedApp(t)
+	setAppStatus(t, app.ID, "running")
+	setInstance(t, app.ID, "replica-one", "running")
+	replica(t, app.ID, 2, "replica-two", "running")
+	task := seedTask(t, app.ID, "0 3 1 1 *")
+
+	var execd []string
+	got := runTask(t, newTestHandler(execRecorder(&execd), nil), task)
+	require.Equal(t, "replica-one", got.ContainerName.String)
+
+	insts, err := testQueries.ListInstancesByApplication(context.Background(), app.ID)
+	require.NoError(t, err)
+	for _, in := range insts {
+		require.NoError(t, testQueries.DeleteInstance(context.Background(), in.ID))
+	}
+
+	runs := taskRuns(t, task.ID)
+	require.Len(t, runs, 1)
+	assert.Equal(t, "replica-one", runs[0].ContainerName.String, "still names the container after the instance row is gone")
+	assert.Equal(t, "web", runs[0].ProcessTypeName.String)
+	assert.EqualValues(t, 1, runs[0].InstanceIdx.Int32)
+}

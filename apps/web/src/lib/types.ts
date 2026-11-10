@@ -270,8 +270,9 @@ export interface MetricsOverview {
 }
 
 export interface ServiceMetrics {
-  cpu_percent: number;
-  memory_used: number;
+  /** null = not sampled. Zero is a claim about a running container; an unknown is not that. */
+  cpu_percent: number | null;
+  memory_used: number | null;
   memory_limit: number;
   uptime_seconds: number;
   status: string;

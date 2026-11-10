@@ -152,6 +152,11 @@ func TestProjectMetrics_FindsRenamedContainerThroughInstanceRow(t *testing.T) {
 	name := "app-web-1-5726bda2"
 	f := newMetricsFixture(t, name)
 	require.NotEqual(t, f.slug, name)
+	// A distinctive configured limit, so the assertion below proves the configured
+	// value flows through AND that the sampled one (8192) does not override it.
+	const configuredLimit = 256 * 1024 * 1024
+	_, err := env.Pool.Exec(context.Background(), `UPDATE applications SET memory_limit = $2 WHERE id = $1`, f.appUUID, configuredLimit)
+	require.NoError(t, err)
 
 	env.Runtime.ListContainers_ = []runtime.ContainerInfo{
 		{Name: name, Status: "running", CreatedAt: time.Now().Add(-time.Hour)},
@@ -166,7 +171,7 @@ func TestProjectMetrics_FindsRenamedContainerThroughInstanceRow(t *testing.T) {
 	m := f.get(t)
 	assert.EqualValues(t, 7.5, m["cpu_percent"])
 	assert.EqualValues(t, 2048, m["memory_used"])
-	assert.EqualValues(t, 0, m["memory_limit"], "the configured limit, not a sampled one")
+	assert.EqualValues(t, configuredLimit, m["memory_limit"], "the configured limit passes through; the sampled 8192 does not override it")
 	assert.Equal(t, "running", m["status"])
 	assert.GreaterOrEqual(t, m["uptime_seconds"], float64(3500), "uptime comes from the container, not the row")
 }

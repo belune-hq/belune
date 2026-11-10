@@ -188,8 +188,8 @@ func (w *Watcher) reconcile(ctx context.Context) {
 		// control plane was down read "running" for ever on a running application.
 		w.syncInstancePresence(ctx, app.ID, idx)
 
-		// The application is running when its ROUTABLE container is. runningApps maps
-		// an application to ONE container, last writer wins across all of its
+		// The application is running when ANY of its ROUTABLE containers is. runningApps
+		// maps an application to ONE container, last writer wins across all of its
 		// containers, so reading it would let a worker decide the application's status
 		// and, with a command health check, be the container the probe below asks.
 		containerName, isRunning, isTransient := routableContainerState(ctx, w.queries, app.ID, appIDStr, idx)
@@ -337,6 +337,21 @@ func (w *Watcher) handleApplicationEvent(ctx context.Context, event runtime.Cont
 		return
 	}
 
+	// ⛔ The same rule, on the second axis. 0.3.1 added REPLICAS and did not extend the
+	// check above: every instance of the routable type "owns" the application, so web-1
+	// of two dying marked the application stopped while web-2 kept serving, and
+	// buildExpected then skipped it and the sweep deleted its routes. The application is
+	// up when ANY routable replica is, so a replica going down is an instance-level
+	// event unless it is the last one standing. Only the downward statuses are held
+	// back: stopped, error and unhealthy all drop the routes (buildExpected serves only
+	// "running"), and a start or a healthy verdict is the application coming up.
+	if found && newStatus != status.ApplicationRunning && w.anotherReplicaMayBeUp(ctx, appUUID, inst) {
+		slog.Info("eventwatcher: a routable replica went down while another may be up; recording it on the instance only",
+			"app_id", appID, "event", event.Status, "container", event.ContainerName, "new_status", newStatus)
+		w.recordWorkerEvent(ctx, event, inst, found, newStatus)
+		return
+	}
+
 	// Two events need the current status to be interpreted; the rest stand on
 	// their own, so the read is skipped for them.
 	if event.Status == "die" {
@@ -382,6 +397,11 @@ func (w *Watcher) handleApplicationEvent(ctx context.Context, event runtime.Cont
 // lifecycle IS the application's: the instance of the routable process type. It
 // also returns the instance it resolved, so a worker's event need not resolve twice.
 //
+// "Routable" is necessary and, with replicas, not sufficient: a routable replica only
+// decides the application's status when no OTHER routable replica is up. That is
+// anotherReplicaMayBeUp's question, asked by the caller once the event is known to be a
+// downward one; ownership here stays a question about the process type.
+//
 // Not-found is decided by whether the container declares a process type:
 //   - No process-type label: a container created before the labels existed
 //     (application-id only). It is the pre-upgrade single container, so today's
@@ -414,8 +434,57 @@ func (w *Watcher) ownsApplicationStatus(ctx context.Context, appUUID pgtype.UUID
 	return pt.Routable, inst, true
 }
 
-// recordWorkerEvent applies a non-routable container's event to its own instance
-// only. The application's status is never touched.
+// anotherReplicaMayBeUp reports whether any OTHER instance of the routable type has a
+// container that is running or in a transient state, asked of Docker and not of the
+// rows: a row is eventually consistent, and this decides whether to take an
+// application's routes away.
+//
+// "May be" is deliberate. A replica mid-restart, mid-removal or created-not-yet-started
+// proves nothing either way (see isTransientState), and a replica cycling during a roll
+// must not be read as down, or one false verdict is swapped for another.
+//
+// Every uncertainty answers true, i.e. leaves the application alone: a lookup that
+// fails, or no runtime to ask. A status that lags a transition is corrected by the
+// next reconcile, while a wrongly stopped application loses its routes. An application
+// with no other routable instance answers false without a Docker call, so a
+// single-replica application behaves exactly as it always did.
+func (w *Watcher) anotherReplicaMayBeUp(ctx context.Context, appUUID pgtype.UUID, self generated.ApplicationInstance) bool {
+	rows, err := w.queries.ListRoutableInstancesByApplication(ctx, appUUID)
+	if err != nil {
+		slog.Warn("eventwatcher: could not list the routable replicas; leaving the application's status alone",
+			"app_id", pgUUIDToString(appUUID), "error", err)
+		return true
+	}
+	var others []string
+	for _, r := range rows {
+		if r.ID != self.ID {
+			others = append(others, r.ContainerName)
+		}
+	}
+	if len(others) == 0 {
+		return false
+	}
+	if w.runtime == nil {
+		return true
+	}
+	containers, err := w.runtime.ListContainers(ctx)
+	if err != nil {
+		slog.Warn("eventwatcher: could not list containers to check the other replicas; leaving the application's status alone",
+			"app_id", pgUUIDToString(appUUID), "error", err)
+		return true
+	}
+	idx := buildContainerIndex(containers)
+	for _, name := range others {
+		if idx.runningNames[name] || idx.transientNames[name] {
+			return true
+		}
+	}
+	return false
+}
+
+// recordWorkerEvent applies an instance-level event to its own instance only: a
+// non-routable container's, or a routable replica's while another replica is up. The
+// application's status is never touched.
 //
 // The same filters that protect the application protect the instance, against the
 // INSTANCE's own current status: a die the instance's recorded stop already explains
@@ -664,18 +733,44 @@ func (w *Watcher) syncInstanceFromEvent(ctx context.Context, appUUID pgtype.UUID
 	}
 }
 
-// routableContainerState reports the state of the application's routable container.
+// routableContainerState reports whether the application is SERVING: the state of its
+// routable containers taken together, because the application is up when ANY routable
+// replica is.
+//
+// It used to resolve ONE container (instances.ResolveOne, the lowest idx whose ROW says
+// running) and treat its pick as the application. ResolveOne is right for logs, exec and
+// metrics, which want one container, and is the wrong question here: with replicas, a
+// row that still says web-1 is running while its container is gone made a healthy web-2
+// read as "the application is down". ⛔ Do not change ResolveOne; ask the other question.
+//
+// name is the container to probe (the first running one, in idx order, else the first
+// transient one, else the first). running is true when any replica's container is up.
+// transient is true only when none is up and at least one is in a passing phase, so a
+// replica cycling during a roll leaves the application alone rather than being read as
+// down.
 //
 // If the application has no resolvable routable instance (rows missing, or a lookup
 // failure), it falls back to the old label index so such an application keeps
 // reporting a status rather than silently freezing.
 func routableContainerState(ctx context.Context, q instances.Querier, appID pgtype.UUID, appIDStr string, idx *containerIndex) (name string, running, transient bool) {
-	inst, err := instances.ResolveOne(ctx, q, appID)
+	names, err := instances.RoutableContainerNames(ctx, q, appID)
 	if err != nil {
 		name, running = idx.runningApps[appIDStr]
 		return name, running, idx.transientApps[appIDStr]
 	}
-	return inst.ContainerName, idx.runningNames[inst.ContainerName], idx.transientNames[inst.ContainerName]
+	firstTransient := ""
+	for _, n := range names {
+		if idx.runningNames[n] {
+			return n, true, false
+		}
+		if firstTransient == "" && idx.transientNames[n] {
+			firstTransient = n
+		}
+	}
+	if firstTransient != "" {
+		return firstTransient, false, true
+	}
+	return names[0], false, false
 }
 
 // syncInstancePresence reconciles each instance row of an application against the

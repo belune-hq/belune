@@ -66,7 +66,11 @@ test("the Processes tab shows the routable type, adds a worker, and offers no wa
   await expect(
     page.getByRole("link", { name: "Processes", exact: true }),
   ).toBeVisible();
-  const heading = page.getByText("Process Types", { exact: true }).first();
+  // The CARD title, by its slot: a text match for "Processes" also hits the tab link
+  // above it (first in DOM order), which would pass with the card entirely absent.
+  const heading = page.locator('[data-slot="card-title"]', {
+    hasText: "Processes",
+  });
   await expect(heading).toBeVisible();
   expect((await settled(heading)).height).toBeGreaterThan(10);
 

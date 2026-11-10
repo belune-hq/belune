@@ -72,7 +72,7 @@ export function ProcessTypesSection({ projectId, applicationId }: Props) {
           <div>
             <CardTitle className="flex items-center gap-2">
               <BoxesIcon aria-hidden="true" className="size-4" />
-              Process Types
+              Processes
             </CardTitle>
             <CardDescription className="mt-1">
               Run a different command from the same built image — a queue worker

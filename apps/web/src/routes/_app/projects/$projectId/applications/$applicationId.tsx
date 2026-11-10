@@ -154,6 +154,7 @@ function ApplicationLayout() {
     { to: basePath, label: "Overview", exact: true, icon: LayoutDashboard },
     { to: `${basePath}/env`, label: "Env Vars", icon: SlidersHorizontal },
     { to: `${basePath}/domains`, label: "Domains", icon: Globe },
+    { to: `${basePath}/processes`, label: "Processes", icon: Boxes },
     {
       to: `${basePath}/deployments`,
       label: "Deployments",
@@ -168,10 +169,9 @@ function ApplicationLayout() {
     // any that already exist. Nothing new can be created while this is hidden:
     // materialising a preview requires preview_branch_pattern +
     // preview_domain_template, which only this tab can set.
-    { to: `${basePath}/logs`, label: "Logs", icon: ScrollText },
     { to: `${basePath}/metrics`, label: "Metrics", icon: Activity },
+    { to: `${basePath}/logs`, label: "Logs", icon: ScrollText },
     { to: `${basePath}/terminal`, label: "Terminal", icon: SquareTerminal },
-    { to: `${basePath}/processes`, label: "Processes", icon: Boxes },
     { to: `${basePath}/mounts`, label: "Mounts", icon: HardDrive },
     { to: `${basePath}/tasks`, label: "Tasks", icon: CalendarClock },
     { to: `${basePath}/settings`, label: "Settings", icon: Settings },

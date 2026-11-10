@@ -354,7 +354,7 @@ export function ContainerLogViewer({
                 setSession(SESSION_ALL);
               }}
             >
-              <SelectTrigger className="h-8 w-44" aria-label="Process type">
+              <SelectTrigger className="h-8 w-44" aria-label="Process">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

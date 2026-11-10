@@ -134,7 +134,7 @@ describe("ProcessTypesSection", () => {
 
   it("offers replicas and per-type limits when adding a type", async () => {
     renderIt();
-    fireEvent.click(screen.getByRole("button", { name: /Add Process Type/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Add Process/ }));
     expect(await screen.findByLabelText("Replicas")).toBeTruthy();
     expect(screen.getByLabelText("CPU (cores)")).toBeTruthy();
     expect(screen.getByLabelText("Memory (MB)")).toBeTruthy();
@@ -142,7 +142,7 @@ describe("ProcessTypesSection", () => {
 
   it("does not submit an invalid name, and does not flag it while typing", async () => {
     renderIt();
-    fireEvent.click(screen.getByRole("button", { name: /Add Process Type/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Add Process/ }));
     const name = await screen.findByLabelText("Name");
 
     // Mid-typing a name that is not valid yet: no error before blur.
@@ -154,7 +154,7 @@ describe("ProcessTypesSection", () => {
     ).toBeNull();
 
     const submit = screen
-      .getAllByRole("button", { name: "Add Process Type" })
+      .getAllByRole("button", { name: "Add Process" })
       .at(-1)!;
     fireEvent.click(submit);
     await waitFor(() =>
@@ -165,12 +165,12 @@ describe("ProcessTypesSection", () => {
 
   it("creates a type with a valid name", async () => {
     renderIt();
-    fireEvent.click(screen.getByRole("button", { name: /Add Process Type/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Add Process/ }));
     fireEvent.change(await screen.findByLabelText("Name"), {
       target: { value: "scheduler" },
     });
     const submit = screen
-      .getAllByRole("button", { name: "Add Process Type" })
+      .getAllByRole("button", { name: "Add Process" })
       .at(-1)!;
     fireEvent.click(submit);
     await waitFor(() => expect(createMutate).toHaveBeenCalledTimes(1));
@@ -193,7 +193,7 @@ describe("ProcessTypesSection", () => {
     renderIt();
     fireEvent.click(screen.getByRole("button", { name: "Remove worker" }));
     fireEvent.click(
-      await screen.findByRole("button", { name: "Remove process type" }),
+      await screen.findByRole("button", { name: "Remove process" }),
     );
     await waitFor(() =>
       expect(toastWarning).toHaveBeenCalledWith(

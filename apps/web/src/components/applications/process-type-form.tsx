@@ -143,12 +143,12 @@ function TypeForm({
         ? update.mutateAsync({ processTypeId: processType.id, data })
         : create.mutateAsync({ name: value.name.trim(), ...data });
       toast.promise(action, {
-        loading: editing ? "Saving process type…" : "Creating process type…",
+        loading: editing ? "Saving process…" : "Creating process…",
         success: () => {
           onDone();
           return editing
-            ? "Process type saved — command and health changes apply on the next deploy"
-            : "Process type created — deploy to start it";
+            ? "Process saved — command and health changes apply on the next deploy"
+            : "Process created — deploy to start it";
         },
         error: (err) => err.message,
       });
@@ -163,7 +163,7 @@ function TypeForm({
     <>
       <DialogHeader>
         <DialogTitle>
-          {editing ? `Edit ${processType.name}` : "Add Process Type"}
+          {editing ? `Edit ${processType.name}` : "Add Process"}
         </DialogTitle>
         <DialogDescription>
           {routable
@@ -470,7 +470,7 @@ function TypeForm({
             Cancel
           </Button>
           <Button type="submit" disabled={pending}>
-            {pending ? "Saving…" : editing ? "Save" : "Add Process Type"}
+            {pending ? "Saving…" : editing ? "Save" : "Add Process"}
           </Button>
         </DialogFooter>
       </form>

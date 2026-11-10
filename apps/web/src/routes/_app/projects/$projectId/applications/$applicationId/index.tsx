@@ -9,11 +9,17 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sparkline } from "@/components/ui/sparkline";
 import { MetricCard as StatMetricCard } from "@/lib/components/stats/stat-card";
+import { OverviewProcessesCard } from "@/components/applications/overview-processes-card";
+import {
+  comparableCeiling,
+  describeCoverage,
+  sumAllContainers,
+} from "@/lib/utils/process-usage";
 import { CpuIcon, MemoryStickIcon, NetworkIcon } from "lucide-react";
 import { formatRelativeTime, formatDuration } from "@/lib/utils/format";
 import { actionLabel, actionClass } from "@/lib/utils/audit-format";
 import { cn } from "@/lib/utils";
-import type { AppMetricPoint, Deployment, Application } from "@/lib/types";
+import type { Deployment, Application } from "@/lib/types";
 
 export const Route = createFileRoute(
   "/_app/projects/$projectId/applications/$applicationId/",
@@ -39,16 +45,6 @@ function formatRate(bytesPerSec: number | null | undefined) {
   const mb = bytesPerSec / (1024 * 1024);
   if (mb >= 1) return `${mb.toFixed(1)} MB/s`;
   return `${(bytesPerSec / 1024).toFixed(0)} KB/s`;
-}
-
-function lastNonNull<K extends keyof AppMetricPoint>(
-  data: AppMetricPoint[],
-  key: K,
-): AppMetricPoint[K] | null {
-  for (let i = data.length - 1; i >= 0; i--) {
-    if (data[i][key] != null) return data[i][key];
-  }
-  return null;
 }
 
 function MetricCard({
@@ -264,41 +260,60 @@ function ApplicationOverview() {
     );
   }
 
-  const cpu = lastNonNull(metrics, "cpu_percent");
-  const memUsed = lastNonNull(metrics, "memory_usage");
-  const memLimit = lastNonNull(metrics, "memory_limit");
-  const rx = lastNonNull(metrics, "network_rx_bytes");
-  const tx = lastNonNull(metrics, "network_tx_bytes");
+  // The sum across EVERY container (web replicas and workers), from the latest point's
+  // per-instance samples. The point's own totals are the routable type's alone, which is
+  // what this page used to show; the caption below says which one this is.
+  const latest = metrics.length > 0 ? metrics[metrics.length - 1] : undefined;
+  const usage = sumAllContainers(latest);
+  const coverage = describeCoverage(latest);
+  // Null unless the ceiling describes the same containers the usage does.
+  const ceiling = comparableCeiling(latest);
+  const series = metrics.map((p) => sumAllContainers(p));
   const lastDeploy = deployments?.[0];
 
   return (
     <div className="space-y-4">
-      {/* Live resource metrics */}
+      {/* Live resource metrics: the sum across every container, and what it covers */}
+      {coverage && (
+        <p
+          className={cn(
+            "text-xs",
+            coverage.partial ? "text-status-building" : "text-text-faint",
+          )}
+        >
+          {coverage.text}
+        </p>
+      )}
       <div className="grid gap-4 sm:grid-cols-3">
         <MetricCard
           label="CPU"
           icon={<CpuIcon className="size-3.5" />}
-          value={cpu != null ? `${cpu.toFixed(0)}%` : "—"}
-          values={metrics.map((p) => p.cpu_percent)}
+          value={usage.cpu != null ? `${usage.cpu.toFixed(0)}%` : "—"}
+          values={series.map((u) => u.cpu)}
           color={CPU_COLOR}
         />
         <MetricCard
           label="Memory"
           icon={<MemoryStickIcon className="size-3.5" />}
-          value={formatBytes(memUsed)}
-          sub={memLimit ? `/ ${formatBytes(memLimit)}` : undefined}
-          values={metrics.map((p) => p.memory_usage)}
+          value={formatBytes(usage.memory)}
+          sub={ceiling ? `/ ${formatBytes(ceiling)}` : undefined}
+          values={series.map((u) => u.memory)}
           color={MEM_COLOR}
         />
         <MetricCard
           label="Network"
           icon={<NetworkIcon className="size-3.5" />}
-          value={`↓ ${formatRate(rx)}`}
-          sub={`↑ ${formatRate(tx)}`}
-          values={metrics.map((p) => p.network_rx_bytes)}
+          value={`↓ ${formatRate(usage.rx)}`}
+          sub={`↑ ${formatRate(usage.tx)}`}
+          values={series.map((u) => u.rx)}
           color={NET_COLOR}
         />
       </div>
+
+      <OverviewProcessesCard
+        projectId={projectId}
+        applicationId={applicationId}
+      />
 
       {/* Build info + recent events */}
       <div className="grid gap-4 lg:grid-cols-2">

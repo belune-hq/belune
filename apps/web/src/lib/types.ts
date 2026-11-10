@@ -315,9 +315,24 @@ export interface AppMetricPoint {
   network_rx_bytes: number | null;
   network_tx_bytes: number | null;
   recorded_at: string;
-  // The live stream also carries a point per instance (history does not). The totals
-  // above are the sum over the routable type's replicas; a breakdown in the UI is a
-  // separate piece of work.
+  // The live stream also carries a point per instance and the coverage counts; history
+  // carries neither. The totals above are the sum over the ROUTABLE type's replicas that
+  // answered, and memory_limit is a CONFIGURED ceiling (the sum of the routable replicas'
+  // limits, null when any one is unlimited), not a sampled value.
+  //
+  // Coverage, one pair per scope: routable_* is what the totals sum over, the other pair
+  // is every type (what `instances` lists). ⚠️ "expected" is the set the server SAMPLED
+  // AGAINST, which filters on each instance row's status: a container that is up while its
+  // row still says "pending" is in neither count. "4 of 4" is full coverage of the
+  // intended set, not of reality.
+  //
+  // ⛔ usage / memory_limit mixes denominators unless routable_sampled ===
+  // routable_expected: the ceiling spans the expected replicas, usage only the sampled
+  // ones. Check the counts before drawing a percentage.
+  routable_sampled?: number;
+  routable_expected?: number;
+  sampled?: number;
+  expected?: number;
   instances?: AppInstanceMetricPoint[];
 }
 

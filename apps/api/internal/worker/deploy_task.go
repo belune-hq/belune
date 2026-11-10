@@ -68,16 +68,10 @@ type deployTarget struct {
 	memoryLimit int64
 }
 
-// limitsFor resolves a type's effective CPU and memory limits.
+// limitsFor resolves a type's effective CPU and memory limits. The rule itself lives in
+// instances.EffectiveLimits, shared with the metrics ceiling.
 func limitsFor(app generated.Application, pt generated.ApplicationProcessType) (cpu float64, memory int64) {
-	cpu, memory = app.CpuLimit, app.MemoryLimit
-	if pt.CpuLimit.Valid {
-		cpu = pt.CpuLimit.Float64
-	}
-	if pt.MemoryLimit.Valid {
-		memory = pt.MemoryLimit.Int64
-	}
-	return cpu, memory
+	return instances.EffectiveLimits(app.CpuLimit, app.MemoryLimit, pt.CpuLimit, pt.MemoryLimit)
 }
 
 // all returns every target, workers first and the routable ones last: the order

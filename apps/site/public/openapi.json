@@ -21424,7 +21424,10 @@
       "serviceMetrics": {
         "properties": {
           "cpu_percent": {
-            "type": "number"
+            "type": [
+              "number",
+              "null"
+            ]
           },
           "domain": {
             "type": "string"
@@ -21433,7 +21436,10 @@
             "type": "integer"
           },
           "memory_used": {
-            "type": "integer"
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "port": {
             "type": "integer"

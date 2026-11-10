@@ -512,6 +512,65 @@ func (q *Queries) ListInstancesWithProcessTypeByApplication(ctx context.Context,
 	return items, nil
 }
 
+const listInstancesWithProcessTypeByProject = `-- name: ListInstancesWithProcessTypeByProject :many
+SELECT i.id, i.application_id, i.process_type_id, i.deployment_id, i.idx,
+       i.container_name, i.container_id, i.status,
+       pt.name AS process_type_name, pt.routable AS process_type_routable
+FROM application_instances i
+JOIN application_process_types pt ON pt.id = i.process_type_id
+JOIN applications a ON a.id = i.application_id
+WHERE a.project_id = $1
+ORDER BY i.application_id, pt.routable DESC, pt.name, i.idx, i.id
+`
+
+type ListInstancesWithProcessTypeByProjectRow struct {
+	ID                  pgtype.UUID `json:"id"`
+	ApplicationID       pgtype.UUID `json:"application_id"`
+	ProcessTypeID       pgtype.UUID `json:"process_type_id"`
+	DeploymentID        pgtype.UUID `json:"deployment_id"`
+	Idx                 int32       `json:"idx"`
+	ContainerName       string      `json:"container_name"`
+	ContainerID         pgtype.Text `json:"container_id"`
+	Status              string      `json:"status"`
+	ProcessTypeName     string      `json:"process_type_name"`
+	ProcessTypeRoutable bool        `json:"process_type_routable"`
+}
+
+// The project overview's read: ListInstancesWithProcessTypeByApplication across every
+// application in a project, so container names come from the rows and not from the slug
+// (no container is named the slug since 0.3.x). Same columns on purpose: the handler
+// feeds it to the per-application sampler's rules unchanged.
+func (q *Queries) ListInstancesWithProcessTypeByProject(ctx context.Context, projectID pgtype.UUID) ([]ListInstancesWithProcessTypeByProjectRow, error) {
+	rows, err := q.db.Query(ctx, listInstancesWithProcessTypeByProject, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListInstancesWithProcessTypeByProjectRow{}
+	for rows.Next() {
+		var i ListInstancesWithProcessTypeByProjectRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ApplicationID,
+			&i.ProcessTypeID,
+			&i.DeploymentID,
+			&i.Idx,
+			&i.ContainerName,
+			&i.ContainerID,
+			&i.Status,
+			&i.ProcessTypeName,
+			&i.ProcessTypeRoutable,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listProcessTypesByApplication = `-- name: ListProcessTypesByApplication :many
 SELECT id, application_id, name, command, replicas, routable, cpu_limit, memory_limit, health_check_type, health_check_command, created_at, updated_at FROM application_process_types
 WHERE application_id = $1

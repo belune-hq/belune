@@ -75,6 +75,20 @@ JOIN application_process_types pt ON pt.id = i.process_type_id
 WHERE i.application_id = $1
 ORDER BY pt.routable DESC, pt.name, i.idx, i.id;
 
+-- The project overview's read: ListInstancesWithProcessTypeByApplication across every
+-- application in a project, so container names come from the rows and not from the slug
+-- (no container is named the slug since 0.3.x). Same columns on purpose: the handler
+-- feeds it to the per-application sampler's rules unchanged.
+-- name: ListInstancesWithProcessTypeByProject :many
+SELECT i.id, i.application_id, i.process_type_id, i.deployment_id, i.idx,
+       i.container_name, i.container_id, i.status,
+       pt.name AS process_type_name, pt.routable AS process_type_routable
+FROM application_instances i
+JOIN application_process_types pt ON pt.id = i.process_type_id
+JOIN applications a ON a.id = i.application_id
+WHERE a.project_id = $1
+ORDER BY i.application_id, pt.routable DESC, pt.name, i.idx, i.id;
+
 -- The reconciler's read: the routable type's instances, i.e. a route's upstreams.
 -- name: ListRoutableInstancesByApplication :many
 SELECT i.*

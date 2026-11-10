@@ -23,6 +23,7 @@ import type {
   ProjectMetrics,
   ServiceMetrics,
 } from "@/lib/types";
+import { formatCpuCell, formatMemoryCell } from "./usage-format";
 import {
   useDeleteApplication,
   useDeployApplication,
@@ -124,14 +125,6 @@ const TRANSIENT = new Set([
 const isTransient = (status: string) => TRANSIENT.has(status.toLowerCase());
 
 const RUNNING = new Set(["running", "ready"]);
-
-function formatBytes(bytes: number): string {
-  const gb = bytes / (1024 * 1024 * 1024);
-  if (gb >= 1) return `${gb.toFixed(1)} GB`;
-  const mb = bytes / (1024 * 1024);
-  if (mb >= 1) return `${mb.toFixed(0)} MB`;
-  return `${(bytes / 1024).toFixed(0)} KB`;
-}
 
 function ApplicationActions({
   projectId,
@@ -709,8 +702,7 @@ function buildColumns(
         headerClassName: "hidden md:table-cell",
       },
       cell: ({ row }) => {
-        const m = usageText(row.original, metricsFor(row.original));
-        return m ? `${m.cpu_percent.toFixed(0)}%` : "—";
+        return formatCpuCell(usageText(row.original, metricsFor(row.original)));
       },
     },
     {
@@ -721,8 +713,9 @@ function buildColumns(
         headerClassName: "hidden md:table-cell",
       },
       cell: ({ row }) => {
-        const m = usageText(row.original, metricsFor(row.original));
-        return m && m.memory_used ? formatBytes(m.memory_used) : "—";
+        return formatMemoryCell(
+          usageText(row.original, metricsFor(row.original)),
+        );
       },
     },
     {

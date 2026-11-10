@@ -65,13 +65,20 @@ SELECT * FROM application_instances
 WHERE process_type_id = $1
 ORDER BY idx, id;
 
--- The resolver's read: an application's instances with the type each belongs to.
+-- The resolver's read: an application's instances with the type each belongs to, and
+-- BOTH limits the effective-limit rule (instances.EffectiveLimits) needs, so a caller
+-- can resolve an instance's configured ceiling from the row alone.
+-- ⛔ Keep the column list identical to ListInstancesWithProcessTypeByProject: the handler
+-- converts between the two row structs directly.
 -- name: ListInstancesWithProcessTypeByApplication :many
 SELECT i.id, i.application_id, i.process_type_id, i.deployment_id, i.idx,
        i.container_name, i.container_id, i.status,
-       pt.name AS process_type_name, pt.routable AS process_type_routable
+       pt.name AS process_type_name, pt.routable AS process_type_routable,
+       pt.cpu_limit AS process_type_cpu_limit, pt.memory_limit AS process_type_memory_limit,
+       a.cpu_limit AS application_cpu_limit, a.memory_limit AS application_memory_limit
 FROM application_instances i
 JOIN application_process_types pt ON pt.id = i.process_type_id
+JOIN applications a ON a.id = i.application_id
 WHERE i.application_id = $1
 ORDER BY pt.routable DESC, pt.name, i.idx, i.id;
 
@@ -82,7 +89,9 @@ ORDER BY pt.routable DESC, pt.name, i.idx, i.id;
 -- name: ListInstancesWithProcessTypeByProject :many
 SELECT i.id, i.application_id, i.process_type_id, i.deployment_id, i.idx,
        i.container_name, i.container_id, i.status,
-       pt.name AS process_type_name, pt.routable AS process_type_routable
+       pt.name AS process_type_name, pt.routable AS process_type_routable,
+       pt.cpu_limit AS process_type_cpu_limit, pt.memory_limit AS process_type_memory_limit,
+       a.cpu_limit AS application_cpu_limit, a.memory_limit AS application_memory_limit
 FROM application_instances i
 JOIN application_process_types pt ON pt.id = i.process_type_id
 JOIN applications a ON a.id = i.application_id

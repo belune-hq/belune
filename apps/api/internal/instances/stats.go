@@ -88,6 +88,22 @@ func FetchStats(ctx context.Context, rt StatsRuntime, names []string) map[string
 	return out
 }
 
+// EffectiveLimits is the ONE rule for the CPU and memory limit a container is created
+// with: the process type's own when set (NULL on the type means inherit), otherwise the
+// application's. 0 is unlimited, as on the application. The deploy path and the metrics
+// ceiling both go through it -- a second copy would let "what we created it with" and
+// "what we report as its ceiling" drift apart.
+func EffectiveLimits(appCPU float64, appMemory int64, ptCPU pgtype.Float8, ptMemory pgtype.Int8) (cpu float64, memory int64) {
+	cpu, memory = appCPU, appMemory
+	if ptCPU.Valid {
+		cpu = ptCPU.Float64
+	}
+	if ptMemory.Valid {
+		memory = ptMemory.Int64
+	}
+	return cpu, memory
+}
+
 // InstancePoint is one instance's sample.
 type InstancePoint struct {
 	InstanceID     string  `json:"instance_id"`
@@ -109,23 +125,60 @@ type InstancePoint struct {
 // are in Instances, flagged, but not folded into the totals: an application with a
 // queue worker must not suddenly report the worker's CPU as the web's. A total is null
 // when no routable instance could be sampled -- "could not be determined", never zero.
+//
+// COVERAGE. A total is a sum of the instances that answered, so with 3 replicas of which
+// 2 answered it is a confident-looking sum of 2. The counts say so, one pair per scope
+// because the scopes differ and a single pair mixing them would be its own small lie:
+//
+//	RoutableSampled / RoutableExpected -- what the totals sum over
+//	Sampled / Expected                 -- every type, i.e. what Instances lists
+//
+// ⚠️ "Expected" is the set the CALLER passed in, not the set that exists. The stream
+// passes LiveInstances, which filters on the ROW's status, and the row is eventually
+// consistent: an instance that is genuinely up while its row still says "pending" is in
+// NEITHER count -- invisible, not under-reported. The counts describe coverage of the
+// intended set. "4 of 4" does not mean "we saw everything that exists".
+//
+// MemoryLimit is the application's CEILING, and is CONFIGURATION, not the sample: the
+// sum of each routable instance's effective limit (EffectiveLimits), or null when any of
+// them is unlimited. Docker reports the HOST's total memory as the cgroup limit of a
+// container with no limit, indistinguishable in the stats from "limited to exactly host
+// RAM", so a sampled sum would read 24 GB for three unlimited replicas on an 8 GB host.
+// It spans the whole expected routable set, not just the replicas that answered: a
+// replica that missed a sample still has a ceiling.
 type Point struct {
-	CPUPercent     *float64        `json:"cpu_percent"`
-	MemoryUsage    *int64          `json:"memory_usage"`
-	MemoryLimit    *int64          `json:"memory_limit"`
-	NetworkRxBytes *int64          `json:"network_rx_bytes"`
-	NetworkTxBytes *int64          `json:"network_tx_bytes"`
-	RecordedAt     string          `json:"recorded_at"`
-	Instances      []InstancePoint `json:"instances"`
+	CPUPercent       *float64        `json:"cpu_percent"`
+	MemoryUsage      *int64          `json:"memory_usage"`
+	MemoryLimit      *int64          `json:"memory_limit"`
+	NetworkRxBytes   *int64          `json:"network_rx_bytes"`
+	NetworkTxBytes   *int64          `json:"network_tx_bytes"`
+	RoutableSampled  int             `json:"routable_sampled"`
+	RoutableExpected int             `json:"routable_expected"`
+	Sampled          int             `json:"sampled"`
+	Expected         int             `json:"expected"`
+	RecordedAt       string          `json:"recorded_at"`
+	Instances        []InstancePoint `json:"instances"`
 }
 
 // BuildPoint assembles a Point from the live instances and the stats that came back.
-// ok is false when nothing was sampled, in which case nothing should be published.
+// ok is false when nothing was sampled, in which case nothing should be published; the
+// returned Point still carries the counts (zero sampled, the expected sizes).
 func BuildPoint(live []generated.ListInstancesWithProcessTypeByApplicationRow, stats map[string]*runtime.ContainerResourceStats, now time.Time) (Point, bool) {
-	p := Point{RecordedAt: now.Format(time.RFC3339), Instances: []InstancePoint{}}
+	p := Point{RecordedAt: now.Format(time.RFC3339), Instances: []InstancePoint{}, Expected: len(live)}
 	var cpu float64
-	var mem, memLimit, rx, tx int64
-	routableSampled := false
+	var mem, rx, tx int64
+	var ceiling int64
+	ceilingKnown := true
+	for _, r := range live {
+		if r.ProcessTypeRoutable {
+			p.RoutableExpected++
+			if _, m := EffectiveLimits(r.ApplicationCpuLimit, r.ApplicationMemoryLimit, r.ProcessTypeCpuLimit, r.ProcessTypeMemoryLimit); m > 0 {
+				ceiling += m
+			} else {
+				ceilingKnown = false // one unlimited replica makes the ceiling unknown, not the sum of the rest
+			}
+		}
+	}
 	for _, r := range live { // already ordered: routable first, then type, then idx
 		s, ok := stats[r.ContainerName]
 		if !ok {
@@ -137,19 +190,22 @@ func BuildPoint(live []generated.ListInstancesWithProcessTypeByApplicationRow, s
 			NetworkRxBytes: s.NetworkRxBytes, NetworkTxBytes: s.NetworkTxBytes,
 		})
 		if r.ProcessTypeRoutable {
-			routableSampled = true
+			p.RoutableSampled++
 			cpu += s.CPUPercent
 			mem += s.MemoryUsage
-			memLimit += s.MemoryLimit
 			rx += s.NetworkRxBytes
 			tx += s.NetworkTxBytes
 		}
 	}
-	if len(p.Instances) == 0 {
-		return Point{}, false
+	p.Sampled = len(p.Instances)
+	if p.Sampled == 0 {
+		return p, false
 	}
-	if routableSampled {
-		p.CPUPercent, p.MemoryUsage, p.MemoryLimit, p.NetworkRxBytes, p.NetworkTxBytes = &cpu, &mem, &memLimit, &rx, &tx
+	if p.RoutableSampled > 0 {
+		p.CPUPercent, p.MemoryUsage, p.NetworkRxBytes, p.NetworkTxBytes = &cpu, &mem, &rx, &tx
+		if ceilingKnown {
+			p.MemoryLimit = &ceiling
+		}
 	}
 	return p, true
 }

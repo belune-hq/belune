@@ -460,27 +460,38 @@ func (q *Queries) ListInstancesByProcessType(ctx context.Context, processTypeID 
 const listInstancesWithProcessTypeByApplication = `-- name: ListInstancesWithProcessTypeByApplication :many
 SELECT i.id, i.application_id, i.process_type_id, i.deployment_id, i.idx,
        i.container_name, i.container_id, i.status,
-       pt.name AS process_type_name, pt.routable AS process_type_routable
+       pt.name AS process_type_name, pt.routable AS process_type_routable,
+       pt.cpu_limit AS process_type_cpu_limit, pt.memory_limit AS process_type_memory_limit,
+       a.cpu_limit AS application_cpu_limit, a.memory_limit AS application_memory_limit
 FROM application_instances i
 JOIN application_process_types pt ON pt.id = i.process_type_id
+JOIN applications a ON a.id = i.application_id
 WHERE i.application_id = $1
 ORDER BY pt.routable DESC, pt.name, i.idx, i.id
 `
 
 type ListInstancesWithProcessTypeByApplicationRow struct {
-	ID                  pgtype.UUID `json:"id"`
-	ApplicationID       pgtype.UUID `json:"application_id"`
-	ProcessTypeID       pgtype.UUID `json:"process_type_id"`
-	DeploymentID        pgtype.UUID `json:"deployment_id"`
-	Idx                 int32       `json:"idx"`
-	ContainerName       string      `json:"container_name"`
-	ContainerID         pgtype.Text `json:"container_id"`
-	Status              string      `json:"status"`
-	ProcessTypeName     string      `json:"process_type_name"`
-	ProcessTypeRoutable bool        `json:"process_type_routable"`
+	ID                     pgtype.UUID   `json:"id"`
+	ApplicationID          pgtype.UUID   `json:"application_id"`
+	ProcessTypeID          pgtype.UUID   `json:"process_type_id"`
+	DeploymentID           pgtype.UUID   `json:"deployment_id"`
+	Idx                    int32         `json:"idx"`
+	ContainerName          string        `json:"container_name"`
+	ContainerID            pgtype.Text   `json:"container_id"`
+	Status                 string        `json:"status"`
+	ProcessTypeName        string        `json:"process_type_name"`
+	ProcessTypeRoutable    bool          `json:"process_type_routable"`
+	ProcessTypeCpuLimit    pgtype.Float8 `json:"process_type_cpu_limit"`
+	ProcessTypeMemoryLimit pgtype.Int8   `json:"process_type_memory_limit"`
+	ApplicationCpuLimit    float64       `json:"application_cpu_limit"`
+	ApplicationMemoryLimit int64         `json:"application_memory_limit"`
 }
 
-// The resolver's read: an application's instances with the type each belongs to.
+// The resolver's read: an application's instances with the type each belongs to, and
+// BOTH limits the effective-limit rule (instances.EffectiveLimits) needs, so a caller
+// can resolve an instance's configured ceiling from the row alone.
+// ⛔ Keep the column list identical to ListInstancesWithProcessTypeByProject: the handler
+// converts between the two row structs directly.
 func (q *Queries) ListInstancesWithProcessTypeByApplication(ctx context.Context, applicationID pgtype.UUID) ([]ListInstancesWithProcessTypeByApplicationRow, error) {
 	rows, err := q.db.Query(ctx, listInstancesWithProcessTypeByApplication, applicationID)
 	if err != nil {
@@ -501,6 +512,10 @@ func (q *Queries) ListInstancesWithProcessTypeByApplication(ctx context.Context,
 			&i.Status,
 			&i.ProcessTypeName,
 			&i.ProcessTypeRoutable,
+			&i.ProcessTypeCpuLimit,
+			&i.ProcessTypeMemoryLimit,
+			&i.ApplicationCpuLimit,
+			&i.ApplicationMemoryLimit,
 		); err != nil {
 			return nil, err
 		}
@@ -515,7 +530,9 @@ func (q *Queries) ListInstancesWithProcessTypeByApplication(ctx context.Context,
 const listInstancesWithProcessTypeByProject = `-- name: ListInstancesWithProcessTypeByProject :many
 SELECT i.id, i.application_id, i.process_type_id, i.deployment_id, i.idx,
        i.container_name, i.container_id, i.status,
-       pt.name AS process_type_name, pt.routable AS process_type_routable
+       pt.name AS process_type_name, pt.routable AS process_type_routable,
+       pt.cpu_limit AS process_type_cpu_limit, pt.memory_limit AS process_type_memory_limit,
+       a.cpu_limit AS application_cpu_limit, a.memory_limit AS application_memory_limit
 FROM application_instances i
 JOIN application_process_types pt ON pt.id = i.process_type_id
 JOIN applications a ON a.id = i.application_id
@@ -524,16 +541,20 @@ ORDER BY i.application_id, pt.routable DESC, pt.name, i.idx, i.id
 `
 
 type ListInstancesWithProcessTypeByProjectRow struct {
-	ID                  pgtype.UUID `json:"id"`
-	ApplicationID       pgtype.UUID `json:"application_id"`
-	ProcessTypeID       pgtype.UUID `json:"process_type_id"`
-	DeploymentID        pgtype.UUID `json:"deployment_id"`
-	Idx                 int32       `json:"idx"`
-	ContainerName       string      `json:"container_name"`
-	ContainerID         pgtype.Text `json:"container_id"`
-	Status              string      `json:"status"`
-	ProcessTypeName     string      `json:"process_type_name"`
-	ProcessTypeRoutable bool        `json:"process_type_routable"`
+	ID                     pgtype.UUID   `json:"id"`
+	ApplicationID          pgtype.UUID   `json:"application_id"`
+	ProcessTypeID          pgtype.UUID   `json:"process_type_id"`
+	DeploymentID           pgtype.UUID   `json:"deployment_id"`
+	Idx                    int32         `json:"idx"`
+	ContainerName          string        `json:"container_name"`
+	ContainerID            pgtype.Text   `json:"container_id"`
+	Status                 string        `json:"status"`
+	ProcessTypeName        string        `json:"process_type_name"`
+	ProcessTypeRoutable    bool          `json:"process_type_routable"`
+	ProcessTypeCpuLimit    pgtype.Float8 `json:"process_type_cpu_limit"`
+	ProcessTypeMemoryLimit pgtype.Int8   `json:"process_type_memory_limit"`
+	ApplicationCpuLimit    float64       `json:"application_cpu_limit"`
+	ApplicationMemoryLimit int64         `json:"application_memory_limit"`
 }
 
 // The project overview's read: ListInstancesWithProcessTypeByApplication across every
@@ -560,6 +581,10 @@ func (q *Queries) ListInstancesWithProcessTypeByProject(ctx context.Context, pro
 			&i.Status,
 			&i.ProcessTypeName,
 			&i.ProcessTypeRoutable,
+			&i.ProcessTypeCpuLimit,
+			&i.ProcessTypeMemoryLimit,
+			&i.ApplicationCpuLimit,
+			&i.ApplicationMemoryLimit,
 		); err != nil {
 			return nil, err
 		}

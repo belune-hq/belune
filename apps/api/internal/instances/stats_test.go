@@ -2,6 +2,7 @@ package instances_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"testing"
@@ -109,7 +110,7 @@ func TestBuildPoint_TotalsAreTheSumOfTheRoutableInstances(t *testing.T) {
 	assert.InDelta(t, 30, *p.CPUPercent, 0.0001, "three web replicas at 10 each; the worker is not in the total")
 	assert.Equal(t, cpu, *p.CPUPercent)
 	assert.Equal(t, mem, *p.MemoryUsage)
-	assert.EqualValues(t, 3000, *p.MemoryLimit)
+	assert.Nil(t, p.MemoryLimit, "no configured limit on these rows: the ceiling is unknown, not the sampled 3 x 1000")
 	assert.Equal(t, rx, *p.NetworkRxBytes)
 	assert.Equal(t, "web", p.Instances[0].ProcessType)
 	assert.EqualValues(t, 1, p.Instances[0].Idx)
@@ -127,4 +128,128 @@ func TestBuildPoint_NullTotalsWhenNoRoutableInstanceAnsweredAndNothingWhenNoneDi
 
 	_, ok = instances.BuildPoint(live, map[string]*runtime.ContainerResourceStats{}, time.Now())
 	assert.False(t, ok, "nothing sampled, nothing published")
+}
+
+// mkL is mk with configured limits: the application's, and the process type's (NULL
+// inherits). The stats stub reports a cgroup limit of 1000 for every container, a number
+// no configured value below equals -- so an assertion on the ceiling can only pass if it
+// came from configuration, never from the sample.
+func mkL(typeName string, routable bool, idx int32, appMem int64, ptMem pgtype.Int8) row {
+	r := mk(typeName, routable, idx, "running")
+	r.ApplicationMemoryLimit = appMem
+	r.ProcessTypeMemoryLimit = ptMem
+	return r
+}
+
+func build(t *testing.T, live []row, failing ...string) (instances.Point, bool) {
+	t.Helper()
+	fail := map[string]bool{}
+	for _, f := range failing {
+		fail[f] = true
+	}
+	stats := instances.FetchStats(context.Background(), &slowStats{fail: fail}, names(live))
+	return instances.BuildPoint(live, stats, time.Now())
+}
+
+// Three routable replicas, two answer: the total is the sum of TWO and the counts say so.
+// Without them it reads as a confident figure for the whole application.
+func TestBuildPoint_PartialCoverageIsReportedNotHidden(t *testing.T) {
+	live := []row{mkL("web", true, 1, 4096, pgtype.Int8{}), mkL("web", true, 2, 4096, pgtype.Int8{}), mkL("web", true, 3, 4096, pgtype.Int8{}), mkL("worker", false, 1, 4096, pgtype.Int8{})}
+	p, ok := build(t, live, "web-2")
+	require.True(t, ok)
+
+	assert.InDelta(t, 20, *p.CPUPercent, 0.0001, "two of three replicas answered")
+	assert.Equal(t, 2, p.RoutableSampled)
+	assert.Equal(t, 3, p.RoutableExpected)
+	assert.Equal(t, 3, p.Sampled, "web-1, web-3 and the worker")
+	assert.Equal(t, 4, p.Expected)
+	assert.Len(t, p.Instances, p.Sampled)
+	// The ceiling is configuration over the whole expected set: a replica that missed a
+	// sample still has one.
+	require.NotNil(t, p.MemoryLimit)
+	assert.EqualValues(t, 3*4096, *p.MemoryLimit)
+}
+
+func TestBuildPoint_FullCoverageCountsAreEqual(t *testing.T) {
+	live := []row{mkL("web", true, 1, 4096, pgtype.Int8{}), mkL("web", true, 2, 4096, pgtype.Int8{}), mkL("worker", false, 1, 0, pgtype.Int8{})}
+	p, ok := build(t, live)
+	require.True(t, ok)
+	assert.InDelta(t, 20, *p.CPUPercent, 0.0001)
+	assert.Equal(t, 2, p.RoutableSampled)
+	assert.Equal(t, 2, p.RoutableExpected)
+	assert.Equal(t, 3, p.Sampled)
+	assert.Equal(t, 3, p.Expected)
+	assert.EqualValues(t, 2*4096, *p.MemoryLimit, "an unlimited WORKER does not make the web's ceiling unknown")
+}
+
+// Every contributing instance is limited: the ceiling is the sum of the CONFIGURED limits.
+// The stub's cgroup limit (1000 each) differs on purpose.
+func TestBuildPoint_CeilingIsTheSumOfConfiguredLimitsNotTheSample(t *testing.T) {
+	live := []row{mkL("web", true, 1, 4096, pgtype.Int8{}), mkL("web", true, 2, 8192, pgtype.Int8{})}
+	p, ok := build(t, live)
+	require.True(t, ok)
+	require.NotNil(t, p.MemoryLimit)
+	assert.EqualValues(t, 4096+8192, *p.MemoryLimit)
+	assert.NotEqualValues(t, 2000, *p.MemoryLimit, "2 x the sampled 1000 would be the old, wrong answer")
+}
+
+// One unlimited replica makes the ceiling unknown. A partial sum of the limited ones
+// would read as a real ceiling that the unlimited one can blow straight through.
+func TestBuildPoint_OneUnlimitedInstanceMakesTheCeilingUnknown(t *testing.T) {
+	live := []row{mkL("web", true, 1, 4096, pgtype.Int8{}), mkL("web", true, 2, 0, pgtype.Int8{})}
+	p, ok := build(t, live)
+	require.True(t, ok)
+	assert.Nil(t, p.MemoryLimit)
+	require.NotNil(t, p.MemoryUsage, "usage is still reported; only the ceiling is unknown")
+}
+
+// The process type's limit overrides the application's; 0 on the type is an explicit
+// "unlimited", which also overrides.
+func TestBuildPoint_ProcessTypeLimitOverridesTheApplications(t *testing.T) {
+	live := []row{
+		mkL("web", true, 1, 4096, pgtype.Int8{Int64: 1024, Valid: true}),
+		mkL("web", true, 2, 4096, pgtype.Int8{Int64: 1024, Valid: true}),
+	}
+	p, ok := build(t, live)
+	require.True(t, ok)
+	require.NotNil(t, p.MemoryLimit)
+	assert.EqualValues(t, 2048, *p.MemoryLimit, "the type's 1024 each, not the application's 4096")
+
+	unlimited := []row{mkL("web", true, 1, 4096, pgtype.Int8{Int64: 0, Valid: true})}
+	p, ok = build(t, unlimited)
+	require.True(t, ok)
+	assert.Nil(t, p.MemoryLimit, "an explicit 0 on the type means unlimited, whatever the application says")
+}
+
+// Nothing routable answered: the totals and the ceiling stay null and the routable count
+// is a real 0, not absent. Nothing at all answered: not published, but the counts are
+// still filled in for a caller that wants to log them.
+func TestBuildPoint_NothingSampledIsZeroCoverageNotMissing(t *testing.T) {
+	live := []row{mkL("web", true, 1, 4096, pgtype.Int8{}), mkL("worker", false, 1, 4096, pgtype.Int8{})}
+
+	p, ok := build(t, live, "web-1")
+	require.True(t, ok, "the worker answered")
+	assert.Nil(t, p.CPUPercent)
+	assert.Nil(t, p.MemoryLimit, "no routable sample: every total is null together")
+	assert.Equal(t, 0, p.RoutableSampled)
+	assert.Equal(t, 1, p.RoutableExpected)
+
+	raw, err := json.Marshal(p)
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), `"routable_sampled":0`, "present and zero on the wire, not omitted")
+
+	p, ok = build(t, live, "web-1", "worker-1")
+	assert.False(t, ok)
+	assert.Equal(t, 0, p.Sampled)
+	assert.Equal(t, 2, p.Expected)
+}
+
+// The rule the deploy path creates a container with is the rule the ceiling is built from.
+func TestEffectiveLimits(t *testing.T) {
+	cpu, mem := instances.EffectiveLimits(1.5, 4096, pgtype.Float8{}, pgtype.Int8{})
+	assert.Equal(t, 1.5, cpu)
+	assert.EqualValues(t, 4096, mem)
+	cpu, mem = instances.EffectiveLimits(1.5, 4096, pgtype.Float8{Float64: 0.25, Valid: true}, pgtype.Int8{Int64: 512, Valid: true})
+	assert.Equal(t, 0.25, cpu)
+	assert.EqualValues(t, 512, mem)
 }

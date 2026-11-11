@@ -68,12 +68,17 @@ func ResolveOne(ctx context.Context, q Querier, appID pgtype.UUID) (generated.Ap
 // RoutableContainerNames returns the container name of EVERY instance of the routable
 // type, in idx order: the route's upstream list.
 //
-// ⛔ It does NOT filter by instance status. Caddy already drops a bad upstream itself
-// (the route carries an active health check), and the status column is eventually
-// consistent -- driven by the event watcher -- so a stale 'stopped' row would silently
-// remove a healthy replica from the pool: a routing decision made on a cache. The
-// order comes from SQL (ORDER BY idx) and is not re-sorted here, because it is part of
-// the route and an unstable one rewrites the route on every reconcile pass.
+// ⛔ It does NOT filter by instance status. The status column is eventually consistent
+// -- driven by the event watcher -- so a stale 'stopped' row would silently remove a
+// healthy replica from the pool: a routing decision made on a cache. What keeps the pool
+// honest instead is Caddy's own PASSIVE health check on the route (see
+// newReverseProxyHandle in internal/proxy/caddy), which ejects a replica that fails real
+// requests and needs no configuration. It is NOT the active check this comment used to
+// cite: that exists only for an application with a health-check path, and apps are created
+// with none, so most routes had no mechanism at all and a dead replica kept receiving its
+// share of requests. The order comes from SQL (ORDER BY idx) and is not re-sorted here,
+// because it is part of the route and an unstable one rewrites the route on every
+// reconcile pass.
 //
 // ResolveOne is deliberately left as it is: logs, exec and metrics want ONE container
 // and fall back to a stopped one. Routing wants the list.

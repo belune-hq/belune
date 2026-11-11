@@ -1,0 +1,29 @@
+{
+  "@id": "route-app.example.com",
+  "match": [
+    {
+      "host": [
+        "app.example.com"
+      ]
+    }
+  ],
+  "handle": [
+    {
+      "handler": "reverse_proxy",
+      "health_checks": {
+        "passive": {
+          "fail_duration": "10s",
+          "max_fails": 3
+        }
+      },
+      "upstreams": [
+        {
+          "dial": "proj-app-1234abcd-web-1:8080"
+        },
+        {
+          "dial": "proj-app-1234abcd-web-2:8080"
+        }
+      ]
+    }
+  ]
+}

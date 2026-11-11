@@ -97,6 +97,44 @@ const (
 	passiveMaxFails     = 3
 )
 
+// Retry on a failed dial, for a route with SEVERAL upstreams. Without it a request Caddy
+// sends to a dead or restarting upstream simply fails with a 502 even though another
+// replica is up; with it Caddy keeps selecting an upstream until one accepts the connection,
+// for up to lbTryDuration.
+//
+// Measured against the Caddy image Belune ships, on a real stack with web x2, 50 req/s:
+//
+//   - It closes the leak passive ejection leaves. An ejected replica is retried every
+//     fail_duration and costs max_fails requests each time; with retry those requests land
+//     on a live replica instead: 2000 of 2000 succeed where passive alone gave 1988.
+//   - Caddy retries only when NOTHING was sent upstream (a failed dial). A request the
+//     upstream received and then dropped is not retried: verified that none is delivered
+//     twice, and that a POST whose dial failed arrives exactly once on the replica that takes
+//     it. A retried WebSocket upgrade completes a real handshake. A rolling deploy sees no
+//     added latency.
+//   - ⚠️ THE COST: while upstreams are down every request is HELD for up to lbTryDuration
+//     before it fails, so held connections are about request-rate x lbTryDuration (measured:
+//     206 at 100 req/s for 2s, ~64 KB each; a fast 502 holds nothing). Bounded and linear,
+//     not a collapse, but it is why the window is short.
+//   - Passive can still eject EVERY upstream, and then Caddy answers 503 for the rest of
+//     fail_duration. Retry does not ride that out, but it shortens it: a request that starts
+//     within lbTryDuration of the ejection ending waits and then succeeds.
+//
+// ⛔ Deliberately NOT for a single upstream, though it was measured there too and is tempting
+// as a way to ride out a restart. A window rescues only the fraction lbTryDuration/gap of the
+// requests that arrive during the gap, and turns the rest from instant failures into
+// failures that arrive lbTryDuration later: for an app that takes 6s to boot, 41 of 128
+// failed requests were rescued and the other 87 now failed after 2s. For a fast-booting app
+// the requests lost in a redeploy were already in flight when the old container died, which
+// no retry can recover (5 lost without it, 3 with). The benefit is a few percent of the
+// requests in a gap; the cost, every request held for the window whenever the app is down,
+// is paid by every single-replica application. Revisit it with a longer window and a real
+// answer for the held-connection cost, not by widening this guard.
+const (
+	lbTryDuration = "2s"
+	lbTryInterval = "250ms"
+)
+
 // newReverseProxyHandle creates a reverse_proxy handler.
 //
 // If healthCheckPath is non-empty, an ACTIVE upstream health check probes it, so Caddy
@@ -131,6 +169,10 @@ func newReverseProxyHandle(upstreams []caddyUpstream, healthCheckPath string) ca
 		health["passive"] = map[string]any{
 			"fail_duration": passiveFailDuration,
 			"max_fails":     passiveMaxFails,
+		}
+		h["load_balancing"] = map[string]any{
+			"try_duration": lbTryDuration,
+			"try_interval": lbTryInterval,
 		}
 	}
 	if len(health) > 0 {

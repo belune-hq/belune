@@ -22,6 +22,10 @@
           "max_fails": 3
         }
       },
+      "load_balancing": {
+        "try_duration": "2s",
+        "try_interval": "250ms"
+      },
       "upstreams": [
         {
           "dial": "proj-app-1234abcd-web-1:8080"

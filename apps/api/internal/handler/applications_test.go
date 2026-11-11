@@ -1,14 +1,18 @@
 package handler_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/hibiken/asynq"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/belune-hq/belune/internal/handler"
 	"github.com/belune-hq/belune/internal/testutil"
 )
 
@@ -310,4 +314,84 @@ func TestDeployApplication_LockReturns409(t *testing.T) {
 	// Clear the error for subsequent tests
 	env.Asynq.EnqueueErr = nil
 	env.Asynq.EnqueueOnce = false
+}
+
+// ⛔ A stop that outlives the wait answers 202 with the application, and the work FINISHES on its
+// own: the container ends up restarted and the status recorded, after the request has returned.
+// Before, the request's context was cancelled mid-stop and the start never ran.
+func TestRestartApplication_ASlowStopAnswers202AndStillCompletes(t *testing.T) {
+	resetDB(t)
+	token := env.SetupAdmin(t, "admin@test.com", "password123")
+	project := env.CreateProject(t, token, "Test Project", "test-project")
+	projectID := extractID(project["id"])
+	app := env.CreateApplication(t, token, projectID, map[string]any{
+		"name": "Slow", "type": "git", "build_type": "dockerfile", "source_repo": "https://github.com/test/repo",
+	})
+	appID := extractID(app["id"])
+
+	t.Cleanup(handler.SetAppActionWait(100 * time.Millisecond))
+	env.Runtime.StopCalls, env.Runtime.StartCalls = nil, nil
+	env.Runtime.StopFunc = func(context.Context, string) error {
+		time.Sleep(500 * time.Millisecond) // a container that takes its grace to stop
+		return nil
+	}
+	t.Cleanup(func() { env.Runtime.StopFunc = nil })
+
+	resp := env.DoRequest(t, "POST", fmt.Sprintf("/api/projects/%s/applications/%s/restart", projectID, appID), nil, testutil.AuthHeader(token))
+	require.Equal(t, http.StatusAccepted, resp.StatusCode, "past the wait the answer is 202, not an error")
+	body := testutil.ReadJSON(t, resp)
+	assert.Equal(t, appID, extractID(body["id"]), "202 carries the application, so clients keep their shape")
+
+	require.Eventually(t, func() bool {
+		return len(env.Runtime.StartCalls) > 0
+	}, 5*time.Second, 25*time.Millisecond, "the start follows the slow stop after the request has returned")
+	var appUUID pgtype.UUID
+	require.NoError(t, appUUID.Scan(appID))
+	require.Eventually(t, func() bool {
+		got, err := env.Queries.GetApplication(context.Background(), appUUID)
+		return err == nil && got.Status == "running"
+	}, 5*time.Second, 25*time.Millisecond, "and the status is recorded")
+}
+
+// The client (or the handler timeout) going away mid-stop must not strand anything: the work was
+// handed over on a detached context, so the restart still completes. This is the property the 202
+// test cannot show, since there the request is still alive.
+func TestRestartApplication_AClientThatDisconnectsMidStopStrandsNothing(t *testing.T) {
+	resetDB(t)
+	token := env.SetupAdmin(t, "admin@test.com", "password123")
+	project := env.CreateProject(t, token, "Test Project", "test-project")
+	projectID := extractID(project["id"])
+	app := env.CreateApplication(t, token, projectID, map[string]any{
+		"name": "Gone", "type": "git", "build_type": "dockerfile", "source_repo": "https://github.com/test/repo",
+	})
+	appID := extractID(app["id"])
+
+	t.Cleanup(handler.SetAppActionWait(5 * time.Second)) // long: the CLIENT leaves first
+	env.Runtime.StopCalls, env.Runtime.StartCalls = nil, nil
+	env.Runtime.StopFunc = func(context.Context, string) error {
+		time.Sleep(400 * time.Millisecond)
+		return nil
+	}
+	t.Cleanup(func() { env.Runtime.StopFunc = nil })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	req, err := http.NewRequestWithContext(ctx, "POST",
+		env.Server.URL+fmt.Sprintf("/api/projects/%s/applications/%s/restart", projectID, appID), nil)
+	require.NoError(t, err)
+	for k, v := range testutil.AuthHeader(token) {
+		req.Header.Set(k, v)
+	}
+	go func() { time.Sleep(100 * time.Millisecond); cancel() }() // the client gives up mid-stop
+	if resp, err := env.Server.Client().Do(req); err == nil {
+		_ = resp.Body.Close()
+	}
+
+	require.Eventually(t, func() bool { return len(env.Runtime.StartCalls) > 0 },
+		5*time.Second, 25*time.Millisecond, "the start still follows the stop although the client is gone")
+	var appUUID pgtype.UUID
+	require.NoError(t, appUUID.Scan(appID))
+	require.Eventually(t, func() bool {
+		got, err := env.Queries.GetApplication(context.Background(), appUUID)
+		return err == nil && got.Status == "running"
+	}, 5*time.Second, 25*time.Millisecond)
 }

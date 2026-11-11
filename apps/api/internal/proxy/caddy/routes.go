@@ -73,25 +73,68 @@ type caddyUpstream struct {
 	Dial string `json:"dial"`
 }
 
-// newReverseProxyHandle creates a reverse_proxy handler. If healthCheckPath
-// is non-empty, an active upstream health check is configured so Caddy itself
-// will mark the upstream unhealthy on consecutive 5xx responses — separate
-// from the deploy-time verification probe, which gates whether a deploy ever
-// goes live in the first place.
+// Passive health checking, for a route with more than one upstream. Measured against
+// the Caddy image Belune ships (ghcr.io/belune-hq/belune-caddy:2), not assumed:
+//
+//   - A dead container is ejected on these two settings ALONE. A connection failure at
+//     the dial counts as a passive failure, so no `unhealthy_status` is needed, and
+//     setting one would be wrong: it would also eject a replica because the APPLICATION
+//     answered 502/503 (maintenance mode, a slow dependency), which is not "this replica
+//     is dead". An app returning its own 503 was verified to stay in rotation.
+//   - Ejection costs the first max_fails requests that reach the dead replica, then the
+//     rest are served by its siblings: 3 failures, then 18 of 18 in the drill.
+//   - The replica is retried fail_duration after its last failure, which is what brings a
+//     recovered replica back: it rejoined 10s after restarting.
+//   - ⚠️ If EVERY upstream is ejected Caddy answers 503 for the whole of fail_duration,
+//     even after the backends are back (measured: 30s with a 30s window). That is the
+//     price of the mechanism, so the window is short, and max_fails is 3 rather than 1
+//     so that a brief restart of every replica at once, which produces only a request or
+//     two per replica on a quiet app, does not eject any of them.
+//   - During a rolling deploy (0.3.2) the route carries old and new together; the
+//     draining old container failing requests and being ejected quickly is correct.
+const (
+	passiveFailDuration = "10s"
+	passiveMaxFails     = 3
+)
+
+// newReverseProxyHandle creates a reverse_proxy handler.
+//
+// If healthCheckPath is non-empty, an ACTIVE upstream health check probes it, so Caddy
+// itself marks an upstream unhealthy on a failing probe, even with no traffic flowing.
+// That is separate from the deploy-time verification probe, which gates whether a deploy
+// ever goes live in the first place, and it exists only when an application has a path:
+// apps are created with no health check, so most routes have no active check at all.
+//
+// A route with more than one upstream ALSO gets a passive check, which needs no path: it
+// watches real traffic. The two are complementary (active catches a dead upstream nobody
+// is requesting, passive reacts to the next request), and passive is what keeps a dead
+// replica out of the pool for the many applications with no health path.
+//
+// ⛔ Not for a single upstream. With nothing to fail over to, ejecting it only turns a
+// blip into a 503 that outlasts the recovery (measured: the container was back in
+// seconds, the route answered 503 for the full window).
 func newReverseProxyHandle(upstreams []caddyUpstream, healthCheckPath string) caddyHandle {
 	h := caddyHandle{
 		"handler":   "reverse_proxy",
 		"upstreams": upstreams,
 	}
+	health := map[string]any{}
 	if healthCheckPath != "" {
-		h["health_checks"] = map[string]any{
-			"active": map[string]any{
-				"uri":           healthCheckPath,
-				"interval":      "30s",
-				"timeout":       "5s",
-				"expect_status": 2,
-			},
+		health["active"] = map[string]any{
+			"uri":           healthCheckPath,
+			"interval":      "30s",
+			"timeout":       "5s",
+			"expect_status": 2,
 		}
+	}
+	if len(upstreams) > 1 {
+		health["passive"] = map[string]any{
+			"fail_duration": passiveFailDuration,
+			"max_fails":     passiveMaxFails,
+		}
+	}
+	if len(health) > 0 {
+		h["health_checks"] = health
 	}
 	return h
 }

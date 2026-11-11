@@ -18,19 +18,31 @@ func TestBuildRoute_Golden(t *testing.T) {
 	cases := []struct {
 		name string
 		cfg  proxy.RouteConfig
+		// upstreams overrides the single default one: the passive health check exists only
+		// for a route with several.
+		upstreams []string
 	}{
-		{"route_minimal", proxy.RouteConfig{Hostname: "app.example.com", SSLMode: proxy.SSLModeAutomatic}},
-		{"route_health_check_path", proxy.RouteConfig{Hostname: "app.example.com", SSLMode: proxy.SSLModeAutomatic, HealthCheckPath: "/healthz"}},
+		{"route_minimal", proxy.RouteConfig{Hostname: "app.example.com", SSLMode: proxy.SSLModeAutomatic}, nil},
+		{"route_health_check_path", proxy.RouteConfig{Hostname: "app.example.com", SSLMode: proxy.SSLModeAutomatic, HealthCheckPath: "/healthz"}, nil},
 		{"route_path_strip_internal", proxy.RouteConfig{
 			Hostname: "app.example.com", Path: "/api", StripPath: true, InternalPath: "/v2", SSLMode: proxy.SSLModeAutomatic,
-		}},
-		{"route_force_https", proxy.RouteConfig{Hostname: "app.example.com", ForceHTTPS: true, TLS: true, SSLMode: proxy.SSLModeAutomatic}},
-		{"route_ssl_off", proxy.RouteConfig{Hostname: "plain.example.com", SSLMode: proxy.SSLModeOff}},
+		}, nil},
+		{"route_force_https", proxy.RouteConfig{Hostname: "app.example.com", ForceHTTPS: true, TLS: true, SSLMode: proxy.SSLModeAutomatic}, nil},
+		{"route_ssl_off", proxy.RouteConfig{Hostname: "plain.example.com", SSLMode: proxy.SSLModeOff}, nil},
+		// Replicas: passive only (the default, since an application is created with no
+		// health path), and active + passive together.
+		{"route_two_upstreams", proxy.RouteConfig{Hostname: "app.example.com", SSLMode: proxy.SSLModeAutomatic},
+			[]string{"http://proj-app-1234abcd-web-1:8080", "http://proj-app-1234abcd-web-2:8080"}},
+		{"route_two_upstreams_health_check_path", proxy.RouteConfig{Hostname: "app.example.com", SSLMode: proxy.SSLModeAutomatic, HealthCheckPath: "/healthz"},
+			[]string{"http://proj-app-1234abcd-web-1:8080", "http://proj-app-1234abcd-web-2:8080"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := tc.cfg
 			cfg.Upstreams = []string{"http://proj-app-1234abcd:8080"}
+			if tc.upstreams != nil {
+				cfg.Upstreams = tc.upstreams
+			}
 			got, err := buildRoute(cfg)
 			if err != nil {
 				t.Fatalf("buildRoute: %v", err)

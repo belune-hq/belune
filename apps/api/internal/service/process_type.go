@@ -514,22 +514,13 @@ func (s *ApplicationService) DeleteProcessType(ctx context.Context, appID, typeI
 		slog.Warn("delete process type: could not reach the application's server", "process_type", cur.Name, "error", rtErr)
 		return "process type deleted, but its container could not be removed yet (its server was unreachable); it will be reclaimed by the orphan sweep", nil
 	}
+	names := make([]string, 0, len(insts))
 	for _, in := range insts {
-		// A bounded polite stop, so a worker that handles SIGTERM can finish what it
-		// is doing, then a forced removal: the stop alone is not allowed to decide
-		// whether the container goes away.
-		stopCtx, cancelStop := context.WithTimeout(bg, processTypeStopGrace)
-		if err := rt.StopContainer(stopCtx, in.ContainerName); err != nil {
-			slog.Debug("delete process type: stop did not complete (forcing removal)", "container", in.ContainerName, "error", err)
-		}
-		cancelStop()
-
-		rmCtx, cancelRm := context.WithTimeout(bg, processTypeRemoveTimeout)
-		if err := rt.RemoveContainer(rmCtx, in.ContainerName); err != nil {
-			slog.Warn("delete process type: could not remove container", "container", in.ContainerName, "error", err)
-			warning = "process type deleted, but its container could not be removed yet; it will be reclaimed by the orphan sweep"
-		}
-		cancelRm()
+		names = append(names, in.ContainerName)
+	}
+	// Bounded and concurrent: see removeContainersBounded.
+	if failed := removeContainersBounded(bg, rt, names, "delete process type"); len(failed) > 0 {
+		warning = "process type deleted, but its container could not be removed yet; it will be reclaimed by the orphan sweep"
 	}
 	return warning, nil
 }

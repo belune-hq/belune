@@ -227,7 +227,14 @@ func (s *DatabaseService) DeletionImpact(ctx context.Context, dbID pgtype.UUID) 
 // after the database is gone; destroying them erases the archives and the rows.
 // The caller states the choice explicitly — there is no default here, because
 // the two outcomes differ by whether yesterday's data still exists.
+//
+// ⛔ Detached from the request and the container removal bounded, for the reason on
+// ApplicationService.Delete: an image that ignores SIGTERM used to outlive the 15s handler timeout
+// and leave the database half-deleted. Nothing guarantees a database image traps SIGTERM (the
+// "Other" engine takes a user-supplied one), and the data volume is being destroyed anyway, so a
+// short polite stop followed by a forced removal costs nothing.
 func (s *DatabaseService) Delete(ctx context.Context, dbID pgtype.UUID, keepBackups bool) error {
+	ctx = context.WithoutCancel(ctx)
 	db, err := s.queries.GetDatabase(ctx, dbID)
 	if err != nil {
 		return err
@@ -239,12 +246,7 @@ func (s *DatabaseService) Delete(ctx context.Context, dbID pgtype.UUID, keepBack
 		return err
 	}
 
-	if err := rt.StopContainer(ctx, db.Slug); err != nil {
-		slog.Warn("could not stop container during db deletion", "container", db.Slug, "error", err)
-	}
-	if err := rt.RemoveContainer(ctx, db.Slug); err != nil {
-		slog.Warn("could not remove container during db deletion", "container", db.Slug, "error", err)
-	}
+	removeContainersBounded(ctx, rt, []string{db.Slug}, "db deletion")
 	if err := rt.RemoveVolume(ctx, db.Slug+"-vol"); err != nil {
 		slog.Warn("could not remove volume during db deletion", "volume", db.Slug+"-vol", "error", err)
 	}

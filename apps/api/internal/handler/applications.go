@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/hibiken/asynq"
@@ -329,11 +328,6 @@ func (h *Handler) DeployApplication(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, deployment)
 }
 
-// appActionWait is how long a Stop, Start or Restart request waits for the containers before
-// answering 202 and letting the work finish on its own. Under the 15s handler timeout, with
-// room to answer; a var only so a test can shorten it.
-var appActionWait = 10 * time.Second
-
 // runApplicationAction runs one of the application-level container actions and answers.
 //
 // ⛔ The work is handed to the service on a context DETACHED from the request, and the request
@@ -360,42 +354,36 @@ func (h *Handler) runApplicationAction(
 
 	h.audit(r, auditAction, "application", applicationID, nil)
 
-	type result struct {
-		app generated.Application
-		err error
-	}
-	done := make(chan result, 1)
-	go func() {
-		app, err := do(context.WithoutCancel(r.Context()), applicationUUID)
+	app, state, err := awaitDetached(r, func(ctx context.Context) (generated.Application, error) {
+		app, err := do(ctx, applicationUUID)
 		if err != nil {
 			slog.Error("application action failed", "action", auditAction, "application_id", applicationID, "error", err)
 		}
-		done <- result{app, err}
-	}()
-
-	select {
-	case res := <-done:
-		if res.err != nil {
+		return app, err
+	})
+	switch state {
+	case actionDone:
+		if err != nil {
 			switch {
-			case errors.Is(res.err, service.ErrApplicationNotFound):
+			case errors.Is(err, service.ErrApplicationNotFound):
 				writeError(w, http.StatusNotFound, "application not found")
-			case errors.Is(res.err, service.ErrServerUnreachable):
-				writeServerError(w, r, "failed to reach the application's server", res.err)
-			case errors.Is(res.err, service.ErrContainerAction):
-				writeServerError(w, r, failMessage, res.err)
+			case errors.Is(err, service.ErrServerUnreachable):
+				writeServerError(w, r, "failed to reach the application's server", err)
+			case errors.Is(err, service.ErrContainerAction):
+				writeServerError(w, r, failMessage, err)
 			default:
-				writeServerError(w, r, "failed to update application status", res.err)
+				writeServerError(w, r, "failed to update application status", err)
 			}
 			return
 		}
-		writeJSON(w, http.StatusOK, toApplicationResponse(res.app))
-	case <-time.After(appActionWait):
-		app, err := h.queries.GetApplication(r.Context(), applicationUUID)
+		writeJSON(w, http.StatusOK, toApplicationResponse(app))
+	case actionSlow:
+		cur, err := h.queries.GetApplication(r.Context(), applicationUUID)
 		if err != nil {
-			app = snapshot
+			cur = snapshot
 		}
-		writeJSON(w, http.StatusAccepted, toApplicationResponse(app))
-	case <-r.Context().Done():
+		writeJSON(w, http.StatusAccepted, toApplicationResponse(cur))
+	case actionAbandoned:
 		// Nothing to write to: the client or the timeout handler has gone. The action
 		// carries on in its own context.
 	}

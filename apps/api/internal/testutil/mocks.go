@@ -34,7 +34,10 @@ type MockContainerRuntime struct {
 	// RemoveCtxErrs records ctx.Err() at each RemoveContainer call, so a test can
 	// tell a removal made with a live context from one made with a dead one.
 	RemoveCtxErrs []error
-	CreateCalls   []runtime.ContainerConfig
+	// RemoveFunc, when set, backs RemoveContainer (called outside the lock): lets a test fail the
+	// removal of one named container, or block it.
+	RemoveFunc  func(ctx context.Context, id string) error
+	CreateCalls []runtime.ContainerConfig
 	// CreateFunc, when set, backs CreateContainer: lets a test return a distinct id
 	// per container, or fail one by name. Nil keeps the single fixed id.
 	CreateFunc        func(cfg runtime.ContainerConfig) (string, error)
@@ -125,9 +128,13 @@ func (m *MockContainerRuntime) StopContainer(ctx context.Context, id string) err
 
 func (m *MockContainerRuntime) RemoveContainer(ctx context.Context, id string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	m.RemoveCalls = append(m.RemoveCalls, id)
 	m.RemoveCtxErrs = append(m.RemoveCtxErrs, ctx.Err())
+	fn := m.RemoveFunc
+	m.mu.Unlock()
+	if fn != nil {
+		return fn(ctx, id)
+	}
 	return nil
 }
 

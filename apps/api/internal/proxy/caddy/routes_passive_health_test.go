@@ -93,3 +93,58 @@ func TestReverseProxy_ASingleUpstreamHasNoPassiveCheck(t *testing.T) {
 		t.Fatalf("a single upstream with a path gets the active probe only: %v", health)
 	}
 }
+
+// reverseProxyHandle returns the reverse_proxy handler of a built route.
+func reverseProxyHandle(t *testing.T, cfg proxy.RouteConfig) caddyHandle {
+	t.Helper()
+	route, err := buildRoute(cfg)
+	if err != nil {
+		t.Fatalf("buildRoute: %v", err)
+	}
+	for _, h := range route.Handle {
+		if h["handler"] == "reverse_proxy" {
+			return h
+		}
+	}
+	t.Fatal("no reverse_proxy handler")
+	return nil
+}
+
+// A route with several upstreams retries a failed dial for a short window, so a request
+// that lands on a dead replica is served by a live one instead of failing.
+func TestReverseProxy_SeveralUpstreamsRetryAFailedDial(t *testing.T) {
+	h := reverseProxyHandle(t, twoReplicas())
+	lb, ok := h["load_balancing"].(map[string]any)
+	if !ok {
+		t.Fatalf("no load_balancing block: %v", h)
+	}
+	if lb["try_duration"] != "2s" || lb["try_interval"] != "250ms" {
+		t.Fatalf("retry window drifted: %v", lb)
+	}
+}
+
+// ⛔ Not for a single upstream. Measured: for an app that takes 6s to boot a 2s window rescued
+// 41 of 128 failed requests and turned the other 87 from instant failures into failures 2s
+// later, and every single-replica application would hold every request for the window
+// whenever it is down. See the comment on lbTryDuration before widening this.
+func TestReverseProxy_ASingleUpstreamDoesNotRetry(t *testing.T) {
+	cfg := proxy.RouteConfig{Hostname: "app.example.com", SSLMode: proxy.SSLModeAutomatic, Upstreams: []string{"http://app:8080"}}
+	if _, has := reverseProxyHandle(t, cfg)["load_balancing"]; has {
+		t.Fatal("a single upstream must not carry load_balancing")
+	}
+}
+
+// The window is the held-connection cost knob (requests/s x try_duration while upstreams are
+// down), so it is pinned: widening it is a decision, not a drive-by.
+func TestReverseProxy_TheRetryWindowIsShort(t *testing.T) {
+	if lbTryDuration != "2s" {
+		t.Fatalf("lbTryDuration changed to %s: held connections scale with it (about request-rate x this), see the comment", lbTryDuration)
+	}
+}
+
+// The dashboard's route has one upstream, the control plane, and so no retry.
+func TestReverseProxy_TheDashboardProxyDoesNotRetry(t *testing.T) {
+	if _, has := newDashboardProxyHandle("belune:8080")["load_balancing"]; has {
+		t.Fatal("the dashboard proxy must not carry load_balancing")
+	}
+}

@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/belune-hq/belune/internal/instances"
 	"github.com/belune-hq/belune/internal/naming"
 	"github.com/belune-hq/belune/internal/pkg/tracing"
 	"github.com/belune-hq/belune/internal/quota"
@@ -329,141 +329,124 @@ func (h *Handler) DeployApplication(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, deployment)
 }
 
+// appActionWait is how long a Stop, Start or Restart request waits for the containers before
+// answering 202 and letting the work finish on its own. Under the 15s handler timeout, with
+// room to answer; a var only so a test can shorten it.
+var appActionWait = 10 * time.Second
+
+// runApplicationAction runs one of the application-level container actions and answers.
+//
+// ⛔ The work is handed to the service on a context DETACHED from the request, and the request
+// only decides how long to WAIT. Stopping a container that ignores SIGTERM takes Docker's whole
+// 30s grace, so these routes (under the 15s handler timeout) cannot be allowed to cancel the
+// work, or the stop is cut off and the start that follows silently does nothing. Within
+// appActionWait the answer is the usual 200 with the application; past it, 202 with the
+// application as it is now, and the work carries on. See server.handlerTimeout.
+//
+// Audited BEFORE the work, as RestartInstance does: the operator's intent is the fact worth
+// recording, and a slow action may finish after the request is gone.
+func (h *Handler) runApplicationAction(
+	w http.ResponseWriter, r *http.Request, applicationID string, applicationUUID pgtype.UUID,
+	auditAction, failMessage string,
+	do func(ctx context.Context, appID pgtype.UUID) (generated.Application, error),
+) {
+	// Looked up first: a missing application is a plain 404, and the snapshot is the body of a 202
+	// if the fresher read below fails.
+	snapshot, err := h.queries.GetApplication(r.Context(), applicationUUID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "application not found")
+		return
+	}
+
+	h.audit(r, auditAction, "application", applicationID, nil)
+
+	type result struct {
+		app generated.Application
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		app, err := do(context.WithoutCancel(r.Context()), applicationUUID)
+		if err != nil {
+			slog.Error("application action failed", "action", auditAction, "application_id", applicationID, "error", err)
+		}
+		done <- result{app, err}
+	}()
+
+	select {
+	case res := <-done:
+		if res.err != nil {
+			switch {
+			case errors.Is(res.err, service.ErrApplicationNotFound):
+				writeError(w, http.StatusNotFound, "application not found")
+			case errors.Is(res.err, service.ErrServerUnreachable):
+				writeServerError(w, r, "failed to reach the application's server", res.err)
+			case errors.Is(res.err, service.ErrContainerAction):
+				writeServerError(w, r, failMessage, res.err)
+			default:
+				writeServerError(w, r, "failed to update application status", res.err)
+			}
+			return
+		}
+		writeJSON(w, http.StatusOK, toApplicationResponse(res.app))
+	case <-time.After(appActionWait):
+		app, err := h.queries.GetApplication(r.Context(), applicationUUID)
+		if err != nil {
+			app = snapshot
+		}
+		writeJSON(w, http.StatusAccepted, toApplicationResponse(app))
+	case <-r.Context().Done():
+		// Nothing to write to: the client or the timeout handler has gone. The action
+		// carries on in its own context.
+	}
+}
+
+// parseActionTarget validates the application id and the caller's access, writing the
+// error itself; ok is false when it did.
+func (h *Handler) parseActionTarget(w http.ResponseWriter, r *http.Request) (id string, uuid pgtype.UUID, ok bool) {
+	id = chi.URLParam(r, "applicationId")
+	if err := uuid.Scan(id); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid application id")
+		return "", uuid, false
+	}
+	if !h.canAccessApplication(r, uuid) {
+		writeError(w, http.StatusForbidden, "access denied")
+		return "", uuid, false
+	}
+	return id, uuid, true
+}
+
 //apidoc:tag applications/actions
 //apidoc:title Stop App
 //apidoc:order 4
 func (h *Handler) StopApplication(w http.ResponseWriter, r *http.Request) {
-	applicationID := chi.URLParam(r, "applicationId")
-	var applicationUUID pgtype.UUID
-	if err := applicationUUID.Scan(applicationID); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid application id")
+	id, uuid, ok := h.parseActionTarget(w, r)
+	if !ok {
 		return
 	}
-
-	if !h.canAccessApplication(r, applicationUUID) {
-		writeError(w, http.StatusForbidden, "access denied")
-		return
-	}
-
-	app, err := h.appService.Stop(r.Context(), applicationUUID)
-	if err != nil {
-		switch {
-		case errors.Is(err, service.ErrApplicationNotFound):
-			writeError(w, http.StatusNotFound, "application not found")
-		case errors.Is(err, service.ErrServerUnreachable):
-			writeServerError(w, r, "failed to reach the application's server", err)
-		case errors.Is(err, service.ErrContainerAction):
-			writeServerError(w, r, "failed to stop application", err)
-		default:
-			writeServerError(w, r, "failed to update application status", err)
-		}
-		return
-	}
-
-	h.audit(r, "stop_application", "application", applicationID, nil)
-
-	writeJSON(w, http.StatusOK, toApplicationResponse(app))
+	h.runApplicationAction(w, r, id, uuid, "stop_application", "failed to stop application", h.appService.Stop)
 }
 
 //apidoc:tag applications/actions
 //apidoc:title Start App
 //apidoc:order 3
 func (h *Handler) StartApplication(w http.ResponseWriter, r *http.Request) {
-	applicationID := chi.URLParam(r, "applicationId")
-	var applicationUUID pgtype.UUID
-	if err := applicationUUID.Scan(applicationID); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid application id")
+	id, uuid, ok := h.parseActionTarget(w, r)
+	if !ok {
 		return
 	}
-
-	if !h.canAccessApplication(r, applicationUUID) {
-		writeError(w, http.StatusForbidden, "access denied")
-		return
-	}
-
-	app, err := h.appService.Start(r.Context(), applicationUUID)
-	if err != nil {
-		switch {
-		case errors.Is(err, service.ErrApplicationNotFound):
-			writeError(w, http.StatusNotFound, "application not found")
-		case errors.Is(err, service.ErrServerUnreachable):
-			writeServerError(w, r, "failed to reach the application's server", err)
-		case errors.Is(err, service.ErrContainerAction):
-			writeServerError(w, r, "failed to start application", err)
-		default:
-			writeServerError(w, r, "failed to update application status", err)
-		}
-		return
-	}
-
-	h.audit(r, "start_application", "application", applicationID, nil)
-
-	writeJSON(w, http.StatusOK, toApplicationResponse(app))
+	h.runApplicationAction(w, r, id, uuid, "start_application", "failed to start application", h.appService.Start)
 }
 
 //apidoc:tag applications/actions
 //apidoc:title Restart App
 //apidoc:order 5
 func (h *Handler) RestartApplication(w http.ResponseWriter, r *http.Request) {
-	applicationID := chi.URLParam(r, "applicationId")
-	var applicationUUID pgtype.UUID
-	if err := applicationUUID.Scan(applicationID); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid application id")
+	id, uuid, ok := h.parseActionTarget(w, r)
+	if !ok {
 		return
 	}
-
-	if !h.canAccessApplication(r, applicationUUID) {
-		writeError(w, http.StatusForbidden, "access denied")
-		return
-	}
-
-	row, err := h.queries.GetApplicationWithProjectSlug(r.Context(), applicationUUID)
-	if err != nil {
-		writeError(w, http.StatusNotFound, "application not found")
-		return
-	}
-
-	rt, err := h.runtimes.For(r.Context(), row.ServerID)
-	if err != nil {
-		writeServerError(w, r, "failed to reach the application's server", err)
-		return
-	}
-
-	// Stop and start the existing container (no rebuild)
-	// Every container of the application: all stopped, then all started, which
-	// for one instance is exactly the old stop-then-start.
-	insts, err := instances.ResolveAll(r.Context(), h.queries, applicationUUID)
-	if err != nil {
-		writeServerError(w, r, "application has no container instance", err)
-		return
-	}
-	for _, inst := range insts {
-		if err := rt.StopContainer(r.Context(), inst.ContainerName); err != nil {
-			slog.Error("failed to stop container for restart", "container", inst.ContainerName, "error", err)
-			writeError(w, http.StatusInternalServerError, "failed to stop container")
-			return
-		}
-	}
-	for _, inst := range insts {
-		if err := rt.StartContainer(r.Context(), inst.ContainerName); err != nil {
-			slog.Error("failed to start container for restart", "container", inst.ContainerName, "error", err)
-			writeError(w, http.StatusInternalServerError, "failed to start container")
-			return
-		}
-	}
-
-	app, err := h.queries.UpdateApplicationStatus(r.Context(), generated.UpdateApplicationStatusParams{
-		ID:     applicationUUID,
-		Status: status.ApplicationRunning,
-	})
-	if err != nil {
-		writeServerError(w, r, "failed to update application status", err)
-		return
-	}
-
-	h.audit(r, "restart_application", "application", applicationID, nil)
-
-	writeJSON(w, http.StatusOK, toApplicationResponse(app))
+	h.runApplicationAction(w, r, id, uuid, "restart_application", "failed to restart application", h.appService.Restart)
 }
 
 // ReloadApplication recreates the application container from its current image

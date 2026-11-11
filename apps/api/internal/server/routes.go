@@ -15,7 +15,21 @@ import (
 const (
 	defaultBodyLimit = 1 << 20 // 1 MB — applied to all non-streaming routes
 	envBodyLimit     = 5 << 20 // 5 MB — raised for bulk env-var imports
-	handlerTimeout   = 15 * time.Second
+	// ⛔ handlerTimeout is a CONSTRAINT on every handler in the standard JSON group below, not
+	// just a number. A request that outlives it has its context cancelled mid-flight, and any
+	// Docker call made afterwards on that context SILENTLY DOES NOTHING (the call returns an
+	// error that is usually only logged). Docker's stop grace is 30s (StopContainer hardcodes
+	// it), so stopping a container whose PID 1 ignores SIGTERM always outlives this: the stop is
+	// cut off, and the start or removal that follows never runs, leaving the container Exited
+	// (137) for good.
+	//
+	// So a handler here must NOT stop, remove, pull, exec or otherwise wait on Docker on
+	// r.Context(). Hand the work to a service on context.WithoutCancel(r.Context()) with its own
+	// deadlines and let the request decide only how long to WAIT (200 if it finished, 202 if not:
+	// see Handler.runApplicationAction), or enqueue it as a task. This has now been missed three
+	// times (the update pull, DeleteProcessType, and the application Stop/Start/Restart), each
+	// time after the rule had been written down for the one before.
+	handlerTimeout = 15 * time.Second
 )
 
 // Requests per minute on the authenticated surface. An interactive session and
@@ -233,7 +247,8 @@ func registerRoutes(r chi.Router, h *handler.Handler, auth *service.AuthService,
 			r.Use(rateLimitByCaller())
 		}
 
-		// Standard JSON routes: 1 MB body limit + 15 s timeout.
+		// Standard JSON routes: 1 MB body limit + 15 s timeout. ⛔ Read the constraint on
+		// handlerTimeout before adding a route here that touches Docker.
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.BodyLimit(defaultBodyLimit))
 			r.Use(withTimeout(handlerTimeout))

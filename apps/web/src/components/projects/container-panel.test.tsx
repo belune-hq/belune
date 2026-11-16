@@ -101,16 +101,14 @@ describe("ContainerPanel", () => {
         projectId="p"
         applicationId="a"
         metrics={metrics([
-          inst({ idx: 1, status: "exited" }),
+          inst({ idx: 1, status: "stopped" }),
           inst({ idx: 2, status: "missing" }),
         ])}
       />,
     );
     const pill = (name: string) =>
-      screen
-        .getByText(name)
-        .closest("tr")!
-        .querySelector("span[class*='status']");
+      screen.getByText(name).closest("tr")!.querySelectorAll("td")[1]
+        .firstElementChild;
     expect(pill("web-2")?.className).not.toBe(pill("web-1")?.className);
   });
 

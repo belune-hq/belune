@@ -92,15 +92,24 @@ test("the Logs tab filters by process type, and a container has its own Restart 
       ('application', '${app.id}', 'info', 'stdout', 'worker-line-new',    now() - interval '1 min', 'ctr-worker-2', 'worker');
   `);
 
+  // The view opens on the routable type: the worker's output is one click away, not in
+  // the way.
   await page.goto(`/projects/${project.id}/applications/${app.id}/logs`);
   await expect(page.getByText("web-line-alpha")).toBeVisible();
-  await expect(page.getByText("worker-line-old")).toBeVisible();
-  await expect(page.getByText("worker-line-new")).toBeVisible();
+  await expect(page.getByText("worker-line-old")).toHaveCount(0);
 
   // The selector is really on screen, then usable.
   const trigger = page.getByRole("combobox", { name: "Process type" });
   await expect(trigger).toBeVisible();
   expect((await settled(trigger)).width).toBeGreaterThan(40);
+
+  // "All process types" is still there and shows every line.
+  await trigger.click();
+  await page.getByRole("option", { name: "All process types" }).click();
+  await expect(page.getByText("web-line-alpha")).toBeVisible();
+  await expect(page.getByText("worker-line-old")).toBeVisible();
+  await expect(page.getByText("worker-line-new")).toBeVisible();
+
   await trigger.click();
   const option = page.getByRole("option", { name: "worker" });
   await expect(option).toBeVisible();

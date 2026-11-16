@@ -160,13 +160,15 @@ export function ProcessTypesSection({ projectId, applicationId }: Props) {
                 <h3 id="proc-routable" className="text-sm font-medium">
                   Routable
                 </h3>
-                <TypeCard
-                  pt={routable}
-                  projectId={projectId}
-                  applicationId={applicationId}
-                  onEdit={() => openEdit(routable)}
-                  onRemove={() => setRemoveTarget(routable)}
-                />
+                <ul className="space-y-3">
+                  <TypeCard
+                    pt={routable}
+                    projectId={projectId}
+                    applicationId={applicationId}
+                    onEdit={() => openEdit(routable)}
+                    onRemove={() => setRemoveTarget(routable)}
+                  />
+                </ul>
               </section>
             )}
             <section aria-labelledby="proc-workers" className="space-y-3">
@@ -278,13 +280,9 @@ function TypeCard({
   const [expanded, setExpanded] = useState(false);
   const hidden = Math.max(pt.instances.length - COLLAPSED_ROWS, 0);
   const shown = expanded ? pt.instances : pt.instances.slice(0, COLLAPSED_ROWS);
-  const Wrapper = pt.routable ? "div" : "li";
 
   return (
-    <Wrapper
-      className="space-y-3 rounded-lg border p-4"
-      data-testid="type-card"
-    >
+    <li className="space-y-3 rounded-lg border p-4" data-testid="type-card">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           {/* The real name, never a generic "Main": container names, the Logs filter,
@@ -423,7 +421,7 @@ function TypeCard({
           Domains route to this type, so it cannot be removed.
         </p>
       )}
-    </Wrapper>
+    </li>
   );
 }
 

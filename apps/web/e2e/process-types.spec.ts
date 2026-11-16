@@ -81,13 +81,22 @@ test("the Processes tab shows the routable type, adds a worker, and offers no wa
   // A new application has no health check and SAYS so (000081): "None", not an http
   // probe with no path. The inert-http warning is for rows that predate the default,
   // which the API no longer lets a person create, so it is covered by Vitest.
-  const health = webRow.getByText("None (the application's)");
+  // The card says "Default" (the resolved detail is the tooltip's); the amber inert block
+  // below stays absent for a check that resolves to none.
+  const health = webRow.getByText("Default", { exact: true });
   await expect(health).toBeVisible();
   expect((await settled(health)).height).toBeGreaterThan(10);
   await expect(webRow.getByTestId("health-inert")).toHaveCount(0);
   await expect(webRow.getByText(app.slug, { exact: true })).toBeVisible();
-  await expect(webRow.getByRole("button", { name: "Edit web" })).toBeVisible();
-  await expect(webRow.getByRole("button", { name: /^Remove/ })).toHaveCount(0);
+  // The type's kebab: Edit, and no Delete (domains route to this type) and no Stop.
+  await webRow.getByRole("button", { name: "Actions for web" }).click();
+  await expect(page.getByRole("menuitem", { name: "Edit" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Delete" })).toHaveCount(0);
+  await expect(
+    page.getByRole("menuitem", { name: /^(Stop|Start)$/ }),
+  ).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menuitem")).toHaveCount(0);
   await expect(webRow.getByText(/cannot be removed/i)).toBeVisible();
 
   // The notice about when a change takes effect is readable, not just present.
@@ -120,13 +129,13 @@ test("the Processes tab shows the routable type, adds a worker, and offers no wa
   const workerRow = page.getByRole("listitem").filter({ hasText: /^worker/ });
   await expect(workerRow).toBeVisible();
   // A worker with nothing set resolves to none, never the application's http.
-  await expect(workerRow.getByText("None (default)")).toBeVisible();
+  await expect(workerRow.getByText("Default", { exact: true })).toBeVisible();
   await expect(workerRow.getByText(`${app.slug}-worker-1`)).toBeVisible();
   const pill = workerRow.getByText("Pending", { exact: true });
   await expect(pill).toBeVisible();
   expect((await settled(pill)).width).toBeGreaterThan(20);
-  // The worker, unlike web, can be removed.
-  await expect(
-    workerRow.getByRole("button", { name: "Remove worker" }),
-  ).toBeVisible();
+  // The worker, unlike web, can be deleted.
+  await workerRow.getByRole("button", { name: "Actions for worker" }).click();
+  await expect(page.getByRole("menuitem", { name: "Delete" })).toBeVisible();
+  await page.keyboard.press("Escape");
 });

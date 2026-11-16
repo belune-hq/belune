@@ -176,6 +176,22 @@ describe("ProcessTypesSection", () => {
     ).toBeTruthy();
   });
 
+  // Both sections are lists of cards, so every card is a listitem whichever type it is
+  // (a card whose element depended on its type broke three e2e specs).
+  it("renders every card as a list item, in both sections", () => {
+    renderIt();
+    expect(
+      within(screen.getByRole("region", { name: "Routable" })).getAllByRole(
+        "listitem",
+      ),
+    ).toHaveLength(1);
+    expect(
+      within(screen.getByRole("region", { name: "Workers" })).getAllByRole(
+        "listitem",
+      ),
+    ).toHaveLength(1);
+  });
+
   it("names the type by its real name with a Routable badge, never a generic Main", () => {
     renderIt();
     const card = screen.getAllByTestId("type-card")[0];

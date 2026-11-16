@@ -123,11 +123,17 @@ test("the Logs tab filters by process type, and a container has its own Restart 
   // The Processes tab: each container has a Restart control. This app was never
   // deployed, so its containers do not exist yet and the control is disabled.
   await page.goto(`/projects/${project.id}/applications/${app.id}/processes`);
-  const restart = page.getByRole("button", {
-    name: `Restart ${app.slug}-worker-1`,
-  });
+  await page
+    .getByRole("button", { name: `Actions for ${app.slug}-worker-1` })
+    .click();
+  const restart = page.getByRole("menuitem", { name: "Restart" });
   await expect(restart).toBeVisible();
-  await expect(restart).toBeDisabled();
+  await expect(restart).toHaveAttribute("aria-disabled", "true");
+  // The settled rule, in a real browser: no Stop and no Start in an instance's menu.
+  await expect(
+    page.getByRole("menuitem", { name: /^(Stop|Start)$/ }),
+  ).toHaveCount(0);
+  await page.keyboard.press("Escape");
 });
 
 /**
@@ -183,11 +189,18 @@ test("a type with two replicas shows two rows, the metrics heading names the web
   await expect(workerRow.getByText(`${app.slug}-worker-1`)).toBeVisible();
   await expect(workerRow.getByText(`${app.slug}-worker-2`)).toBeVisible();
   for (const n of [1, 2]) {
-    const restart = workerRow.getByRole("button", {
-      name: `Restart ${app.slug}-worker-${n}`,
-    });
+    await workerRow
+      .getByRole("button", { name: `Actions for ${app.slug}-worker-${n}` })
+      .click();
+    const restart = page.getByRole("menuitem", { name: "Restart" });
     await expect(restart).toBeVisible();
-    await expect(restart).toBeDisabled(); // never deployed: nothing to restart
+    // never deployed: nothing to restart
+    await expect(restart).toHaveAttribute("aria-disabled", "true");
+    await expect(
+      page.getByRole("menuitem", { name: /^(Stop|Start)$/ }),
+    ).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menuitem")).toHaveCount(0);
   }
   await expect(workerRow.getByText("Replicas", { exact: true })).toBeVisible();
   // No per-replica terminal: the API opens a shell by process TYPE, so a button on a
@@ -197,7 +210,8 @@ test("a type with two replicas shows two rows, the metrics heading names the web
   ).toHaveCount(0);
 
   // The web process cannot be paused: refused in the form, in the operator's terms.
-  await page.getByRole("button", { name: "Edit web" }).click();
+  await page.getByRole("button", { name: "Actions for web" }).click();
+  await page.getByRole("menuitem", { name: "Edit" }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
   await settled(dialog);
@@ -208,6 +222,25 @@ test("a type with two replicas shows two rows, the metrics heading names the web
   await expect(refusal).toBeVisible();
   expect((await settled(refusal)).height).toBeGreaterThan(5);
   await dialog.getByRole("button", { name: "Cancel" }).click();
+
+  // Reload on the ONLY web container: the confirm's first sentence is the outage, and the
+  // pointer to the gap-free application reload comes after it. This copy is the thing most
+  // likely to be wrong in a way only a person reading it would notice. A container must
+  // exist for the item to be enabled, so give the seeded web instance one.
+  psql(
+    `UPDATE application_instances SET container_id = 'seeded-container' WHERE application_id = '${app.id}' AND container_name = '${app.slug}';`,
+  );
+  await page.goto(`/projects/${project.id}/applications/${app.id}/processes`);
+  await page.getByRole("button", { name: `Actions for ${app.slug}` }).click();
+  await page.getByRole("menuitem", { name: "Reload" }).click();
+  const confirm = page.getByRole("alertdialog");
+  await expect(confirm).toBeVisible();
+  await expect(
+    confirm.locator('[data-slot="alert-dialog-description"]'),
+  ).toHaveText(
+    /^The application will be unavailable while this container restarts\./,
+  );
+  await confirm.getByRole("button", { name: "Cancel" }).click();
 
   // The card is titled plainly, and its caption says the charts are the web process
   // and that the Overview sums more, so two tabs never silently disagree.

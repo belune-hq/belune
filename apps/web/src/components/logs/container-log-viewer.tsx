@@ -127,6 +127,7 @@ export function ContainerLogViewer({
   projectId,
   sourceId,
   defaultProcessType,
+  initialSession,
 }: {
   source: ContainerLogSource;
   projectId: string;
@@ -135,15 +136,21 @@ export function ContainerLogViewer({
   // viewer is shared with databases and has no idea which type is routable, so it is
   // told. "All process types" stays one click away: only the default moves.
   defaultProcessType?: string;
+  // A container id to open on, from a deep link. Seeds the session selector. It also
+  // lifts the process-type default: a link to a worker's container must not land on a
+  // pane filtered to the routable type, which would show nothing.
+  initialSession?: string;
 }) {
   const [q, setQ] = useState("");
   const [inputValue, setInputValue] = useState("");
   const [level, setLevel] = useState<LevelFilterValue>("");
   const [limit, setLimit] = useState(500);
   const [timeRange, setTimeRange] = useState("all");
-  const [session, setSession] = useState<string>(SESSION_ALL);
+  const [session, setSession] = useState<string>(initialSession ?? SESSION_ALL);
   // null until the user picks: the default applies only while they have not.
-  const [chosenType, setChosenType] = useState<string | null>(null);
+  const [chosenType, setChosenType] = useState<string | null>(
+    initialSession ? TYPE_ALL : null,
+  );
   const [wrap, setWrap] = useState(false);
   const [follow, setFollow] = useState(true);
   const [liveLogs, setLiveLogs] = useState<LogEntry[]>([]);

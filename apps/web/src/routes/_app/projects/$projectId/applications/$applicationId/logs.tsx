@@ -6,10 +6,18 @@ export const Route = createFileRoute(
   "/_app/projects/$projectId/applications/$applicationId/logs",
 )({
   component: LogsPage,
+  // A container id to open on (the Processes tab's View Logs). Anything else is dropped.
+  validateSearch: (search: Record<string, unknown>): { session?: string } => ({
+    session:
+      typeof search.session === "string" && search.session
+        ? search.session
+        : undefined,
+  }),
 });
 
 function LogsPage() {
   const { projectId, applicationId } = Route.useParams();
+  const { session } = Route.useSearch();
   const { data: processTypes, isPending } = useProcessTypes(
     projectId,
     applicationId,
@@ -38,6 +46,7 @@ function LogsPage() {
       projectId={projectId}
       sourceId={applicationId}
       defaultProcessType={routable}
+      initialSession={session}
     />
   );
 }

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,6 +17,7 @@ import (
 	"github.com/belune-hq/belune/internal/status"
 	"github.com/belune-hq/belune/internal/store/generated"
 	"github.com/belune-hq/belune/internal/testutil"
+	"github.com/belune-hq/belune/internal/worker"
 )
 
 // seedTypedLogApp creates an application with web + queue + scheduler instances,
@@ -268,4 +270,89 @@ func TestLogs_CarryTheInstanceIdx(t *testing.T) {
 		"from replica two":               float64(2),
 		"from a container with no label": nil,
 	}, hist)
+}
+
+// deployedImage gives the seeded successful deployment an image, which is what "something to
+// reload from" means.
+func deployedImage(t *testing.T, appUUID pgtype.UUID) {
+	t.Helper()
+	_, err := env.Pool.Exec(context.Background(), `UPDATE deployments SET image_tag = 'img:good' WHERE application_id = $1`, appUUID)
+	require.NoError(t, err)
+}
+
+func reloadInstance(t *testing.T, token, projectID, appID, instanceID string) *http.Response {
+	t.Helper()
+	return env.DoRequest(t, "POST", fmt.Sprintf("/api/projects/%s/applications/%s/instances/%s/reload", projectID, appID, instanceID), nil, testutil.AuthHeader(token))
+}
+
+// Reload is a queued task: the request validates and enqueues and always answers 202, so
+// nothing about it can outlive the 15s handler timeout. Assert what was queued and audited,
+// and that NOTHING was done to a container in the request.
+func TestReloadInstance_QueuesTheTaskAndAnswers202(t *testing.T) {
+	token, projectID, appID, appUUID, _, inst := seedTypedLogApp(t)
+	deployedImage(t, appUUID)
+	env.Asynq.Tasks = nil
+	env.Runtime.StopCalls, env.Runtime.RemoveCalls = nil, nil
+	q := inst["queue"]
+
+	// The audited server: the shared test server has no audit writer.
+	base := auditedServerURL(t)
+	req, err := http.NewRequest("POST", fmt.Sprintf("%s/api/projects/%s/applications/%s/instances/%s/reload", base, projectID, appID, uuidStr(q.ID)), nil)
+	require.NoError(t, err)
+	for k, v := range testutil.AuthHeader(token) {
+		req.Header.Set(k, v)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	require.Equal(t, http.StatusAccepted, resp.StatusCode)
+	var body map[string]string
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	assert.Equal(t, "reloading", body["status"])
+
+	require.Len(t, env.Asynq.Tasks, 1)
+	assert.Equal(t, worker.TypeReloadInstance, env.Asynq.Tasks[0].TypeName)
+	var p worker.ReloadInstancePayload
+	require.NoError(t, json.Unmarshal(env.Asynq.Tasks[0].Payload, &p))
+	assert.Equal(t, appID, p.ApplicationID)
+	assert.Equal(t, uuidStr(q.ID), p.InstanceID, "the instance whose control was used, not another")
+	assert.Empty(t, env.Runtime.StopCalls, "the container work happens in the worker, not the request")
+	assert.Empty(t, env.Runtime.RemoveCalls)
+
+	var details []byte
+	require.Eventually(t, func() bool {
+		return env.Pool.QueryRow(context.Background(),
+			`SELECT details FROM audit_logs WHERE action = 'reload_instance' AND resource_id = $1`, appID).Scan(&details) == nil
+	}, 2*time.Second, 10*time.Millisecond, "a reload must write an audit row")
+	assert.Contains(t, string(details), q.ContainerName)
+}
+
+func TestReloadInstance_RefusesWhatItCannotDo(t *testing.T) {
+	token, projectID, appID, appUUID, _, inst := seedTypedLogApp(t)
+	deployedImage(t, appUUID)
+	q := uuidStr(inst["queue"].ID)
+
+	// An instance that is not this application's is a 404, and queues nothing.
+	env.Asynq.Tasks = nil
+	resp := reloadInstance(t, token, projectID, appID, "00000000-0000-4000-8000-000000000000")
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+	assert.Empty(t, env.Asynq.Tasks)
+
+	// A second click while one is queued or running is a 409, not a second container stop.
+	env.Asynq.EnqueueErr = asynq.ErrTaskIDConflict
+	t.Cleanup(func() { env.Asynq.EnqueueErr = nil })
+	resp2 := reloadInstance(t, token, projectID, appID, q)
+	defer func() { _ = resp2.Body.Close() }()
+	assert.Equal(t, http.StatusConflict, resp2.StatusCode)
+	env.Asynq.EnqueueErr = nil
+
+	// Nothing ever deployed: there is no image to recreate from, so refuse BEFORE queueing.
+	_, err := env.Pool.Exec(context.Background(), `UPDATE deployments SET image_tag = NULL WHERE application_id = $1`, appUUID)
+	require.NoError(t, err)
+	env.Asynq.Tasks = nil
+	resp3 := reloadInstance(t, token, projectID, appID, q)
+	defer func() { _ = resp3.Body.Close() }()
+	assert.Equal(t, http.StatusConflict, resp3.StatusCode)
+	assert.Empty(t, env.Asynq.Tasks)
 }

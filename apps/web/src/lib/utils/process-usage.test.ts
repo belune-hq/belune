@@ -266,11 +266,13 @@ describe("windowHadPartialCoverage", () => {
   const partial = point({ routable_sampled: 1, routable_expected: 2 });
 
   it("is true when an earlier point was partial even though the latest is full", () => {
-    expect(windowHadPartialCoverage([full, partial, full])).toBe(true);
+    expect(windowHadPartialCoverage([full, partial, full], "routable")).toBe(
+      true,
+    );
   });
 
   it("is false when every point was full, or the window has no counts", () => {
-    expect(windowHadPartialCoverage([full, full])).toBe(false);
+    expect(windowHadPartialCoverage([full, full], "routable")).toBe(false);
     expect(windowHadPartialCoverage([point({})])).toBe(false);
     expect(windowHadPartialCoverage(undefined)).toBe(false);
   });

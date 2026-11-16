@@ -596,3 +596,47 @@ func TestScheduledTaskRun_AnExecFailureAfterTheCheckStillFailsAndNotifies(t *tes
 	assert.Equal(t, 1, notes.count())
 	assert.Equal(t, "replica-flaky", got.ContainerName.String)
 }
+
+// The row is stale in BOTH directions. A row that says "pending" (or "stopped") whose
+// container IS running is eligible, and wins on idx over a higher-idx row that says
+// "running". ResolveOne would have passed it over. This pins that resolveRunInstance asks
+// Docker about every routable row instead of pre-filtering on the row's status, which would
+// quietly restore the blind spot in the other direction.
+func TestScheduledTaskRun_ARowThatSaysPendingButIsRunningIsEligible(t *testing.T) {
+	app, _ := seedApp(t)
+	setAppStatus(t, app.ID, "running")
+	setInstance(t, app.ID, "replica-pending", "pending") // idx 1: the row is behind
+	replica(t, app.ID, 2, "replica-running", "running")
+	task := seedTask(t, app.ID, "0 3 1 1 *")
+
+	var execd []string
+	rt := execRecorder(&execd)
+	rt.ListContainers_ = []runtime.ContainerInfo{
+		{Name: "replica-pending", Status: "running"},
+		{Name: "replica-running", Status: "running"},
+	}
+	got := runTask(t, newTestHandler(rt, nil), task)
+
+	assert.Equal(t, []string{"replica-pending"}, execd, "the lowest idx Docker runs, whatever its row says")
+	assert.Equal(t, "replica-pending", got.ContainerName.String)
+	assert.EqualValues(t, 1, got.InstanceIdx.Int32)
+}
+
+// If Docker cannot be asked, the run falls back to ResolveOne's answer (the rows) rather
+// than skipping: no worse than before. With the lowest row stopped, that is idx 2.
+func TestScheduledTaskRun_FallsBackToTheRowsWhenDockerCannotBeListed(t *testing.T) {
+	app, _ := seedApp(t)
+	setAppStatus(t, app.ID, "running")
+	setInstance(t, app.ID, "replica-stopped", "stopped")
+	replica(t, app.ID, 2, "replica-up", "running")
+	task := seedTask(t, app.ID, "0 3 1 1 *")
+
+	var execd []string
+	rt := execRecorder(&execd)
+	rt.ListContainersErr = fmt.Errorf("docker unreachable")
+	got := runTask(t, newTestHandler(rt, nil), task)
+
+	assert.Equal(t, "succeeded", got.Status, "an unreachable listing is not a reason to skip")
+	assert.Equal(t, []string{"replica-up"}, execd)
+	assert.Equal(t, "replica-up", got.ContainerName.String)
+}

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -232,4 +234,124 @@ func TestProjectMetrics_SumsRoutableReplicasAndExcludesWorkers(t *testing.T) {
 	assert.EqualValues(t, 15, m["cpu_percent"], "10 + 5; the worker's 80 is not the web's")
 	assert.EqualValues(t, 1500, m["memory_used"])
 	assert.EqualValues(t, 0, m["memory_limit"], "not the sum of replica limits (an unlimited container reports the host's memory)")
+}
+
+func instanceRows(t *testing.T, m map[string]any) map[string]map[string]any {
+	t.Helper()
+	raw, ok := m["instances"].([]any)
+	require.True(t, ok, "instances must be an array, present even when empty")
+	out := map[string]map[string]any{}
+	for _, r := range raw {
+		row := r.(map[string]any)
+		out[fmt.Sprintf("%s-%v", row["process_type"], row["idx"])] = row
+	}
+	return out
+}
+
+// The per-container list: every container is there with its Docker status, usage only for
+// the ones sampled. A worker is "running, usage not sampled here" -- null, not 0 -- and is
+// never sent a stats call (that is the budget this endpoint exists inside). A replica
+// whose stats call fails is null too, and the counts say so.
+func TestProjectMetrics_ListsEveryContainerAndSamplesOnlyTheRoutableOnes(t *testing.T) {
+	a, b, w := "app-web-1-eeee5555", "app-web-2-ffff6666", "app-worker-1-77778888"
+	f := newMetricsFixture(t, a)
+	f.addInstance(t, f.webPT.ID, 2, b)
+	worker, err := env.Queries.CreateProcessType(context.Background(), generated.CreateProcessTypeParams{
+		ApplicationID: f.appUUID, Name: "worker", Replicas: 1, Routable: false,
+	})
+	require.NoError(t, err)
+	f.addInstance(t, worker.ID, 1, w)
+
+	env.Runtime.ListContainers_ = []runtime.ContainerInfo{
+		{Name: a, Status: "running"}, {Name: b, Status: "running"}, {Name: w, Status: "running"},
+	}
+	var sampled []string
+	var mu sync.Mutex
+	env.Runtime.StatsFunc = func(_ context.Context, n string) (*runtime.ContainerResourceStats, error) {
+		mu.Lock()
+		sampled = append(sampled, n)
+		mu.Unlock()
+		if n == b {
+			return nil, fmt.Errorf("stats unavailable") // this replica did not answer
+		}
+		return &runtime.ContainerResourceStats{CPUPercent: 10, MemoryUsage: 1000, MemoryLimit: 4000}, nil
+	}
+
+	m := f.get(t)
+	rows := instanceRows(t, m)
+	require.Len(t, rows, 3)
+
+	assert.EqualValues(t, 10, rows["web-1"]["cpu_percent"])
+	assert.EqualValues(t, 1000, rows["web-1"]["memory_used"])
+	assert.Equal(t, "running", rows["web-1"]["status"])
+	assert.Equal(t, true, rows["web-1"]["routable"])
+
+	assert.Nil(t, rows["web-2"]["cpu_percent"], "a replica that did not answer is null, not 0")
+	assert.Nil(t, rows["web-2"]["memory_used"])
+	assert.Equal(t, "running", rows["web-2"]["status"], "status is Docker's: it costs no stats call")
+
+	assert.Equal(t, "running", rows["worker-1"]["status"])
+	assert.Equal(t, false, rows["worker-1"]["routable"])
+	assert.Nil(t, rows["worker-1"]["cpu_percent"], "workers are listed, not sampled here")
+	assert.NotContains(t, sampled, w, "no stats call for a worker: that is the budget")
+
+	// The top-level figures are untouched: the routable sum of what answered.
+	assert.EqualValues(t, 10, m["cpu_percent"])
+	// Coverage, in the app metrics point's vocabulary.
+	assert.EqualValues(t, 1, m["routable_sampled"])
+	assert.EqualValues(t, 2, m["routable_expected"])
+	assert.EqualValues(t, 1, m["sampled"])
+	assert.EqualValues(t, 3, m["expected"], "every container Docker reports running, the worker included")
+}
+
+// A container the listing does not contain reads "missing", not the row's stale "running".
+func TestProjectMetrics_AContainerDockerDoesNotListIsMissing(t *testing.T) {
+	a, w := "app-web-1-99990000", "app-worker-1-aaaabbbb"
+	f := newMetricsFixture(t, a)
+	worker, err := env.Queries.CreateProcessType(context.Background(), generated.CreateProcessTypeParams{
+		ApplicationID: f.appUUID, Name: "worker", Replicas: 1, Routable: false,
+	})
+	require.NoError(t, err)
+	f.addInstance(t, worker.ID, 1, w) // the row says running
+	env.Runtime.ListContainers_ = []runtime.ContainerInfo{{Name: a, Status: "running"}}
+	env.Runtime.StatsFunc = func(context.Context, string) (*runtime.ContainerResourceStats, error) {
+		return &runtime.ContainerResourceStats{CPUPercent: 1, MemoryUsage: 1}, nil
+	}
+
+	rows := instanceRows(t, f.get(t))
+	assert.Equal(t, "missing", rows["worker-1"]["status"])
+	assert.Equal(t, "running", rows["web-1"]["status"])
+}
+
+// The guard. An application whose live replicas do not all fit the stats budget is left
+// UNSAMPLED -- null usage, sampled 0 of expected N, no stats calls made -- rather than
+// blowing the handler timeout or returning a confident partial sum.
+func TestProjectMetrics_OverBudgetApplicationIsUnsampledNotTruncated(t *testing.T) {
+	first := "app-web-1-over00000"
+	f := newMetricsFixture(t, first)
+	names := []string{first}
+	for i := 2; i <= 65; i++ {
+		n := fmt.Sprintf("app-web-%d-over", i)
+		f.addInstance(t, f.webPT.ID, int32(i), n)
+		names = append(names, n)
+	}
+	var containers []runtime.ContainerInfo
+	for _, n := range names {
+		containers = append(containers, runtime.ContainerInfo{Name: n, Status: "running"})
+	}
+	env.Runtime.ListContainers_ = containers
+	var calls atomic.Int32
+	env.Runtime.StatsFunc = func(context.Context, string) (*runtime.ContainerResourceStats, error) {
+		calls.Add(1)
+		return &runtime.ContainerResourceStats{CPUPercent: 1, MemoryUsage: 1}, nil
+	}
+
+	m := f.get(t)
+	assert.Nil(t, m["cpu_percent"], "no confident sum of a truncation")
+	assert.Nil(t, m["memory_used"])
+	assert.EqualValues(t, 0, m["routable_sampled"])
+	assert.EqualValues(t, 65, m["routable_expected"])
+	assert.EqualValues(t, 65, m["expected"])
+	assert.Zero(t, calls.Load(), "the budget is enforced before any stats call, not after")
+	assert.Len(t, instanceRows(t, m), 65, "status is still listed for every container")
 }

@@ -21514,6 +21514,35 @@
         },
         "type": "object"
       },
+      "serviceInstance": {
+        "properties": {
+          "cpu_percent": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "idx": {
+            "type": "integer"
+          },
+          "memory_used": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "process_type": {
+            "type": "string"
+          },
+          "routable": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "serviceMetrics": {
         "properties": {
           "cpu_percent": {
@@ -21525,6 +21554,15 @@
           "domain": {
             "type": "string"
           },
+          "expected": {
+            "type": "integer"
+          },
+          "instances": {
+            "items": {
+              "$ref": "#/components/schemas/serviceInstance"
+            },
+            "type": "array"
+          },
           "memory_limit": {
             "type": "integer"
           },
@@ -21535,6 +21573,15 @@
             ]
           },
           "port": {
+            "type": "integer"
+          },
+          "routable_expected": {
+            "type": "integer"
+          },
+          "routable_sampled": {
+            "type": "integer"
+          },
+          "sampled": {
             "type": "integer"
           },
           "status": {

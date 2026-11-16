@@ -124,7 +124,10 @@ test("the Logs tab filters by process type, and a container has its own Restart 
   // deployed, so its containers do not exist yet and the control is disabled.
   await page.goto(`/projects/${project.id}/applications/${app.id}/processes`);
   await page
-    .getByRole("button", { name: `Actions for ${app.slug}-worker-1` })
+    .getByRole("button", {
+      name: `Actions for ${app.slug}-worker-1`,
+      exact: true,
+    })
     .click();
   const restart = page.getByRole("menuitem", { name: "Restart" });
   await expect(restart).toBeVisible();
@@ -190,7 +193,10 @@ test("a type with two replicas shows two rows, the metrics heading names the web
   await expect(workerRow.getByText(`${app.slug}-worker-2`)).toBeVisible();
   for (const n of [1, 2]) {
     await workerRow
-      .getByRole("button", { name: `Actions for ${app.slug}-worker-${n}` })
+      .getByRole("button", {
+        name: `Actions for ${app.slug}-worker-${n}`,
+        exact: true,
+      })
       .click();
     const restart = page.getByRole("menuitem", { name: "Restart" });
     await expect(restart).toBeVisible();
@@ -210,7 +216,9 @@ test("a type with two replicas shows two rows, the metrics heading names the web
   ).toHaveCount(0);
 
   // The web process cannot be paused: refused in the form, in the operator's terms.
-  await page.getByRole("button", { name: "Actions for web" }).click();
+  await page
+    .getByRole("button", { name: "Actions for web", exact: true })
+    .click();
   await page.getByRole("menuitem", { name: "Edit" }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
@@ -231,7 +239,9 @@ test("a type with two replicas shows two rows, the metrics heading names the web
     `UPDATE application_instances SET container_id = 'seeded-container' WHERE application_id = '${app.id}' AND container_name = '${app.slug}';`,
   );
   await page.goto(`/projects/${project.id}/applications/${app.id}/processes`);
-  await page.getByRole("button", { name: `Actions for ${app.slug}` }).click();
+  await page
+    .getByRole("button", { name: `Actions for ${app.slug}`, exact: true })
+    .click();
   await page.getByRole("menuitem", { name: "Reload" }).click();
   const confirm = page.getByRole("alertdialog");
   await expect(confirm).toBeVisible();

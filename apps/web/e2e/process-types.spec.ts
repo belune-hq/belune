@@ -89,7 +89,9 @@ test("the Processes tab shows the routable type, adds a worker, and offers no wa
   await expect(webRow.getByTestId("health-inert")).toHaveCount(0);
   await expect(webRow.getByText(app.slug, { exact: true })).toBeVisible();
   // The type's kebab: Edit, and no Delete (domains route to this type) and no Stop.
-  await webRow.getByRole("button", { name: "Actions for web" }).click();
+  await webRow
+    .getByRole("button", { name: "Actions for web", exact: true })
+    .click();
   await expect(page.getByRole("menuitem", { name: "Edit" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Delete" })).toHaveCount(0);
   await expect(
@@ -135,7 +137,9 @@ test("the Processes tab shows the routable type, adds a worker, and offers no wa
   await expect(pill).toBeVisible();
   expect((await settled(pill)).width).toBeGreaterThan(20);
   // The worker, unlike web, can be deleted.
-  await workerRow.getByRole("button", { name: "Actions for worker" }).click();
+  await workerRow
+    .getByRole("button", { name: "Actions for worker", exact: true })
+    .click();
   await expect(page.getByRole("menuitem", { name: "Delete" })).toBeVisible();
   await page.keyboard.press("Escape");
 });

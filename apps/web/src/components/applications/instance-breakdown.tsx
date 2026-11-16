@@ -28,15 +28,18 @@ function fmtTime(ts: number) {
   });
 }
 
-/** "0.5 CPU · 512 MB", or "No limit". Null is unlimited, never 0 and never host RAM. */
+/**
+ * "CPU 0.5 · Memory 512 MB". Each part is named and an unknown one says "unlimited":
+ * null is unlimited, never 0 and never host RAM, and dropping it would hide the half
+ * of the ceiling that is missing.
+ */
 function fmtLimits(
   r: Pick<AppInstanceMetricPoint, "cpu_limit" | "memory_limit">,
 ) {
-  const parts = [
-    r.cpu_limit != null ? `${r.cpu_limit} CPU` : null,
-    r.memory_limit != null ? formatBytes(r.memory_limit) : null,
-  ].filter((p): p is string => p !== null);
-  return parts.length > 0 ? parts.join(" · ") : "No limit";
+  const cpu = r.cpu_limit != null ? String(r.cpu_limit) : "unlimited";
+  const mem =
+    r.memory_limit != null ? formatBytes(r.memory_limit) : "unlimited";
+  return `CPU ${cpu} · Memory ${mem}`;
 }
 
 const COLS = 4;

@@ -143,7 +143,7 @@ describe("InstanceBreakdown", () => {
       expect(cpu.getAttribute("data-spangaps")).toBe("false");
     });
 
-    it("shows the configured limits, and No limit for null rather than 0 or host RAM", () => {
+    it("shows the configured limits, and unlimited for null rather than 0 or host RAM", () => {
       const limited = inst({
         instance_id: "a",
         idx: 1,
@@ -158,9 +158,11 @@ describe("InstanceBreakdown", () => {
         />,
       );
       fireEvent.click(screen.getByRole("button", { name: /web-1/ }));
-      expect(screen.getByText(/Limit: 0\.5 CPU · 512 MB/)).toBeTruthy();
+      expect(screen.getByText(/Limit: CPU 0\.5 · Memory 512 MB/)).toBeTruthy();
       fireEvent.click(screen.getByRole("button", { name: /web-2/ }));
-      expect(screen.getByText(/Limit: No limit/)).toBeTruthy();
+      expect(
+        screen.getByText(/Limit: CPU unlimited · Memory unlimited/),
+      ).toBeTruthy();
     });
 
     it("keeps the panel and its history when the open container leaves the latest sample", () => {

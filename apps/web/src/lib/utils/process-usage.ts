@@ -108,7 +108,7 @@ export function describeCoverage(
  */
 export function windowHadPartialCoverage(
   points: readonly AppMetricPoint[] | null | undefined,
-  scope: CoverageScope = "routable",
+  scope: CoverageScope = "all",
 ): boolean {
   return (points ?? []).some((p) => {
     const c = counts(p, scope);

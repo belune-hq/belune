@@ -86,29 +86,33 @@ function ApplicationMetricsPage() {
             and a second routable type is refused. The schema deliberately does NOT
             assume it (`routable` is a flag, not the magic name), so if a routable
             type can ever be named otherwise, this heading needs revisiting. */}
-        <p className="text-muted-foreground mb-1 text-sm">
-          The charts show the web process
-          {webReplicas > 1 ? `, summed across its ${webReplicas} replicas` : ""}
-          . The Overview sums every container, so it reads higher when a worker
-          is running. Each container&apos;s own numbers are in the table below.
-        </p>
-        {coverage && (
-          <p
-            className={cn(
-              "mb-1 text-xs",
-              coverage.partial ? "text-status-building" : "text-text-faint",
-            )}
-          >
-            {coverage.text}
+        <div className="mb-4 space-y-1">
+          <p className="text-muted-foreground text-sm">
+            The charts show the web process
+            {webReplicas > 1
+              ? `, summed across its ${webReplicas} replicas`
+              : ""}
+            . The Overview sums every container, so it reads higher when a
+            worker is running. Each container&apos;s own numbers are in the
+            table below.
           </p>
-        )}
-        {windowPartial && (
-          <p className="text-muted-foreground mb-1 text-xs">
-            Some samples in this window covered fewer containers than expected,
-            so a dip may be missing data, not lower load.
-          </p>
-        )}
-        <div className="mb-3" />
+          {coverage && (
+            <p
+              className={cn(
+                "text-xs",
+                coverage.partial ? "text-status-building" : "text-text-faint",
+              )}
+            >
+              {coverage.text}
+            </p>
+          )}
+          {windowPartial && (
+            <p className="text-muted-foreground text-xs">
+              Some samples in this window covered fewer containers than
+              expected, so a dip may be missing data, not lower load.
+            </p>
+          )}
+        </div>
         {streamData && streamData.length > 0 ? (
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <AppChart

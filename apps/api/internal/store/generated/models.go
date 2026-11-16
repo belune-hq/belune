@@ -284,6 +284,7 @@ type ContainerLog struct {
 	DeploymentID pgtype.UUID        `json:"deployment_id"`
 	ContainerID  pgtype.Text        `json:"container_id"`
 	ProcessType  pgtype.Text        `json:"process_type"`
+	InstanceIdx  pgtype.Int4        `json:"instance_idx"`
 }
 
 type CrowdsecConfig struct {

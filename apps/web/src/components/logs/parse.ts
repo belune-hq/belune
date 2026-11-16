@@ -15,6 +15,14 @@ export interface LogEntry {
   sessionId?: string | null;
   // The process type that produced the line; null/undefined = unknown.
   processType?: string | null;
+  // The deployment that produced the line (applications only), and which replica of its
+  // process type it came from. Both null/undefined = unknown: a database has no
+  // deployment, and a container created before the labels existed has no idx, for good.
+  deploymentId?: string | null;
+  instanceIdx?: number | null;
+  // Rendered source column, set by groupEntries when the view needs one
+  // ("web-0", "web-0 · 5726bda2 (old)"). Absent = render no column.
+  source?: string;
   // When set, this entry is a session divider rather than a log line; the string
   // is the label to render. Used to separate deployments in the merged view.
   divider?: string;

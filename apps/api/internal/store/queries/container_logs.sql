@@ -1,6 +1,6 @@
 -- name: InsertContainerLog :exec
-INSERT INTO container_logs (source_type, source_id, level, stream, message, recorded_at, deployment_id, container_id, process_type)
-VALUES ($1, $2, $3, $4, $5, COALESCE(sqlc.narg('recorded_at')::timestamptz, NOW()), sqlc.narg('deployment_id'), sqlc.narg('container_id'), sqlc.narg('process_type'));
+INSERT INTO container_logs (source_type, source_id, level, stream, message, recorded_at, deployment_id, container_id, process_type, instance_idx)
+VALUES ($1, $2, $3, $4, $5, COALESCE(sqlc.narg('recorded_at')::timestamptz, NOW()), sqlc.narg('deployment_id'), sqlc.narg('container_id'), sqlc.narg('process_type'), sqlc.narg('instance_idx'));
 
 -- name: BulkInsertContainerLogs :copyfrom
 -- Bulk path for the log collector, which flushes batches of lines. Inserting
@@ -11,11 +11,11 @@ VALUES ($1, $2, $3, $4, $5, COALESCE(sqlc.narg('recorded_at')::timestamptz, NOW(
 -- here: the caller always supplies it, using the timestamp Docker reported for
 -- the line and its own clock only when that is missing. That is closer to when
 -- the line was actually observed than evaluating NOW() at flush time anyway.
-INSERT INTO container_logs (source_type, source_id, level, stream, message, recorded_at, deployment_id, container_id, process_type)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);
+INSERT INTO container_logs (source_type, source_id, level, stream, message, recorded_at, deployment_id, container_id, process_type, instance_idx)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
 
 -- name: SearchContainerLogs :many
-SELECT id, source_type, source_id, level, stream, message, recorded_at, deployment_id, container_id, process_type FROM container_logs
+SELECT id, source_type, source_id, level, stream, message, recorded_at, deployment_id, container_id, process_type, instance_idx FROM container_logs
 WHERE source_type = sqlc.arg('source_type')
   AND source_id = sqlc.arg('source_id')
   AND (sqlc.narg('level')::text IS NULL OR level = sqlc.narg('level')::text)
@@ -67,6 +67,9 @@ SELECT cl.container_id,
        -- has NULL and non-NULL rows under one container_id, and grouping on the
        -- type would split that one session in two.
        COALESCE(MAX(cl.process_type), '')::text AS process_type,
+       -- -1 means unknown, for the same reason '' does above. MAX, not a key, for the same
+       -- reason too: a container's idx is one value, but its older rows may be NULL.
+       COALESCE(MAX(cl.instance_idx), -1)::int AS instance_idx,
        MIN(cl.recorded_at)::timestamptz AS first_at,
        MAX(cl.recorded_at)::timestamptz AS last_at,
        COUNT(*)                         AS line_count,

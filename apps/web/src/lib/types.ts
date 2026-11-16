@@ -403,6 +403,9 @@ export interface ContainerLog {
   // The process type that produced the line; null = unknown (rows from before
   // the column existed, databases).
   process_type: string | null;
+  // Which replica of the type; null = unknown, permanently for a container created before
+  // the label existed.
+  instance_idx: number | null;
 }
 
 // A log "session": one container generation that produced log lines, or the
@@ -413,6 +416,8 @@ export interface ContainerLogSession {
   container_id: string | null;
   deployment_id: string | null;
   process_type: string | null;
+  // -1 = unknown (the sessions query cannot return NULL through its cast).
+  instance_idx: number;
   first_at: string;
   last_at: string;
   line_count: number;

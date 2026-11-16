@@ -126,7 +126,6 @@ test("the Logs tab filters by process type, and a container has its own Restart 
   await page
     .getByRole("button", {
       name: `Actions for ${app.slug}-worker-1`,
-      exact: true,
     })
     .click();
   const restart = page.getByRole("menuitem", { name: "Restart" });
@@ -195,7 +194,6 @@ test("a type with two replicas shows two rows, the metrics heading names the web
     await workerRow
       .getByRole("button", {
         name: `Actions for ${app.slug}-worker-${n}`,
-        exact: true,
       })
       .click();
     const restart = page.getByRole("menuitem", { name: "Restart" });

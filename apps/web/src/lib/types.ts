@@ -343,7 +343,10 @@ export interface AppInstanceMetricPoint {
   routable: boolean;
   cpu_percent: number;
   memory_usage: number;
-  memory_limit: number;
+  // CONFIGURED limits (never Docker's, which reports host RAM for an unlimited
+  // container). Null is unlimited: 0 would read as "limited to zero".
+  memory_limit: number | null;
+  cpu_limit: number | null;
   network_rx_bytes: number;
   network_tx_bytes: number;
 }

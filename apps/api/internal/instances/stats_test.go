@@ -265,3 +265,21 @@ func TestBuildPoint_NoRoutableInstanceHasNoCeilingRatherThanZero(t *testing.T) {
 	assert.Equal(t, 0, p.RoutableExpected)
 	assert.Nil(t, p.MemoryLimit)
 }
+
+// Docker answers 1000 as every container's cgroup limit here (the stub), a number no
+// configured value below equals, so these can only pass by reading configuration.
+func TestBuildPoint_InstanceLimitsAreConfiguredNotDockers(t *testing.T) {
+	unlimited := mkL("web", true, 1, 0, pgtype.Int8{})
+	capped := mkL("worker", false, 1, 4096, pgtype.Int8{Int64: 512, Valid: true})
+	capped.ProcessTypeCpuLimit = pgtype.Float8{Float64: 0.5, Valid: true}
+	p, ok := build(t, []row{unlimited, capped})
+	require.True(t, ok)
+	require.Len(t, p.Instances, 2)
+
+	assert.Nil(t, p.Instances[0].MemoryLimit, "no configured limit: null, not the stub's 1000 (host RAM in real life) and not &0")
+	assert.Nil(t, p.Instances[0].CPULimit)
+	require.NotNil(t, p.Instances[1].MemoryLimit)
+	assert.EqualValues(t, 512, *p.Instances[1].MemoryLimit, "the type's limit, not the application's 4096 nor Docker's 1000")
+	require.NotNil(t, p.Instances[1].CPULimit)
+	assert.InDelta(t, 0.5, *p.Instances[1].CPULimit, 0.0001)
+}

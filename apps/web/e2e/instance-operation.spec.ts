@@ -200,9 +200,17 @@ test("a type with two replicas shows two rows, the metrics heading names the web
   expect((await settled(refusal)).height).toBeGreaterThan(5);
   await dialog.getByRole("button", { name: "Cancel" }).click();
 
-  // The metrics heading does not claim to be the whole application.
+  // The card is titled plainly, and its caption says the charts are the web process
+  // and that the Overview sums more, so two tabs never silently disagree.
   await page.goto(`/projects/${project.id}/applications/${app.id}/metrics`);
-  await expect(page.getByText("Web Process Metrics")).toBeVisible();
+  // Scoped to the card: the tab is labelled exactly "Metrics" too, so an unscoped
+  // locator matches two elements and fails in strict mode.
+  await expect(
+    page
+      .locator('[data-slot="card-title"]')
+      .getByText("Metrics", { exact: true }),
+  ).toBeVisible();
   await expect(page.getByText("Application Metrics")).toHaveCount(0);
-  await expect(page.getByText(/not included/i)).toBeVisible();
+  await expect(page.getByText(/charts show the web process/i)).toBeVisible();
+  await expect(page.getByText(/Overview sums every container/i)).toBeVisible();
 });

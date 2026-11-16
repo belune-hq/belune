@@ -7,8 +7,10 @@ import type {
 import {
   comparableCeiling,
   describeCoverage,
+  instanceSeries,
   sumAllContainers,
   summariseProcess,
+  windowHadPartialCoverage,
 } from "./process-usage";
 
 const inst = (
@@ -20,7 +22,8 @@ const inst = (
   routable: true,
   cpu_percent: 10,
   memory_usage: 100,
-  memory_limit: 0,
+  memory_limit: null,
+  cpu_limit: null,
   network_rx_bytes: 1,
   network_tx_bytes: 2,
   ...over,
@@ -200,5 +203,92 @@ describe("summariseProcess", () => {
     expect(summariseProcess(pt({ replicas: 1, instances: [] })).label).toBe(
       "Not deployed",
     );
+  });
+});
+
+describe("describeCoverage, routable scope", () => {
+  it("reads the routable pair, not the all-types pair", () => {
+    // 2 of 3 web replicas answered; the worker did too, so the all-types pair is 3 of 4.
+    const p = point({
+      routable_sampled: 2,
+      routable_expected: 3,
+      sampled: 3,
+      expected: 4,
+    });
+    expect(describeCoverage(p, "routable")).toEqual({
+      partial: true,
+      text: "Sum of 2 of 3 containers (1 not sampled)",
+    });
+    expect(describeCoverage(p)?.text).toBe(
+      "Sum of 3 of 4 containers (1 not sampled)",
+    );
+  });
+
+  it("names the web process when every replica answered", () => {
+    const p = point({
+      routable_sampled: 3,
+      routable_expected: 3,
+      sampled: 4,
+      expected: 4,
+    });
+    expect(describeCoverage(p, "routable")).toEqual({
+      partial: false,
+      text: "Web process · 3 containers",
+    });
+  });
+
+  it("is not fooled by a full all-types count when a web replica is missing", () => {
+    const p = point({
+      routable_sampled: 1,
+      routable_expected: 2,
+      sampled: 2,
+      expected: 2,
+    });
+    expect(describeCoverage(p, "routable")?.partial).toBe(true);
+    expect(describeCoverage(p)?.partial).toBe(false);
+  });
+
+  it("says nothing for one web container, or without the counts", () => {
+    expect(
+      describeCoverage(
+        point({ routable_sampled: 1, routable_expected: 1 }),
+        "routable",
+      ),
+    ).toBeNull();
+    expect(
+      describeCoverage(point({ sampled: 2, expected: 2 }), "routable"),
+    ).toBeNull();
+  });
+});
+
+describe("windowHadPartialCoverage", () => {
+  const full = point({ routable_sampled: 2, routable_expected: 2 });
+  const partial = point({ routable_sampled: 1, routable_expected: 2 });
+
+  it("is true when an earlier point was partial even though the latest is full", () => {
+    expect(windowHadPartialCoverage([full, partial, full], "routable")).toBe(
+      true,
+    );
+  });
+
+  it("is false when every point was full, or the window has no counts", () => {
+    expect(windowHadPartialCoverage([full, full], "routable")).toBe(false);
+    expect(windowHadPartialCoverage([point({})])).toBe(false);
+    expect(windowHadPartialCoverage(undefined)).toBe(false);
+  });
+});
+
+describe("instanceSeries", () => {
+  it("is null, a real gap, where the instance is absent", () => {
+    const withA = point({
+      instances: [inst({ instance_id: "a", cpu_percent: 5 })],
+    });
+    const without = point({
+      instances: [inst({ instance_id: "b", cpu_percent: 9 })],
+    });
+    const none = point({});
+    expect(
+      instanceSeries([withA, without, none, withA], "a", (i) => i.cpu_percent),
+    ).toEqual([5, null, null, 5]);
   });
 });

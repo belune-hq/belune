@@ -4,16 +4,6 @@ import type { ServiceMetrics } from "@/lib/types";
 import { formatCpuCell, formatMemoryCell } from "./usage-format";
 
 /**
- * Whether an application row has anything to open onto: more than one container, or any
- * that is not of the routable type. One web container is exactly what the row already
- * says, so it gets no chevron (and a database, which has no metrics here, never does).
- */
-export function hasContainerPanel(m: ServiceMetrics | undefined): boolean {
-  const list = m?.instances ?? [];
-  return list.length > 1 || list.some((i) => !i.routable);
-}
-
-/**
  * Each container of one application: its status, CPU and memory.
  *
  * ⛔ Reads the snapshot the table already holds and opens no query of its own: the

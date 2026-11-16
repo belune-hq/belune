@@ -23,8 +23,12 @@ import type {
   ProjectMetrics,
   ServiceMetrics,
 } from "@/lib/types";
-import { formatCpuCell, formatMemoryCell } from "./usage-format";
-import { ContainerPanel, hasContainerPanel } from "./container-panel";
+import {
+  formatCpuCell,
+  formatMemoryCell,
+  hasContainerPanel,
+} from "./usage-format";
+import { ContainerPanel } from "./container-panel";
 import {
   useDeleteApplication,
   useDeployApplication,

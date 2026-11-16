@@ -16,7 +16,8 @@ vi.mock("@tanstack/react-router", () => ({
   ),
 }));
 
-import { ContainerPanel, hasContainerPanel } from "./container-panel";
+import { ContainerPanel } from "./container-panel";
+import { hasContainerPanel } from "./usage-format";
 
 const inst = (
   over: Partial<ServiceInstanceMetrics>,

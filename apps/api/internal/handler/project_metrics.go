@@ -25,11 +25,15 @@ import (
 // wants the per-replica picture (or to say a worker exists) can have it; each carries its
 // own usage, null when that container was not sampled.
 //
-// The counts use the same vocabulary as instances.Point, so one word means one thing
-// across the app metrics stream and this endpoint: Expected is the containers Docker
-// reports running, Sampled the ones whose stats call answered, and the Routable pair is
-// the scope the top-level sums cover. Sampled < Expected means a sum or a dash is a
-// coverage fact, not an idle container.
+// The routable pair uses instances.Point's vocabulary: RoutableExpected is the routable
+// containers Docker reports running, RoutableSampled the ones whose stats call answered,
+// and together they say what the top-level sums cover. Sampled < Expected means a sum or
+// a dash is a coverage fact, not an idle container.
+//
+// ⛔ There is deliberately NO all-types pair here. This endpoint never samples workers, so
+// "sampled 2 of expected 3" would read as partial coverage on every healthy application
+// that has one, and describeCoverage (which consumes those exact names) would render it
+// amber. That a worker exists and was not sampled is what Instances already says.
 type serviceMetrics struct {
 	CPUPercent       *float64          `json:"cpu_percent"`
 	MemoryUsed       *int64            `json:"memory_used"`
@@ -41,8 +45,6 @@ type serviceMetrics struct {
 	Instances        []serviceInstance `json:"instances"`
 	RoutableSampled  int               `json:"routable_sampled"`
 	RoutableExpected int               `json:"routable_expected"`
-	Sampled          int               `json:"sampled"`
-	Expected         int               `json:"expected"`
 }
 
 // serviceInstance is one container of an application.
@@ -70,7 +72,7 @@ type serviceInstance struct {
 // leaves the margin the daemon's own variance needs. Past it the overview does not
 // time out (a 503 with nothing) and does not pretend (a 200 whose sums are really a
 // truncation): an application whose live replicas do not ALL fit is left unsampled, with
-// null usage and Sampled < Expected, so a partial sum is never presented as the total.
+// null usage and RoutableSampled < RoutableExpected, so a partial sum is never presented as the total.
 const maxProjectStats = instances.MaxConcurrentStats * 4
 
 // GetProjectMetrics returns a current runtime snapshot (CPU%, memory, uptime,
@@ -143,8 +145,13 @@ func (h *Handler) GetProjectMetrics(w http.ResponseWriter, r *http.Request) {
 
 	// One container listing, indexed by name (== instance container_name).
 	containerByName := map[string]runtime.ContainerInfo{}
+	// Whether the listing SUCCEEDED, not whether it found anything: a project whose
+	// containers have all been removed lists nothing, and that is exactly the case where
+	// "missing" must replace the row's stale stored status.
+	listed := false
 	if rt != nil {
 		if containers, cerr := rt.ListContainers(ctx); cerr == nil {
+			listed = true
 			for _, c := range containers {
 				containerByName[c.Name] = c
 			}
@@ -153,7 +160,6 @@ func (h *Handler) GetProjectMetrics(w http.ResponseWriter, r *http.Request) {
 
 	// Indexed by position so the stats goroutines below each write their own
 	// element and need no lock.
-	listed := len(containerByName) > 0
 	metrics := make([]serviceMetrics, len(apps))
 	// liveByApp holds, per app position, the routable instances whose container
 	// Docker reports running -- the ones worth a stats call.
@@ -183,9 +189,6 @@ func (h *Handler) GetProjectMetrics(w http.ResponseWriter, r *http.Request) {
 			status := in.Status
 			if c, ok := containerByName[in.ContainerName]; ok {
 				status = c.Status
-				if status == "running" {
-					m.Expected++
-				}
 			} else if listed {
 				status = "missing"
 			}
@@ -243,6 +246,10 @@ func (h *Handler) GetProjectMetrics(w http.ResponseWriter, r *http.Request) {
 	var names []string
 	var sampledApps []int
 	for _, i := range running {
+		// All-or-nothing per application, spent in application order: a partial sum in
+		// one cell would be the confident wrong number, so an over-budget project leaves
+		// the SAME later applications unsampled on every poll. Chosen, not overlooked;
+		// the log line is the only place that says why.
 		if len(names)+len(liveByApp[i]) > maxProjectStats {
 			slog.Warn("project metrics: not sampling an application, the project is over the stats budget",
 				"application", apps[i].Slug, "budget", maxProjectStats)
@@ -256,11 +263,11 @@ func (h *Handler) GetProjectMetrics(w http.ResponseWriter, r *http.Request) {
 	stats := instances.FetchStats(ctx, rt, names)
 	now := time.Now()
 	// Counts for every running application, including one left unsampled above: its
-	// Sampled is 0 against its Expected, which is what makes the dash honest.
+	// RoutableSampled is 0 against its RoutableExpected, which is what makes the dash
+	// honest.
 	for _, i := range running {
 		p, _ := instances.BuildPoint(liveByApp[i], stats, now)
 		metrics[i].RoutableSampled, metrics[i].RoutableExpected = p.RoutableSampled, p.RoutableExpected
-		metrics[i].Sampled = p.Sampled
 	}
 	// Per-container usage, for the containers that were sampled. Instances is in the same
 	// order as instancesByApp, so the index lines up.

@@ -40,8 +40,6 @@ const metrics = (instances: ServiceInstanceMetrics[]): ServiceMetrics => ({
   instances,
   routable_sampled: 0,
   routable_expected: 0,
-  sampled: 0,
-  expected: 0,
 });
 
 describe("hasContainerPanel", () => {
@@ -95,6 +93,25 @@ describe("ContainerPanel", () => {
     expect(within(rows[0]).getByText("12%")).toBeTruthy();
     expect(within(rows[1]).getByText("web-2")).toBeTruthy();
     expect(within(rows[2]).getByText("worker-1")).toBeTruthy();
+  });
+
+  it("does not give a missing container the calm grey of a stopped one", () => {
+    render(
+      <ContainerPanel
+        projectId="p"
+        applicationId="a"
+        metrics={metrics([
+          inst({ idx: 1, status: "exited" }),
+          inst({ idx: 2, status: "missing" }),
+        ])}
+      />,
+    );
+    const pill = (name: string) =>
+      screen
+        .getByText(name)
+        .closest("tr")!
+        .querySelector("span[class*='status']");
+    expect(pill("web-2")?.className).not.toBe(pill("web-1")?.className);
   });
 
   it("renders unsampled usage as a dash, never 0%", () => {

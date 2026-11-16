@@ -284,13 +284,12 @@ export interface ServiceMetrics {
    * project), never 0.
    */
   instances: ServiceInstanceMetrics[];
-  // Coverage, in the vocabulary of AppMetricPoint: Expected is the containers Docker
-  // reports running, Sampled the ones that answered; the routable pair is what the
-  // top-level cpu_percent / memory_used sum.
+  // Coverage of the top-level sums, in AppMetricPoint's vocabulary: Expected is the routable
+  // containers Docker reports running, Sampled the ones that answered. There is no
+  // all-types pair on purpose: this endpoint never samples workers, so it would read as
+  // partial coverage on every healthy application that has one.
   routable_sampled: number;
   routable_expected: number;
-  sampled: number;
-  expected: number;
 }
 
 export interface ServiceInstanceMetrics {

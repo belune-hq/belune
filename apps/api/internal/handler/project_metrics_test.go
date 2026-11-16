@@ -300,8 +300,9 @@ func TestProjectMetrics_ListsEveryContainerAndSamplesOnlyTheRoutableOnes(t *test
 	// Coverage, in the app metrics point's vocabulary.
 	assert.EqualValues(t, 1, m["routable_sampled"])
 	assert.EqualValues(t, 2, m["routable_expected"])
-	assert.EqualValues(t, 1, m["sampled"])
-	assert.EqualValues(t, 3, m["expected"], "every container Docker reports running, the worker included")
+	// No all-types pair: it would read as partial coverage on every healthy app with a worker.
+	assert.NotContains(t, m, "sampled")
+	assert.NotContains(t, m, "expected")
 }
 
 // A container the listing does not contain reads "missing", not the row's stale "running".
@@ -321,6 +322,15 @@ func TestProjectMetrics_AContainerDockerDoesNotListIsMissing(t *testing.T) {
 	rows := instanceRows(t, f.get(t))
 	assert.Equal(t, "missing", rows["worker-1"]["status"])
 	assert.Equal(t, "running", rows["web-1"]["status"])
+}
+
+// A listing that SUCCEEDS with nothing in it (every container removed) is not a failed
+// listing: every instance is "missing", not the row's stale "running".
+func TestProjectMetrics_AnEmptyListingMakesEveryContainerMissing(t *testing.T) {
+	f := newMetricsFixture(t, "app-web-1-gone0000")
+	env.Runtime.ListContainers_ = []runtime.ContainerInfo{}
+	rows := instanceRows(t, f.get(t))
+	assert.Equal(t, "missing", rows["web-1"]["status"])
 }
 
 // The guard. An application whose live replicas do not all fit the stats budget is left
@@ -351,7 +361,6 @@ func TestProjectMetrics_OverBudgetApplicationIsUnsampledNotTruncated(t *testing.
 	assert.Nil(t, m["memory_used"])
 	assert.EqualValues(t, 0, m["routable_sampled"])
 	assert.EqualValues(t, 65, m["routable_expected"])
-	assert.EqualValues(t, 65, m["expected"])
 	assert.Zero(t, calls.Load(), "the budget is enforced before any stats call, not after")
 	assert.Len(t, instanceRows(t, m), 65, "status is still listed for every container")
 }

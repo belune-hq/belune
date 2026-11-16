@@ -45,7 +45,12 @@ export function ContainerPanel({
                 {i.process_type}-{i.idx}
               </td>
               <td className="py-1.5 pr-3">
-                <StatusPill status={i.status} />
+                {/* "missing" is a row pointing at a container Docker does not have: an anomaly, not
+            a resting state like "stopped", so it must not read as settled grey. */}
+                <StatusPill
+                  status={i.status}
+                  tone={i.status === "missing" ? "error" : undefined}
+                />
               </td>
               <td className="text-text-muted py-1.5 pr-3 font-mono text-xs">
                 {formatCpuCell(i)}

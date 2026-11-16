@@ -21554,9 +21554,6 @@
           "domain": {
             "type": "string"
           },
-          "expected": {
-            "type": "integer"
-          },
           "instances": {
             "items": {
               "$ref": "#/components/schemas/serviceInstance"
@@ -21579,9 +21576,6 @@
             "type": "integer"
           },
           "routable_sampled": {
-            "type": "integer"
-          },
-          "sampled": {
             "type": "integer"
           },
           "status": {

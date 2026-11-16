@@ -13,8 +13,6 @@ const base: ServiceMetrics = {
   instances: [],
   routable_sampled: 0,
   routable_expected: 0,
-  sampled: 0,
-  expected: 0,
 };
 
 describe("service row usage cells", () => {

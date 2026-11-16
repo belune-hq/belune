@@ -10,6 +10,11 @@ const base: ServiceMetrics = {
   memory_limit: 0,
   uptime_seconds: 0,
   status: "running",
+  instances: [],
+  routable_sampled: 0,
+  routable_expected: 0,
+  sampled: 0,
+  expected: 0,
 };
 
 describe("service row usage cells", () => {

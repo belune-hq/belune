@@ -278,6 +278,28 @@ export interface ServiceMetrics {
   status: string;
   domain?: string;
   port?: number;
+  /**
+   * Every container of the application, with Docker's status. Usage is null where the
+   * container was not sampled (a worker, one that did not answer, an over-budget
+   * project), never 0.
+   */
+  instances: ServiceInstanceMetrics[];
+  // Coverage, in the vocabulary of AppMetricPoint: Expected is the containers Docker
+  // reports running, Sampled the ones that answered; the routable pair is what the
+  // top-level cpu_percent / memory_used sum.
+  routable_sampled: number;
+  routable_expected: number;
+  sampled: number;
+  expected: number;
+}
+
+export interface ServiceInstanceMetrics {
+  process_type: string;
+  idx: number;
+  routable: boolean;
+  status: string;
+  cpu_percent: number | null;
+  memory_used: number | null;
 }
 
 /** Per-service runtime snapshot keyed by application id. */

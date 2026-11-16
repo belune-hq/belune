@@ -24,6 +24,7 @@ import type {
   ServiceMetrics,
 } from "@/lib/types";
 import { formatCpuCell, formatMemoryCell } from "./usage-format";
+import { ContainerPanel, hasContainerPanel } from "./container-panel";
 import {
   useDeleteApplication,
   useDeployApplication,
@@ -760,6 +761,25 @@ export function ServicesTable({
       columns={columns}
       data={items}
       getRowId={(it) => it.data.id}
+      // Only an application with more than one container, or a worker, has anything to
+      // open onto; a database never does.
+      getRowCanExpand={(row) =>
+        row.original.kind === "application" &&
+        hasContainerPanel(metrics?.[row.original.data.id])
+      }
+      renderDetailPanel={({ row }) => {
+        const item = row.original;
+        const m =
+          item.kind === "application" ? metrics?.[item.data.id] : undefined;
+        if (!m) return null;
+        return (
+          <ContainerPanel
+            projectId={projectId}
+            applicationId={item.data.id}
+            metrics={m}
+          />
+        );
+      }}
       isLoading={isLoading}
       emptyMessage="No services match the current filters."
     />

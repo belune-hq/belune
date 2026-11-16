@@ -7,6 +7,11 @@ import { useAppMetricsContext } from "@/lib/contexts/app-metrics-context";
 import { useProcessTypes } from "@/lib/hooks/use-process-types";
 import { InstanceBreakdown } from "@/components/applications/instance-breakdown";
 import type { AppMetricPoint } from "@/lib/types";
+import {
+  describeCoverage,
+  windowHadPartialCoverage,
+} from "@/lib/utils/process-usage";
+import { cn } from "@/lib/utils";
 import { UPlotAreaChart } from "@/components/ui/uplot-area-chart";
 
 export const Route = createFileRoute(
@@ -50,13 +55,19 @@ function ApplicationMetricsPage() {
       ? streamData[streamData.length - 1]
       : null;
 
+  // The charts sum the ROUTABLE set, so their coverage is the routable pair; the
+  // all-types pair belongs to the Overview. A window can hold partial points that have
+  // since recovered, which the latest point's line cannot say.
+  const coverage = describeCoverage(latest, "routable");
+  const windowPartial = windowHadPartialCoverage(streamData, "routable");
+
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
             <Activity aria-hidden="true" className="size-4" />
-            Web Process Metrics
+            Metrics
           </CardTitle>
           <LiveIndicator
             active={connected && isRunning}
@@ -75,11 +86,29 @@ function ApplicationMetricsPage() {
             and a second routable type is refused. The schema deliberately does NOT
             assume it (`routable` is a flag, not the magic name), so if a routable
             type can ever be named otherwise, this heading needs revisiting. */}
-        <p className="text-muted-foreground mb-4 text-sm">
-          Totals for the web process
+        <p className="text-muted-foreground mb-1 text-sm">
+          The charts show the web process
           {webReplicas > 1 ? `, summed across its ${webReplicas} replicas` : ""}
-          . Worker processes are listed below and are not included.
+          . The Overview sums every container, so it reads higher when a worker
+          is running. Each container&apos;s own numbers are in the table below.
         </p>
+        {coverage && (
+          <p
+            className={cn(
+              "mb-1 text-xs",
+              coverage.partial ? "text-status-building" : "text-text-faint",
+            )}
+          >
+            {coverage.text}
+          </p>
+        )}
+        {windowPartial && (
+          <p className="text-muted-foreground mb-1 text-xs">
+            Some samples in this window covered fewer containers than expected,
+            so a dip may be missing data, not lower load.
+          </p>
+        )}
+        <div className="mb-3" />
         {streamData && streamData.length > 0 ? (
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <AppChart
@@ -118,7 +147,7 @@ function ApplicationMetricsPage() {
               : "No live metrics — this application is not running. Start it to begin collecting again."}
           </p>
         )}
-        <InstanceBreakdown point={latest} />
+        <InstanceBreakdown point={latest} window={streamData ?? []} />
       </CardContent>
     </Card>
   );
@@ -158,6 +187,7 @@ function AppChart({
         xFormatter={(ts) => formatTime(ts)}
         height={200}
         syncKey="app-metrics-detail"
+        spanGaps={false}
       />
       <span className="sr-only" aria-live="polite">
         {summary}

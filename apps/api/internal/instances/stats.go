@@ -106,15 +106,21 @@ func EffectiveLimits(appCPU float64, appMemory int64, ptCPU pgtype.Float8, ptMem
 
 // InstancePoint is one instance's sample.
 type InstancePoint struct {
-	InstanceID     string  `json:"instance_id"`
-	ProcessType    string  `json:"process_type"`
-	Idx            int32   `json:"idx"`
-	Routable       bool    `json:"routable"`
-	CPUPercent     float64 `json:"cpu_percent"`
-	MemoryUsage    int64   `json:"memory_usage"`
-	MemoryLimit    int64   `json:"memory_limit"`
-	NetworkRxBytes int64   `json:"network_rx_bytes"`
-	NetworkTxBytes int64   `json:"network_tx_bytes"`
+	InstanceID  string  `json:"instance_id"`
+	ProcessType string  `json:"process_type"`
+	Idx         int32   `json:"idx"`
+	Routable    bool    `json:"routable"`
+	CPUPercent  float64 `json:"cpu_percent"`
+	MemoryUsage int64   `json:"memory_usage"`
+	// MemoryLimit and CPULimit are CONFIGURATION (EffectiveLimits), never the sample:
+	// Docker reports the HOST's total memory as the cgroup limit of an unlimited
+	// container, indistinguishable from "limited to exactly host RAM". Null means
+	// unlimited -- 0 is what that means everywhere else, and &0 would read as "limited
+	// to zero".
+	MemoryLimit    *int64   `json:"memory_limit"`
+	CPULimit       *float64 `json:"cpu_limit"`
+	NetworkRxBytes int64    `json:"network_rx_bytes"`
+	NetworkTxBytes int64    `json:"network_tx_bytes"`
 }
 
 // Point is one application sample: the totals the existing view has always shown, plus
@@ -190,11 +196,19 @@ func BuildPoint(live []generated.ListInstancesWithProcessTypeByApplicationRow, s
 		if !ok {
 			continue
 		}
-		p.Instances = append(p.Instances, InstancePoint{
+		ip := InstancePoint{
 			InstanceID: uuidString(r.ID), ProcessType: r.ProcessTypeName, Idx: r.Idx, Routable: r.ProcessTypeRoutable,
-			CPUPercent: s.CPUPercent, MemoryUsage: s.MemoryUsage, MemoryLimit: s.MemoryLimit,
+			CPUPercent: s.CPUPercent, MemoryUsage: s.MemoryUsage,
 			NetworkRxBytes: s.NetworkRxBytes, NetworkTxBytes: s.NetworkTxBytes,
-		})
+		}
+		cpuLim, memLim := EffectiveLimits(r.ApplicationCpuLimit, r.ApplicationMemoryLimit, r.ProcessTypeCpuLimit, r.ProcessTypeMemoryLimit)
+		if memLim > 0 {
+			ip.MemoryLimit = &memLim
+		}
+		if cpuLim > 0 {
+			ip.CPULimit = &cpuLim
+		}
+		p.Instances = append(p.Instances, ip)
 		if r.ProcessTypeRoutable {
 			p.RoutableSampled++
 			cpu += s.CPUPercent

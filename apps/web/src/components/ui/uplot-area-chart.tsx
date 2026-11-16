@@ -14,6 +14,10 @@ interface UPlotAreaChartProps {
   // Charts sharing a syncKey link their cursors: hovering one moves the cursor
   // and shows the tooltip on all of them at the same time point.
   syncKey?: string;
+  // Bridge null samples with a line. Defaults to true, which is right for a metric that
+  // is sampled continuously; pass false where a null means "nothing answered at this
+  // tick" and a bridge would draw data that was never measured.
+  spanGaps?: boolean;
 }
 
 function cssVar(name: string): string {
@@ -46,11 +50,14 @@ function nearestNonNull(
 function toAlignedData(
   timestamps: number[],
   values: (number | null)[],
+  spanGaps: boolean,
 ): uPlot.AlignedData {
   return [
     timestamps.map((t) => t / 1000), // ms → Unix seconds
-    values.map((v) => (v === null ? NaN : v)), // null → NaN for spanGaps
-  ];
+    // Bridged charts keep the NaN they have always had. An unbridged one must hand uPlot
+    // a real null: that is what it draws as a break in the line.
+    values.map((v) => (v === null ? (spanGaps ? NaN : null) : v)),
+  ] as uPlot.AlignedData;
 }
 
 export function UPlotAreaChart({
@@ -62,6 +69,7 @@ export function UPlotAreaChart({
   yDomain,
   height = 200,
   syncKey,
+  spanGaps = true,
 }: UPlotAreaChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const uplotRef = useRef<uPlot | null>(null);
@@ -127,7 +135,7 @@ export function UPlotAreaChart({
           stroke: color,
           fill: gradientFn as uPlot.Series["fill"],
           width: 1.5,
-          spanGaps: true,
+          spanGaps,
           points: { show: false },
           value: (_, v) => (v == null || isNaN(v) ? "—" : yFormatter(v)),
         },
@@ -197,12 +205,12 @@ export function UPlotAreaChart({
       },
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [width, height, color, yDomain, syncKey]);
+  }, [width, height, color, yDomain, syncKey, spanGaps]);
 
   // Live update: call setData directly without re-mounting
   const alignedData = useMemo(
-    () => toAlignedData(timestamps, values),
-    [timestamps, values],
+    () => toAlignedData(timestamps, values, spanGaps),
+    [timestamps, values, spanGaps],
   );
 
   useEffect(() => {

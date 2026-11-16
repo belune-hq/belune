@@ -47,8 +47,30 @@ export interface Coverage {
 }
 
 /**
+ * Which containers a coverage line is about. The two scopes have different counts on the
+ * point and must never be mixed: "all" is every type (what the Overview sums), "routable"
+ * is the web type alone (what the Metrics charts sum).
+ */
+export type CoverageScope = "all" | "routable";
+
+function counts(
+  point: AppMetricPoint | null | undefined,
+  scope: CoverageScope,
+): { sampled: number; expected: number } | null {
+  const sampled =
+    scope === "routable" ? point?.routable_sampled : point?.sampled;
+  const expected =
+    scope === "routable" ? point?.routable_expected : point?.expected;
+  if (sampled == null || expected == null || expected === 0) return null;
+  return { sampled, expected };
+}
+
+/**
  * Says what the sum covers, or null when there is nothing worth saying (one container,
  * all sampled: the figure means what it always did).
+ *
+ * One function for both scopes so the two tabs' wording cannot drift apart: only the
+ * noun of the full-coverage line differs.
  *
  * ⚠️ "expected" is the set the SERVER sampled against, which filters on each instance
  * ROW's status. A container that is genuinely up while its row still says "pending" is in
@@ -57,10 +79,11 @@ export interface Coverage {
  */
 export function describeCoverage(
   point: AppMetricPoint | null | undefined,
+  scope: CoverageScope = "all",
 ): Coverage | null {
-  const sampled = point?.sampled;
-  const expected = point?.expected;
-  if (sampled == null || expected == null || expected === 0) return null;
+  const c = counts(point, scope);
+  if (!c) return null;
+  const { sampled, expected } = c;
   if (sampled < expected) {
     const missing = expected - sampled;
     return {
@@ -69,7 +92,43 @@ export function describeCoverage(
     };
   }
   if (expected === 1) return null;
-  return { partial: false, text: `All processes · ${expected} containers` };
+  return {
+    partial: false,
+    text:
+      scope === "routable"
+        ? `Web process · ${expected} containers`
+        : `All processes · ${expected} containers`,
+  };
+}
+
+/**
+ * True when ANY point in the window summed fewer containers than expected. The latest
+ * point's coverage can be full while earlier ones were not, and a dip from a missed
+ * sample looks exactly like a dip in load.
+ */
+export function windowHadPartialCoverage(
+  points: readonly AppMetricPoint[] | null | undefined,
+  scope: CoverageScope = "routable",
+): boolean {
+  return (points ?? []).some((p) => {
+    const c = counts(p, scope);
+    return c != null && c.sampled < c.expected;
+  });
+}
+
+/**
+ * One instance's series across the stream window. A point where the instance is absent
+ * is null, a genuine gap: it did not answer, or was not live, at that tick.
+ */
+export function instanceSeries(
+  points: readonly AppMetricPoint[],
+  instanceId: string,
+  pick: (r: AppInstanceMetricPoint) => number,
+): (number | null)[] {
+  return points.map((p) => {
+    const r = p.instances?.find((i) => i.instance_id === instanceId);
+    return r ? pick(r) : null;
+  });
 }
 
 /**

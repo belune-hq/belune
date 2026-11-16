@@ -42,6 +42,7 @@ import { cn } from "@/lib/utils";
 import type { ScheduledTask } from "@/lib/types";
 import { ScheduledTaskForm } from "./scheduled-task-form";
 import { ScheduledTaskRunsSheet } from "./scheduled-task-runs-sheet";
+import { RunSite } from "./scheduled-run-site";
 import { runLabel, runTone } from "./scheduled-task-status";
 
 interface Props {
@@ -203,6 +204,12 @@ function TaskRow({
             ? ` · last skipped: ${latest.skip_reason}`
             : ""}
         </p>
+        {/* Where the last run actually went. A task runs in ONE container, and with
+            replicas "which one is my cron in" otherwise lives two clicks away in the
+            history sheet. Unconditional, like the sheet: one faint line, the truth, and
+            gating it on replica count would need a query this section does not have.
+            RunSite renders nothing for a skipped run, which never reached a container. */}
+        {latest && <RunSite run={latest} />}
       </div>
       <div className="flex shrink-0 items-center gap-1">
         <Switch

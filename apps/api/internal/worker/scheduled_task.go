@@ -168,11 +168,16 @@ func (h *TaskHandler) HandleScheduledTaskRun(ctx context.Context, t *asynq.Task)
 		h.finishScheduledRun(ctx, run.ID, "failed", nil, "", fmt.Sprintf("resolve runtime: %v", err), task)
 		return nil
 	}
-	// Exactly ONE instance runs the command: the lowest running idx. That is
-	// ResolveOne's rule, and a second one must not be invented here.
-	inst, err := instances.ResolveOne(ctx, h.Queries, task.ApplicationID)
+	inst, found, err := h.resolveRunInstance(ctx, rt, task.ApplicationID)
 	if err != nil {
 		h.finishScheduledRun(ctx, run.ID, "failed", nil, "", fmt.Sprintf("resolve instance: %v", err), task)
+		return nil
+	}
+	if !found {
+		// Nothing of the routable type is up, whatever the rows say. A skip, like "the
+		// application is not running" above: normal operation, not a failure to page
+		// anyone about, and not something that trains people to ignore the real ones.
+		h.finishScheduledRun(ctx, run.ID, "skipped", nil, "", "no running container", task)
 		return nil
 	}
 	containerName := inst.ContainerName
@@ -217,6 +222,53 @@ func (h *TaskHandler) HandleScheduledTaskRun(ctx context.Context, t *asynq.Task)
 		h.notifyScheduledTaskFailure(ctx, task, appRow.Name, appRow.ProjectID, fmt.Sprintf("exited with code %d", exit))
 	}
 	return nil
+}
+
+// resolveRunInstance picks the ONE instance that runs the command: the lowest idx of the
+// routable type, the same rule as instances.ResolveOne, applied to what DOCKER says is
+// running rather than to what the instance row says.
+//
+// The row's status is eventually consistent (resolve.go says so itself). In the window
+// where a row still reads "running" while its container is down, ResolveOne would hand
+// back that dead replica, the exec would fail, and the run would be recorded as failed and
+// page the operator, while another replica is up and the site is serving. This is not a
+// second rule: it is the same one with a truer input. ResolveOne itself is left alone on
+// purpose -- its fallback to a stopped container is what logs, exec and metrics want.
+//
+// ⚠️ This SHRINKS the window, it does not close it. A container can still die between
+// this check and the exec, and that race correctly reports "failed". The check does not
+// make the exec safe, and must not be read as promising that.
+//
+// found is false when Docker reports no routable instance running. If Docker cannot be
+// asked at all, this falls back to ResolveOne: no worse than before, and better than
+// skipping every run because the daemon answered slowly once.
+func (h *TaskHandler) resolveRunInstance(ctx context.Context, rt runtime.ContainerRuntime, appID pgtype.UUID) (inst generated.ApplicationInstance, found bool, err error) {
+	rows, err := h.Queries.ListRoutableInstancesByApplication(ctx, appID)
+	if err != nil {
+		return inst, false, fmt.Errorf("listing routable instances: %w", err)
+	}
+	if len(rows) == 0 {
+		return inst, false, instances.ErrNoInstance
+	}
+	containers, lerr := rt.ListContainers(ctx)
+	if lerr != nil {
+		slog.Warn("scheduled task: could not list containers, trusting the instance rows", "application_id", formatUUID(appID), "error", lerr)
+		inst, err = instances.ResolveOne(ctx, h.Queries, appID)
+		return inst, err == nil, err
+	}
+	running := make(map[string]bool, len(containers))
+	for _, c := range containers {
+		if c.Status == "running" {
+			running[c.Name] = true
+		}
+	}
+	// rows are ORDER BY idx in SQL; do not re-sort here.
+	for _, r := range rows {
+		if running[r.ContainerName] {
+			return r, true, nil
+		}
+	}
+	return inst, false, nil
 }
 
 // recordScheduledRunInstance stores where a run executed as plain values (see migration

@@ -530,8 +530,10 @@ func processTypeOf(sourceType string, ctr runtime.ContainerInfo) pgtype.Text {
 	return pgtype.Text{String: v, Valid: true}
 }
 
-// maxInstanceIdx bounds the replica index. Replicas are capped at 20 per type, so a larger
-// value is not an index; it is a forged or foreign label.
+// maxInstanceIdx bounds the replica index. Replicas are capped at 20 per type; this is
+// deliberately far above that, as slack so a future raise of the cap does not silently
+// turn real replicas into "unknown". It only has to exclude the absurd (a forged or foreign
+// label), not enforce the product limit.
 const maxInstanceIdx = 1000
 
 // instanceIdxOf returns the validated instance-idx label for an application container, or

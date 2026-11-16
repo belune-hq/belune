@@ -41,6 +41,14 @@ function baseSource(e: LogEntry): string | null {
     : e.processType;
 }
 
+/** `base` within `room` characters, shortening the type name and keeping `-{idx}`. */
+function fitBase(e: LogEntry, base: string, room: number): string {
+  if (base.length <= room || !e.processType) return base;
+  const tail = base.slice(e.processType.length); // "-0", or "" when the idx is unknown
+  const keep = Math.max(room - tail.length - 1, 1);
+  return `${e.processType.slice(0, keep)}…${tail}`;
+}
+
 function dividerLabel(
   e: LogEntry,
   labels: ReadonlyMap<string, string>,
@@ -99,6 +107,11 @@ export function groupEntries(
   // The column appears when there is something to tell apart: more than one label, or one
   // label that is ambiguous (a roll of a single replica). A database or a lone container
   // therefore reads exactly as it always did.
+  //
+  // Known narrow gap, considered and left: if the OLD container of a roll predates the
+  // instance-idx label (0.3.2 already writes it, so only a roll across that upgrade) its
+  // lines read "web" while the new one's read "web-0". Two labels, so neither is marked
+  // ambiguous and neither gets an id or `(old)`. Graceful, and not worth machinery.
   const showSource = labelsSeen.size > 1 || ambiguous.size > 0;
 
   // The newest deployment in view is the last one first seen (the list is chronological).
@@ -134,9 +147,13 @@ export function groupEntries(
     }
     let source = base;
     if (ambiguous.has(base) && e.sessionId) {
-      source += ` · ${e.sessionId.slice(0, SHORT_ID)}`;
+      let suffix = ` · ${e.sessionId.slice(0, SHORT_ID)}`;
       if (e.deploymentId && newest !== null && e.deploymentId !== newest)
-        source += " (old)";
+        suffix += " (old)";
+      // The suffix is what disambiguates, so it is kept whole and the TYPE gives way:
+      // truncating the tail would drop `(old)` first, for any type name of 12+ chars.
+      const room = MAX_SOURCE_WIDTH - suffix.length;
+      source = fitBase(e, base, room) + suffix;
     }
     out.push({ ...e, source });
   }

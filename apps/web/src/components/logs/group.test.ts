@@ -271,6 +271,40 @@ describe("groupEntries: source labels", () => {
   });
 });
 
+describe("groupEntries: long type names", () => {
+  it("shortens the type, never the id or the (old) marker", () => {
+    const long = (sessionId: string, deploymentId: string) =>
+      line({
+        sessionId,
+        deploymentId,
+        processType: "background-worker",
+        instanceIdx: 0,
+      });
+    const out = lines(groupEntries([long(A1, DEP), long(A2, DEP2)], none));
+    const old = out[0].source!;
+    expect(old.length).toBeLessThanOrEqual(30);
+    expect(old).toMatch(/ · aaaaaaaa \(old\)$/);
+    expect(old).toContain("…-0");
+    expect(out[1].source).toMatch(/ · bbbbbbbb$/);
+    // The widest name the schema allows (20 chars) still keeps both.
+    const widest = lines(
+      groupEntries(
+        [A1, A2].map((id, i) =>
+          line({
+            sessionId: id,
+            deploymentId: i ? DEP2 : DEP,
+            processType: "a".repeat(20),
+            instanceIdx: 12,
+          }),
+        ),
+        none,
+      ),
+    );
+    expect(widest[0].source!.length).toBeLessThanOrEqual(30);
+    expect(widest[0].source).toMatch(/-12 · aaaaaaaa \(old\)$/);
+  });
+});
+
 describe("sourceWidth", () => {
   it("is the longest source text, capped", () => {
     const long = line({ source: "x".repeat(80) });

@@ -229,3 +229,43 @@ func TestListProcessTypes_ReportsTheResolvedHealth(t *testing.T) {
 	assert.Equal(t, true, web["inert"])
 	assert.NotEmpty(t, web["reason"])
 }
+
+// The replica index rides every line, in history and in the sessions list, so a line from a
+// container no instance row points at any more can still be labelled "web-1". Unknown is
+// null on a line and -1 on a session (the cast has to be honest); neither is 0, which
+// would read as "replica 0".
+func TestLogs_CarryTheInstanceIdx(t *testing.T) {
+	token, projectID, appID, appUUID, dep, _ := seedTypedLogApp(t)
+	ins := func(container string, idx pgtype.Int4, msg string) {
+		require.NoError(t, env.Queries.InsertContainerLog(context.Background(), generated.InsertContainerLogParams{
+			SourceType: "application", SourceID: appUUID, Level: "info", Stream: "stdout", Message: msg,
+			DeploymentID: dep, ContainerID: pgtype.Text{String: container, Valid: true},
+			ProcessType: pgtype.Text{String: "web", Valid: true}, InstanceIdx: idx,
+		}))
+	}
+	ins("ctr-r0", pgtype.Int4{Int32: 0, Valid: true}, "from replica zero")
+	ins("ctr-r2", pgtype.Int4{Int32: 2, Valid: true}, "from replica two")
+	ins("ctr-old", pgtype.Int4{}, "from a container with no label")
+
+	resp := env.DoRequest(t, "GET", fmt.Sprintf("/api/projects/%s/applications/%s/logs/sessions", projectID, appID), nil, testutil.AuthHeader(token))
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	sess := map[string]any{}
+	for _, s := range testutil.ReadJSONArray(t, resp) {
+		row := s.(map[string]any)
+		sess[row["container_id"].(string)] = row["instance_idx"]
+	}
+	assert.Equal(t, map[string]any{"ctr-r0": float64(0), "ctr-r2": float64(2), "ctr-old": float64(-1)}, sess)
+
+	resp = env.DoRequest(t, "GET", fmt.Sprintf("/api/projects/%s/applications/%s/logs/history", projectID, appID), nil, testutil.AuthHeader(token))
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	hist := map[string]any{}
+	for _, l := range testutil.ReadJSONArray(t, resp) {
+		row := l.(map[string]any)
+		hist[row["message"].(string)] = row["instance_idx"]
+	}
+	assert.Equal(t, map[string]any{
+		"from replica zero":              float64(0),
+		"from replica two":               float64(2),
+		"from a container with no label": nil,
+	}, hist)
+}

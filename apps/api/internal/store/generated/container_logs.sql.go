@@ -21,6 +21,7 @@ type BulkInsertContainerLogsParams struct {
 	DeploymentID pgtype.UUID        `json:"deployment_id"`
 	ContainerID  pgtype.Text        `json:"container_id"`
 	ProcessType  pgtype.Text        `json:"process_type"`
+	InstanceIdx  pgtype.Int4        `json:"instance_idx"`
 }
 
 const deleteOldContainerLogs = `-- name: DeleteOldContainerLogs :exec
@@ -50,8 +51,8 @@ func (q *Queries) GetLatestContainerLogTime(ctx context.Context, arg GetLatestCo
 }
 
 const insertContainerLog = `-- name: InsertContainerLog :exec
-INSERT INTO container_logs (source_type, source_id, level, stream, message, recorded_at, deployment_id, container_id, process_type)
-VALUES ($1, $2, $3, $4, $5, COALESCE($6::timestamptz, NOW()), $7, $8, $9)
+INSERT INTO container_logs (source_type, source_id, level, stream, message, recorded_at, deployment_id, container_id, process_type, instance_idx)
+VALUES ($1, $2, $3, $4, $5, COALESCE($6::timestamptz, NOW()), $7, $8, $9, $10)
 `
 
 type InsertContainerLogParams struct {
@@ -64,6 +65,7 @@ type InsertContainerLogParams struct {
 	DeploymentID pgtype.UUID        `json:"deployment_id"`
 	ContainerID  pgtype.Text        `json:"container_id"`
 	ProcessType  pgtype.Text        `json:"process_type"`
+	InstanceIdx  pgtype.Int4        `json:"instance_idx"`
 }
 
 func (q *Queries) InsertContainerLog(ctx context.Context, arg InsertContainerLogParams) error {
@@ -77,6 +79,7 @@ func (q *Queries) InsertContainerLog(ctx context.Context, arg InsertContainerLog
 		arg.DeploymentID,
 		arg.ContainerID,
 		arg.ProcessType,
+		arg.InstanceIdx,
 	)
 	return err
 }
@@ -91,6 +94,9 @@ SELECT cl.container_id,
        -- has NULL and non-NULL rows under one container_id, and grouping on the
        -- type would split that one session in two.
        COALESCE(MAX(cl.process_type), '')::text AS process_type,
+       -- -1 means unknown, for the same reason '' does above. MAX, not a key, for the same
+       -- reason too: a container's idx is one value, but its older rows may be NULL.
+       COALESCE(MAX(cl.instance_idx), -1)::int AS instance_idx,
        MIN(cl.recorded_at)::timestamptz AS first_at,
        MAX(cl.recorded_at)::timestamptz AS last_at,
        COUNT(*)                         AS line_count,
@@ -116,6 +122,7 @@ type ListContainerLogSessionsRow struct {
 	ContainerID  pgtype.Text        `json:"container_id"`
 	DeploymentID pgtype.UUID        `json:"deployment_id"`
 	ProcessType  string             `json:"process_type"`
+	InstanceIdx  int32              `json:"instance_idx"`
 	FirstAt      pgtype.Timestamptz `json:"first_at"`
 	LastAt       pgtype.Timestamptz `json:"last_at"`
 	LineCount    int64              `json:"line_count"`
@@ -157,6 +164,7 @@ func (q *Queries) ListContainerLogSessions(ctx context.Context, arg ListContaine
 			&i.ContainerID,
 			&i.DeploymentID,
 			&i.ProcessType,
+			&i.InstanceIdx,
 			&i.FirstAt,
 			&i.LastAt,
 			&i.LineCount,
@@ -176,7 +184,7 @@ func (q *Queries) ListContainerLogSessions(ctx context.Context, arg ListContaine
 }
 
 const searchContainerLogs = `-- name: SearchContainerLogs :many
-SELECT id, source_type, source_id, level, stream, message, recorded_at, deployment_id, container_id, process_type FROM container_logs
+SELECT id, source_type, source_id, level, stream, message, recorded_at, deployment_id, container_id, process_type, instance_idx FROM container_logs
 WHERE source_type = $1
   AND source_id = $2
   AND ($3::text IS NULL OR level = $3::text)
@@ -248,6 +256,7 @@ func (q *Queries) SearchContainerLogs(ctx context.Context, arg SearchContainerLo
 			&i.DeploymentID,
 			&i.ContainerID,
 			&i.ProcessType,
+			&i.InstanceIdx,
 		); err != nil {
 			return nil, err
 		}

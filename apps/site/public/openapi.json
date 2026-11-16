@@ -15952,6 +15952,12 @@
               "null"
             ]
           },
+          "instance_idx": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "level": {
             "type": "string"
           },
@@ -16961,6 +16967,9 @@
               "string",
               "null"
             ]
+          },
+          "instance_idx": {
+            "type": "integer"
           },
           "last_at": {
             "format": "date-time",

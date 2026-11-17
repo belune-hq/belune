@@ -8,6 +8,43 @@ import { defineConfig, globalIgnores } from "eslint/config";
 export default defineConfig([
   globalIgnores(["dist"]),
   {
+    // HTTP installs cannot use secure-context APIs directly. Keep access in
+    // helpers so localhost development cannot hide another production failure.
+    files: ["**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            'MemberExpression[object.name="crypto"][property.name="randomUUID"]',
+          message:
+            "crypto.randomUUID is secure-context only; use newClientId() from @/lib/utils/client-id.",
+        },
+      ],
+    },
+  },
+  {
+    files: ["**/*.{ts,tsx}"],
+    ignores: ["src/lib/utils/clipboard.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            'MemberExpression[object.name="crypto"][property.name="randomUUID"]',
+          message:
+            "crypto.randomUUID is secure-context only; use newClientId() from @/lib/utils/client-id.",
+        },
+        {
+          selector:
+            'MemberExpression[object.name="navigator"][property.name="clipboard"]',
+          message:
+            "navigator.clipboard is secure-context only; use copyToClipboard() from @/lib/utils/clipboard.",
+        },
+      ],
+    },
+  },
+  {
     files: ["**/*.{ts,tsx}"],
     extends: [
       js.configs.recommended,

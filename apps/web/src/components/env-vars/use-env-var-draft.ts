@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { newClientId } from "@/lib/utils/client-id";
 import type { EnvVar, EnvVarInput } from "@/lib/types";
 
 export interface DraftEnvRow {
@@ -53,7 +54,7 @@ export function useEnvVarDraft(serverVars: EnvVar[] | undefined) {
   }
 
   const addRow = useCallback(() => {
-    const clientId = crypto.randomUUID();
+    const clientId = newClientId();
     setRows((prev) => [
       ...prev,
       {
@@ -76,7 +77,7 @@ export function useEnvVarDraft(serverVars: EnvVar[] | undefined) {
       setRows((prev) => [
         ...prev,
         {
-          clientId: crypto.randomUUID(),
+          clientId: newClientId(),
           key,
           value,
           is_secret,
@@ -144,7 +145,7 @@ export function useEnvVarDraft(serverVars: EnvVar[] | undefined) {
             };
           } else {
             updated.push({
-              clientId: crypto.randomUUID(),
+              clientId: newClientId(),
               key,
               value,
               is_secret: false,

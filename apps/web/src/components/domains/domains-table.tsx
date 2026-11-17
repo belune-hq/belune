@@ -1,3 +1,4 @@
+import { copyToClipboard } from "@/lib/utils/clipboard";
 import { effectiveForceHTTPS } from "@/lib/domain-tls";
 import { useMemo } from "react";
 import { toast } from "sonner";
@@ -335,11 +336,10 @@ function DomainActions({
 }) {
   const removeDomain = useRemoveDomain(projectId, applicationId);
 
-  const handleCopyHostname = () => {
-    navigator.clipboard
-      .writeText(domain.hostname)
-      .then(() => toast.success("Hostname copied"))
-      .catch(() => toast.error("Failed to copy"));
+  const handleCopyHostname = async () => {
+    const ok = await copyToClipboard(domain.hostname);
+    if (ok) toast.success("Hostname copied");
+    else toast.error("Failed to copy");
   };
 
   return (

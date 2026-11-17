@@ -1,3 +1,4 @@
+import { copyToClipboard } from "@/lib/utils/clipboard";
 import { useState } from "react";
 import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
@@ -46,9 +47,10 @@ function RecoveryCodes({ codes }: { codes: string[] }) {
         type="button"
         variant="outline"
         size="sm"
-        onClick={() => {
-          void navigator.clipboard.writeText(codes.join("\n"));
-          toast.success("Recovery codes copied");
+        onClick={async () => {
+          const ok = await copyToClipboard(codes.join("\n"));
+          if (ok) toast.success("Recovery codes copied");
+          else toast.error("Failed to copy");
         }}
       >
         <CopyIcon aria-hidden="true" className="size-4" />

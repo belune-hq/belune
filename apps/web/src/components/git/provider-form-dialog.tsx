@@ -1,3 +1,4 @@
+import { copyToClipboard } from "@/lib/utils/clipboard";
 import { useState } from "react";
 import { useForm, useStore } from "@tanstack/react-form";
 import { toast } from "sonner";
@@ -110,8 +111,11 @@ export function ProviderFormDialog({ open, onOpenChange }: Props) {
     reset();
   };
 
-  const copyCallback = () => {
-    navigator.clipboard.writeText(callbackUrl);
+  const copyCallback = async () => {
+    if (!(await copyToClipboard(callbackUrl))) {
+      toast.error("Failed to copy");
+      return;
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };

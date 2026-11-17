@@ -19,7 +19,7 @@ interface CopyButtonProps {
 /**
  * A small button that copies `value` to the clipboard and briefly shows a
  * checkmark confirmation. A tooltip reads "Copy" and switches to "Copied!"
- * for ~2s after a successful copy. Uses the navigator.clipboard API with a
+ * for ~2s after a successful copy. Uses the clipboard helper with a
  * silent fallback on failure.
  */
 export function CopyButton({

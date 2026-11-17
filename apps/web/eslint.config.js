@@ -8,6 +8,49 @@ import { defineConfig, globalIgnores } from "eslint/config";
 export default defineConfig([
   globalIgnores(["dist"]),
   {
+    // HTTP installs cannot use secure-context APIs directly. Keep access in
+    // helpers so localhost development cannot hide another production failure.
+    files: ["**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            'MemberExpression[object.name="crypto"][property.name="randomUUID"]',
+          message:
+            "crypto.randomUUID is secure-context only; use newClientId() from @/lib/utils/client-id.",
+        },
+      ],
+    },
+  },
+  {
+    // The randomUUID rule is restated here on purpose. Flat config REPLACES a
+    // rule's options rather than merging them, so this block's two selectors
+    // win for every file it matches — and clipboard.ts, which must be ignored
+    // here because it is the one legitimate home for navigator.clipboard, then
+    // falls back to the block above and keeps the randomUUID restriction.
+    // Deleting either block as "duplicated" silently drops a guard.
+    files: ["**/*.{ts,tsx}"],
+    ignores: ["src/lib/utils/clipboard.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            'MemberExpression[object.name="crypto"][property.name="randomUUID"]',
+          message:
+            "crypto.randomUUID is secure-context only; use newClientId() from @/lib/utils/client-id.",
+        },
+        {
+          selector:
+            'MemberExpression[object.name="navigator"][property.name="clipboard"]',
+          message:
+            "navigator.clipboard is secure-context only; use copyToClipboard() from @/lib/utils/clipboard.",
+        },
+      ],
+    },
+  },
+  {
     files: ["**/*.{ts,tsx}"],
     extends: [
       js.configs.recommended,

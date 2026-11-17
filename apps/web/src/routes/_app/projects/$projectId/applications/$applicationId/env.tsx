@@ -222,7 +222,7 @@ function EnvVarsPage() {
   // Set right after adding a row; the effect below waits for that row to
   // actually be in the DOM (it renders expanded on the same pass) before
   // scrolling to it and focusing its Key field. Never reset to null — each
-  // clientId is a fresh crypto.randomUUID(), so it never repeats and the
+  // clientId comes from a page-lifetime counter, so it never repeats and the
   // effect's dependency diff alone is enough to fire exactly once per add.
   const [pendingFocusKey, setPendingFocusKey] = useState<string | null>(null);
 

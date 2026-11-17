@@ -8,7 +8,7 @@ import (
 	"github.com/belune-hq/belune/internal/runtime"
 )
 
-// removeContainersBounded takes containers away for a DELETE: a bounded polite stop, then a
+// RemoveContainersBounded takes containers away for a DELETE: a bounded polite stop, then a
 // FORCED removal, every container at once. It returns the names that could not be removed.
 //
 // ⛔ A delete is bounded, not detached-and-202'd. The container is going away regardless, so
@@ -26,7 +26,7 @@ import (
 // The caller passes a context detached from the request (context.WithoutCancel), so a client that
 // disconnects does not strand a half-removed container, and the steps get their own deadlines
 // here. A stop that fails does not skip the removal.
-func removeContainersBounded(ctx context.Context, rt runtime.ContainerRuntime, names []string, what string) (failed []string) {
+func RemoveContainersBounded(ctx context.Context, rt runtime.ContainerRuntime, names []string, what string) (failed []string) {
 	var (
 		mu sync.Mutex
 		wg sync.WaitGroup

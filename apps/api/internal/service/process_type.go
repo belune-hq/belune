@@ -518,8 +518,8 @@ func (s *ApplicationService) DeleteProcessType(ctx context.Context, appID, typeI
 	for _, in := range insts {
 		names = append(names, in.ContainerName)
 	}
-	// Bounded and concurrent: see removeContainersBounded.
-	if failed := removeContainersBounded(bg, rt, names, "delete process type"); len(failed) > 0 {
+	// Bounded and concurrent: see RemoveContainersBounded.
+	if failed := RemoveContainersBounded(bg, rt, names, "delete process type"); len(failed) > 0 {
 		warning = "process type deleted, but its container could not be removed yet; it will be reclaimed by the orphan sweep"
 	}
 	return warning, nil

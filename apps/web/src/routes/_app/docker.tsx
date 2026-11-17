@@ -34,18 +34,24 @@ export const Route = createFileRoute("/_app/docker")({
   errorComponent: RouteError,
   validateSearch: (search: Record<string, unknown>) => ({
     tab: isTab(search.tab) ? search.tab : undefined,
+    // Seeds the containers tab's search box (the application Processes tab's Inspect
+    // link points at one container by name).
+    q: typeof search.q === "string" && search.q ? search.q : undefined,
   }),
 });
 
 function DockerPage() {
-  const { tab } = Route.useSearch();
+  const { tab, q } = Route.useSearch();
   const navigate = useNavigate({ from: "/docker" });
   const isAdmin = useAuthStore((s) => s.user?.role === "admin");
 
   const activeTab: DockerTab = isTab(tab) ? tab : "overview";
   const setTab = (next: DockerTab) =>
     navigate({
-      search: () => ({ tab: next === "overview" ? undefined : next }),
+      search: () => ({
+        tab: next === "overview" ? undefined : next,
+        q: undefined,
+      }),
     });
 
   return (
@@ -73,7 +79,10 @@ function DockerPage() {
             <DockerOverviewTab enabled={activeTab === "overview"} />
           )}
           {activeTab === "containers" && (
-            <DockerContainersTab enabled={activeTab === "containers"} />
+            <DockerContainersTab
+              enabled={activeTab === "containers"}
+              initialSearch={q}
+            />
           )}
           {activeTab === "images" && (
             <DockerImagesTab enabled={activeTab === "images"} />

@@ -246,7 +246,7 @@ func (s *DatabaseService) Delete(ctx context.Context, dbID pgtype.UUID, keepBack
 		return err
 	}
 
-	removeContainersBounded(ctx, rt, []string{db.Slug}, "db deletion")
+	RemoveContainersBounded(ctx, rt, []string{db.Slug}, "db deletion")
 	if err := rt.RemoveVolume(ctx, db.Slug+"-vol"); err != nil {
 		slog.Warn("could not remove volume during db deletion", "volume", db.Slug+"-vol", "error", err)
 	}

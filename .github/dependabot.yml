@@ -103,6 +103,14 @@ updates:
     open-pull-requests-limit: 3
     commit-message:
       prefix: "chore(site)"
+    ignore:
+      # fumadocs-core moves in lockstep with the `fumadocs-ui` alias target,
+      # @fumadocs/base-ui, whose peer on it is an EXACT pin (16.19.0 requires
+      # exactly 16.19.0). Dependabot cannot see through an `npm:` alias, so it
+      # bumps core alone and every such PR fails `npm ci` — four times now
+      # (#188, #212, #220, #238), each wearing a `Backend (Go)` label, because
+      # that job runs `npm ci` in apps/site. The pair is bumped by hand instead.
+      - dependency-name: "fumadocs-core"
     groups:
       site-minor-and-patch:
         patterns:

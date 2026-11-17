@@ -3,6 +3,21 @@
 Belune — a self-hosted PaaS that ships as **one Go binary with the React SPA embedded**.
 Monorepo: `apps/api` (Go 1.26 · chi · pgx · sqlc · asynq), `apps/web` (React 19 · Vite · TanStack Router/Query · Tailwind 4 · shadcn/base-ui), `apps/site` (Next.js + Fumadocs, belune.dev).
 
+## ⛔ Never
+
+Every line here has already cost a release or produced a silently-green board.
+
+- **`npx tsc --noEmit`** — the root tsconfig is solution-style (`files: []`), so it checks **nothing** and exits 0 in 0.6s. Use `tsc -b --noEmit` or `task build:web`.
+- **Hand-edit `apps/api/internal/store/generated/**` or `apps/web/src/routeTree.gen.ts`** — regenerate them.
+- **Hand-roll JSON** — responses go through `writeJSON(w, status, data)` / `writeError(w, status, msg)` from `handler.go`, nothing else.
+- **`crypto.randomUUID()` or `navigator.clipboard`** — **secure-context only**, so both are `undefined` on any install reached as `http://<hostname>` or `http://<ip>`, i.e. every install before TLS. Use `newClientId()` / `copyToClipboard()` from `src/lib/utils/`, and check MDN for a "Secure context" banner before reaching for a new `window`/`navigator`/`crypto` API.
+- **Hand-roll a `<label>`** — use the `Label` primitive; a raw one silently loses the disabled-state and `select-none` handling `Label` already carries.
+- **`text-white` on the accent** → `text-brand-fg`. **`text-primary` for accent text** → `text-brand-text`. See *Colour*.
+- **One `useState` per form field** — `@tanstack/react-form` with field validators. The hand-rolled dialogs are legacy being migrated out; ⚠️ their actual cost is having **no client-side validation at all**.
+- **`*asynq.Client` directly** — enqueue through the `TaskEnqueuer` interface; tests mock it.
+- **Drop a column or table, or rewrite existing rows, in a migration** — `update.sh` runs migrations against live installs, and the container has already restarted by then, so a `.down.sql` could not save them either. Preserve and backfill in place, or ship a documented upgrade path. Purely additive changes need no ceremony.
+- **Call a UI change done on a green Vitest run** — see *Verifying*.
+
 ## Commands
 
 Run `task` from the repo root; `Taskfile.yml` loads `.env`.
@@ -18,7 +33,8 @@ Run `task` from the repo root; `Taskfile.yml` loads `.env`.
 | `task db:migrate:up`, `task generate:sqlc` | Apply migrations, regenerate query code |
 
 Single Go test: `cd apps/api && go test -count=1 -timeout=300s ./internal/handler/ -run TestName`.
-Handler/worker tests are **integration tests using testcontainers — Docker must be running**. ⚠️ **`-short` does not skip them** — nothing in this module calls `testing.Short()`, so the flag is inert even though CI passes it. `internal/handler`, `internal/service`, `internal/worker`, `internal/logcollector` and `internal/store` each start Postgres in `TestMain` unconditionally and `log.Fatal` without Docker, so they fail at setup rather than skipping; `internal/service/backup` starts a LocalStack container per test. The heavier drills are gated by env var instead: `BELUNE_DOCKER_INTEGRATION=1` for the worker's S3/restore tests, `BELUNE_CADDY_INTEGRATION=1` for the proxy ones. Always pass `-count=1`; the cache silently replays passes for tests that read files outside the module.
+
+⚠️ **Handler/worker/store tests are integration tests — Docker must be running.** `internal/{handler,service,worker,logcollector,store}` each start Postgres in `TestMain` unconditionally and `log.Fatal` without Docker, so they fail at setup rather than skipping; `internal/service/backup` starts a LocalStack container per test. ⚠️ **`-short` is inert** — nothing in this module calls `testing.Short()`, though CI passes it. The heavier drills gate on env vars instead: `BELUNE_DOCKER_INTEGRATION=1` (worker S3/restore), `BELUNE_CADDY_INTEGRATION=1` (proxy). ⚠️ **Always `-count=1`** — the cache silently replays passes for tests that read files outside the module.
 
 ## Architecture
 
@@ -30,44 +46,40 @@ Frontend mirrors it: `src/lib/api/<resource>.ts` (fetch) → `src/lib/hooks/use-
 ## Standards
 
 - Go: `gofmt`; wrap errors with `fmt.Errorf("doing x: %w", err)`; log with `slog`.
-- Responses: **only** `writeJSON(w, status, data)` / `writeError(w, status, msg)` from `handler.go`. Never hand-roll JSON.
 - Multi-statement writes go inside `store.WithTx(ctx, pool, func(q *generated.Queries) error {...})`.
 - TS: strict mode, `@/*` alias, no `any`, `import type` for types (`verbatimModuleSyntax`).
-- Comments explain **why**, not what — match the existing density; the codebase favors a short rationale over a restatement.
-- **Never hand-edit** `apps/api/internal/store/generated/**` or `apps/web/src/routeTree.gen.ts`.
+- Comments explain **why**, not what — match the existing density; this codebase favors a short rationale over a restatement.
 
 ## Procedures
 
-**Changing the schema** → add a forward-only `apps/api/internal/migrations/0000NN_name.up.sql` (forward-only is the convention here; new migrations ship without a `.down.sql`) → edit `internal/store/queries/*.sql` → `task generate:sqlc` → verify with `go run ./cmd/migrate-check` against a fresh DB.
+**Schema change** → forward-only `apps/api/internal/migrations/0000NN_name.up.sql` (new migrations ship without a `.down.sql`) → edit `internal/store/queries/*.sql` → `task generate:sqlc` → verify with `go run ./cmd/migrate-check` against a fresh DB.
 
-⚠️ **If you edit a migration that has already been applied, run `task db:verify`.** `migrate-check` only proves a migration applies to a *fresh* database; golang-migrate records the version number alone, so an edited file never re-runs and your database silently lacks what the edit added — `schema_migrations` still reads clean. `task db:verify` builds the schema the migrations describe and diffs it against yours, which is the only way to see that gap. It is how a dev database that applied `000068` before `picked_up_at` existed was found, after every request to the scheduled-tasks endpoint had been answering 500. Editing an applied migration is safe only **before** release; once a version ships, fix it forward in a new migration instead.
+⚠️ **Edited a migration that was already applied? → `task db:verify`.** golang-migrate records the version number alone, so the edited file never re-runs: your database silently lacks what the edit added while `schema_migrations` still reads clean, and `migrate-check` cannot see it (it only proves a *fresh* database applies). `db:verify` diffs the schema the migrations describe against yours — it is how a dev DB that applied `000068` before `picked_up_at` existed was found, after every scheduled-tasks request had been answering 500. ⛔ Safe only **before** release; once a version ships, fix it forward.
 
-**Dropping or restructuring existing data** → v0.1.x is a public release line and `update.sh` runs migrations against live installs, so a migration that drops a column/table or rewrites existing rows breaks real upgrades — and a down migration would not save them, since the container has already restarted by then. Preserve and backfill in place, or ship a documented upgrade path. Purely additive changes need no such ceremony.
+**Full-row `UPDATE`** (e.g. `UpdateApplication` sets every source column) → the handler MUST `Get<Resource>` first and fall back to the stored value for each field the request omits. A partial body passed straight through silently clears `source_repo`, `branch`, `root_directory`.
 
-**Writing/using a full-row `UPDATE`** (e.g. `UpdateApplication` sets every source column) → the handler MUST `Get<Resource>` first and fall back to the stored value for each field the request omits. Passing a partial body straight through silently clears `source_repo`, `branch`, `root_directory`, etc.
+**New endpoint** → register in `internal/server/routes.go` inside the right auth/rate-limit group, wrapped in `withTimeout(handlerTimeout)`; handler + service method; `h.audit(r, action, resourceType, id, details)` for any mutation; integration test in `internal/handler/*_test.go` (start from `resetDB(t)` + `testutil` fixtures).
 
-**Adding an endpoint** → register in `internal/server/routes.go` inside the right auth/rate-limit group and wrap with `withTimeout(handlerTimeout)`; add a handler + service method; call `h.audit(r, action, resourceType, id, details)` for any mutation; add an integration test in `internal/handler/*_test.go` (start from `resetDB(t)` + `testutil` fixtures).
+**New background job** → `Type<Name>` const in `worker/tasks.go`, handler file in `internal/worker/`, register in `worker.go`, enqueue via `TaskEnqueuer`.
 
-**Adding a background job** → new `Type<Name>` const in `worker/tasks.go`, handler file in `internal/worker/`, register in `worker.go`, enqueue via the `TaskEnqueuer` interface (never `*asynq.Client` directly — tests mock the interface).
+**Storing a secret** → encrypt with `cfg.Keyring.Encrypt`, persist to the `*_encrypted` column, mask on read. Add new key columns to `cmd/rewrap` so key rotation covers them. Redact paths/errors with `internal/pkg/redact` before logging.
 
-**Storing a secret** → encrypt with `cfg.Keyring.Encrypt`, persist to the `*_encrypted` column, and mask on read. Add new key columns to `cmd/rewrap` so key rotation covers them. Redact paths/errors with `internal/pkg/redact` before logging.
+**Frontend data access** → API fn in `src/lib/api/`, hook in `src/lib/hooks/`, key registered in `src/lib/hooks/query-keys.ts` — invalidate through that object, never an inline array literal.
 
-**Adding frontend data access** → API fn in `src/lib/api/`, hook in `src/lib/hooks/`, and register the key in `src/lib/hooks/query-keys.ts` — invalidate through that object, never an inline array literal.
+**New UI component** → reuse `src/components/ui/` (41 shadcn/base-ui primitives, `style: base-nova`, lucide icons); add via the shadcn skill/CLI rather than pasting. `Switch` for toggles, `PageTabs` for tabbed pages.
 
-**Type-checking the web app** → `npx tsc --noEmit` checks **nothing** here (root tsconfig is solution-style with `files: []`) and exits 0 in 0.6s. Use `tsc -b --noEmit` or `task build:web`.
-
-**Adding a UI component** → reuse `src/components/ui/` (41 shadcn/base-ui primitives, `style: base-nova`, lucide icons). Add via the shadcn skill/CLI rather than pasting; use `Switch` for toggles and `PageTabs` for tabbed pages. **Never hand-roll a `<label>`** — use the `Label` primitive; a raw one silently loses the disabled-state and `select-none` handling `Label` already carries.
-
-**Text on the accent colour** → `text-brand-fg`, never `text-white`. `--brand-fg` is computed per accent *and* per theme; it happens to be white in all four combinations today, but that is a property of the current palette, not a promise, and `text-brand-fg` is what stays correct if it changes. `text-white` is only correct on a fixed surface such as the destructive button's red.
-
-**The accent colour as text** → `text-brand-text`, never `text-primary`. `--brand` is a *fill* tuned to carry white text; in dark mode that makes it too dark to read as text on the page (3.5–3.6:1), and no single shade satisfies both jobs. `--brand-text` is the brand at a shade that reads on a surface — identical to `--brand` in light mode, lighter in dark. Links, `link` buttons, pill/badge text, the active tab icon and hover-to-brand titles all take it; fills, borders and soft backgrounds stay on `--brand`. Check any colour decision on `/dev/theme` (dev-only), which renders every primitive in all four accent × mode combinations side by side.
-
-**Building a form** → `@tanstack/react-form` with field validators, never one `useState` per field. The hand-rolled pattern still present in some dialogs is legacy being migrated out — do not copy it into new code, and note those forms have no client-side validation at all, which is the actual cost.
+**Colour** → `text-brand-fg` for text *on* the accent: `--brand-fg` is computed per accent **and** per theme, white in all four combinations today, but that is the current palette, not a promise (`text-white` is only correct on a fixed surface such as the destructive red). `text-brand-text` for the accent *as* text: `--brand` is a **fill** tuned to carry white text and reads at only 3.5–3.6:1 on a dark page, and no single shade satisfies both jobs. Links, `link` buttons, pill/badge text, the active tab icon and hover-to-brand titles take `--brand-text`; fills, borders and soft backgrounds stay on `--brand`. ⬅️ Check every colour decision on **`/dev/theme`** (dev-only) — every primitive, all four accent × mode combinations, side by side.
 
 **Committing** → Conventional Commits with a scope (`feat(api,web):`, `fix(deploy):`) and **DCO sign-off**: `git commit -s`. One logical change per commit.
 
-**Touching deploys, databases, backups, or Caddy routing** → mocks do not catch Docker or Caddy behavior. Say so, and smoke-test against a real dev stack before claiming it works.
+**Docs** → every `##`/`###`/`####` heading in `apps/site/content/docs/*.mdx` is Title Case.
 
-**Changing what the operator SEES** → a green Vitest run is not proof the UI renders. The `dom` project runs in jsdom, which has no layout engine and only a partial `getComputedStyle`, so a toast composited at `opacity: 0` satisfies every assertion — `toBeVisible()` included, in Playwright too — while a human sees nothing. v0.1.16 shipped exactly that. Real rendering is covered by `task test:browser` (`scripts/smoke-browser.sh`), which boots the production stack and drives it with Playwright from `apps/web/e2e`; it is part of CI's `Production smoke drill` job, which runs on pull requests as well as pushes.
+## Verifying — what each check can and cannot see
 
-**Editing `apps/site/content/docs/*.mdx`** → every `##`/`###`/`####` heading is Title Case.
+⚠️ **Mocks do not catch Docker or Caddy behavior.** Touching deploys, databases, backups or Caddy routing: say so, and smoke-test against a real dev stack before claiming it works.
+
+⚠️ **A green Vitest run is not proof the UI renders.** The `dom` project runs in jsdom: no layout engine, only a partial `getComputedStyle`, so a toast composited at `opacity: 0` satisfies every assertion — `toBeVisible()` included, in Playwright too — while a human sees nothing. **v0.1.16 shipped exactly that.** Real rendering is `task test:browser` (`scripts/smoke-browser.sh`), which boots the production stack and drives it with Playwright from `apps/web/e2e`; it is CI's `Production smoke drill` job, on pull requests as well as pushes.
+
+⚠️ **Playwright matches an accessible name by SUBSTRING.** `exact: true` fixes a name that is a *prefix of other names* and **breaks** one that is a *prefix of the real name* — platform-minted container names carry a random suffix, so `worker-1` is never exact. ⬅️ **Before calling a UI change done, grep `apps/web/e2e` for the accessible names you touched.** Three consecutive smoke-drill failures were names alone, and that habit found five more breaks the first time it ran.
+
+⚠️ **`127.0.0.1` is a secure context**, so the smoke drill cannot see the secure-context class of bug at all — see *Never*.

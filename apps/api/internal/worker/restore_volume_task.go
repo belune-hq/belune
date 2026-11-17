@@ -178,7 +178,7 @@ func (h *TaskHandler) resolveVolumeBackupFile(ctx context.Context, bk generated.
 // under a live writer would corrupt the volume.
 func (h *TaskHandler) restoreAppVolume(ctx context.Context, rt runtime.ContainerRuntime, volumeName, mountPath, containerName string, appRunning bool, archivePath string, lg *runLog) error {
 	helperImage := h.Config.DatabaseBackupHelperImage
-	if err := rt.PullImage(ctx, helperImage); err != nil {
+	if err := rt.PullImage(ctx, helperImage, nil); err != nil {
 		return fmt.Errorf("pull helper image: %w", err)
 	}
 

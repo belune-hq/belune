@@ -41,6 +41,7 @@ type target struct {
 // fails when the schema and this list disagree, so add the column here in the
 // same change that creates it.
 var targets = []target{
+	{"registry_credentials", "id", "password_encrypted"},
 	// git_credentials is deliberately absent: migration 000020 folded it into
 	// applications.git_credentials_encrypted and dropped the table, so the
 	// target that used to be here made every run fail its select and exit 1.

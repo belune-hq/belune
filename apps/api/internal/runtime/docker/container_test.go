@@ -65,7 +65,7 @@ func TestContainerLifecycle(t *testing.T) {
 	defer cancel()
 
 	// Ensure the test image is present before creating the container.
-	require.NoError(t, c.PullImage(ctx, containerTestImage), "pull %s", containerTestImage)
+	require.NoError(t, c.PullImage(ctx, containerTestImage, nil), "pull %s", containerTestImage)
 
 	name := uniqueTestContainerName(t)
 	id, err := c.CreateContainer(ctx, runtime.ContainerConfig{
@@ -137,7 +137,7 @@ func buildEntrypointImage(t *testing.T, c *Client, tag string) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	require.NoError(t, c.PullImage(ctx, containerTestImage))
+	require.NoError(t, c.PullImage(ctx, containerTestImage, nil))
 	resp, err := c.cli.ImageBuild(ctx, &buf, build.ImageBuildOptions{Tags: []string{tag}, Remove: true, ForceRemove: true})
 	require.NoError(t, err)
 	_, err = io.Copy(io.Discard, resp.Body)
@@ -203,7 +203,7 @@ func TestNetworkAliases_AreRecordedOnTheNetworkForEveryGeneration(t *testing.T) 
 	c := newTestDockerClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
-	require.NoError(t, c.PullImage(ctx, containerTestImage))
+	require.NoError(t, c.PullImage(ctx, containerTestImage, nil))
 
 	netName := uniqueTestContainerName(t) + "-net"
 	require.NoError(t, c.CreateNetwork(ctx, netName))
@@ -247,7 +247,7 @@ func TestNetworkAliases_ASharedAliasResolvesToBothGenerationsMidRoll(t *testing.
 	c := newTestDockerClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
-	require.NoError(t, c.PullImage(ctx, containerTestImage))
+	require.NoError(t, c.PullImage(ctx, containerTestImage, nil))
 
 	netName := uniqueTestContainerName(t) + "-net"
 	require.NoError(t, c.CreateNetwork(ctx, netName))

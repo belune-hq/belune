@@ -719,7 +719,7 @@ func (h *TaskHandler) snapshotVolume(ctx context.Context, rt runtime.ContainerRu
 		return errors.Join(errors.New("data_dir is not set (permanent)"), asynq.SkipRetry)
 	}
 	helperImage := h.Config.DatabaseBackupHelperImage
-	if err := rt.PullImage(ctx, helperImage); err != nil {
+	if err := rt.PullImage(ctx, helperImage, nil); err != nil {
 		return fmt.Errorf("pull helper image: %w", err)
 	}
 
@@ -1044,7 +1044,7 @@ func (h *TaskHandler) restoreVolume(ctx context.Context, rt runtime.ContainerRun
 		return errors.Join(errors.New("data_dir is not set (permanent)"), asynq.SkipRetry)
 	}
 	helperImage := h.Config.DatabaseBackupHelperImage
-	if err := rt.PullImage(ctx, helperImage); err != nil {
+	if err := rt.PullImage(ctx, helperImage, nil); err != nil {
 		return fmt.Errorf("pull helper image: %w", err)
 	}
 

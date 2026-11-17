@@ -1,4 +1,5 @@
 export const queryKeys = {
+  registries: { all: ["registry-credentials"] as const },
   auth: {
     me: ["auth", "me"] as const,
     setup: ["auth", "setup"] as const,

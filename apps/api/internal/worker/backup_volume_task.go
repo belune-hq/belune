@@ -216,7 +216,7 @@ func (h *TaskHandler) HandleBackupVolumeTask(ctx context.Context, t *asynq.Task)
 // the app container is stopped for the tar and restarted afterwards.
 func (h *TaskHandler) snapshotAppVolume(ctx context.Context, rt runtime.ContainerRuntime, volumeName, mountPath, containerName string, quiesce, appRunning bool, f *os.File, lg *runLog) error {
 	helperImage := h.Config.DatabaseBackupHelperImage
-	if err := rt.PullImage(ctx, helperImage); err != nil {
+	if err := rt.PullImage(ctx, helperImage, nil); err != nil {
 		return fmt.Errorf("pull helper image: %w", err)
 	}
 

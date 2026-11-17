@@ -335,7 +335,7 @@ func TestGitIntegration_CannotBeAttachedByNonOwner(t *testing.T) {
 	require.Equal(t, http.StatusOK, shareResp.StatusCode)
 	shareResp.Body.Close()
 
-	// UpdateApplication is a full-row update (see CLAUDE.md): name and
+	// UpdateApplication is a full-row update (see AGENTS.md): name and
 	// source_repo must ride along on every PUT, or validateSource itself
 	// 400s before the ownership check is even reached. Sending them
 	// unchanged isolates what these assertions are actually testing.

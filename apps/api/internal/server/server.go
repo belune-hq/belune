@@ -92,6 +92,9 @@ func (s *Server) SetWAF(p handler.WAFStatsProvider) {
 	s.handler.SetWAF(p)
 }
 
+// SetCAPI wires anonymous Central API management before serving requests.
+func (s *Server) SetCAPI(svc *crowdsec.CAPIManager) { s.handler.SetCAPI(svc) }
+
 // SetCrowdSec wires the CrowdSec service into the handlers. Called once at startup,
 // before the server accepts requests.
 func (s *Server) SetCrowdSec(svc *crowdsec.Service) {

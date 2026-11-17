@@ -3186,6 +3186,101 @@
         ]
       }
     },
+    "/api/maintenance/proxy/crowdsec/capi": {
+      "get": {
+        "operationId": "GetCrowdSecCAPI",
+        "summary": "Get Central API Status",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "Maintenance (Admin)"
+        ],
+        "x-belune-order": 15,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CAPIStatus"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "UpdateCrowdSecCAPI",
+        "summary": "Change Central API Settings",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "Maintenance (Admin)"
+        ],
+        "x-belune-order": 16,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CAPIChange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/maintenance/proxy/crowdsec/decisions": {
       "delete": {
         "operationId": "DeleteCrowdSecBan",
@@ -15948,6 +16043,70 @@
       "Branch": {
         "properties": {
           "name": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "CAPIChange": {
+        "properties": {
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "sharing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CAPISharing"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "CAPISharing": {
+        "properties": {
+          "share_context": {
+            "type": "boolean"
+          },
+          "share_custom": {
+            "type": "boolean"
+          },
+          "share_manual_decisions": {
+            "type": "boolean"
+          },
+          "share_tainted": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "CAPIStatus": {
+        "properties": {
+          "busy": {
+            "type": "boolean"
+          },
+          "health": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "sharing": {
+            "$ref": "#/components/schemas/CAPISharing"
+          },
+          "sharing_available": {
+            "type": "boolean"
+          },
+          "state": {
             "type": "string"
           }
         },

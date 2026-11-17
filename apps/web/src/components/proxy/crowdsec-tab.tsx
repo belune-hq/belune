@@ -1,3 +1,4 @@
+import { CAPICard } from "./capi-card";
 import { useState } from "react";
 import { useForm } from "@tanstack/react-form";
 import {
@@ -132,6 +133,7 @@ export function CrowdSecTab() {
         </>
       )}
       {status && <AutobanCard status={status} />}
+      <CAPICard />
       <HistoryCard />
       <LockoutCard />
     </div>

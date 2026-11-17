@@ -720,6 +720,8 @@ func registerRoutes(r chi.Router, h *handler.Handler, auth *service.AuthService,
 					// that turns WAF detections into bans. Every reversal (lifting a
 					// ban, leaving the allowlist) is here and is never gated on the
 					// feature being on.
+					r.With(middleware.RequireSession(), withTimeout(handlerTimeout)).Get("/api/maintenance/proxy/crowdsec/capi", h.GetCrowdSecCAPI)
+					r.With(middleware.RequireSession(), withTimeout(handlerTimeout)).Put("/api/maintenance/proxy/crowdsec/capi", h.UpdateCrowdSecCAPI)
 					r.With(withTimeout(handlerTimeout)).Get("/api/maintenance/proxy/crowdsec", h.GetCrowdSecStatus)
 					r.With(withTimeout(handlerTimeout)).Put("/api/maintenance/proxy/crowdsec", h.UpdateCrowdSec)
 					r.With(withTimeout(handlerTimeout)).Get("/api/maintenance/proxy/crowdsec/decisions", h.ListCrowdSecDecisions)

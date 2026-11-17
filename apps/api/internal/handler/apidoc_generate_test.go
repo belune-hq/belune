@@ -533,7 +533,8 @@ func TestGenerateAPIReference(t *testing.T) {
 	// re-gated — worth an explicit look either way, the same reasoning
 	// destroy_boundary_test.go and reveal_boundary_test.go's own sanity floors
 	// give for their sets.
-	require.Equal(t, 54, sessionRoutes, "expected exactly 54 RequireSession routes")
+	// 54 -> 56: Central API configuration is a session-only operator decision.
+	require.Equal(t, 56, sessionRoutes, "expected exactly 56 RequireSession routes")
 
 	sig, directives, behaviour, reg := apidocExtractTypes(t)
 	apidocAssertEmbedsPromoted(t, reg)

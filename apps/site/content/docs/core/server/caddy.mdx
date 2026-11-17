@@ -132,11 +132,21 @@ The CrowdSec tab bans addresses from your applications. A ban is a decision held
 
 ### What Runs
 
-Belune's stack gains one service, `crowdsec`, running only CrowdSec's local API. Its log-parsing agent and its link to CrowdSec's central API are both switched off, so **nothing is banned that you or your own policy did not ban, and nothing leaves your server**: no community blocklist (which would ban addresses behind shared NAT and CDNs) and no signals sent out. It idles at about 70 MB with a 256 MB ceiling, and its image is about 170 MB to pull. It always runs, because a dashboard cannot start a compose service; the switch decides whether Caddy consults it.
+Belune's stack gains one service, `crowdsec`, running only CrowdSec's local API. Its log-parsing agent and its link to CrowdSec's Central API are switched off by default. In that default state, **only your own decisions and policies produce bans, and no detection signals leave your server**. You can opt into community blocklists and signal sharing separately, as described below. It idles at about 70 MB with a 256 MB ceiling, and its image is about 170 MB to pull. It always runs, because a dashboard cannot start a compose service; the switch decides whether Caddy consults it.
 
 Belune drives it by running `cscli` inside that container, the same way it runs `caddy list-modules` in Caddy's. The only secret Belune holds is the bouncer's key, which can read the ban list and nothing else. CrowdSec generates it, Belune stores it encrypted and hands it to Caddy, and it never appears on a command line or in a response.
 
 A release that adds this service changes the compose file, so updating to it restarts the stack briefly, and a host that has not run the update shows the tab as **Local API down**.
+
+### Community Protection And Sharing
+
+In **Proxy → CrowdSec**, the **Community protection (Central API)** card lets an admin anonymously register the instance with CrowdSec. Enabling it downloads community blocklists and sends detection signals, including source IPs and scenario names, to CrowdSec. Community blocklists can include addresses behind shared NAT and CDNs; review that tradeoff before enabling them.
+
+The card reads this instance's actual sharing preferences. Four switches control additional data: manual ban decisions (including their target addresses), custom scenario alerts, locally modified scenario alerts, and alert context that may include request or log details. CrowdSec ships custom and modified scenario sharing enabled; Belune shows those existing settings in the confirmation before registration. You can adjust the switches before confirming or save changes later. No CrowdSec console account or enrollment key is needed.
+
+Changes run in the background and the card reports the result automatically. CrowdSec restarts while applying them. If registration or startup fails after configuration changes, Belune restores the previous configuration and verifies that the local API is healthy before reporting **Failed and reverted**. A recovery that cannot be verified is reported as a failure requiring attention. Turning Central API off stops community API communication and preserves unrelated operator overrides; local bans and bouncer authentication continue to work.
+
+Central API credentials and settings persist across container restarts and upgrades. Its toggle controls the external service; the separate CrowdSec switch still controls whether Caddy enforces the local decision list.
 
 ### What Is Never Banned
 

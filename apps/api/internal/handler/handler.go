@@ -103,6 +103,7 @@ type Handler struct {
 	waf WAFStatsProvider
 	// crowdsec drives the CrowdSec local API; nil until wired.
 	crowdsec *crowdsec.Service
+	capi     *crowdsec.CAPIManager
 	// caddyInspector is built on first use and kept: it holds the version cache.
 	caddyInspector     *caddyinfo.Inspector
 	caddyInspectorOnce sync.Once

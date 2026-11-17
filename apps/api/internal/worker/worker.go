@@ -14,6 +14,7 @@ import (
 
 	"github.com/belune-hq/belune/internal/build"
 	"github.com/belune-hq/belune/internal/config"
+	"github.com/belune-hq/belune/internal/crowdsec"
 	"github.com/belune-hq/belune/internal/pkg/crypto"
 	"github.com/belune-hq/belune/internal/proxy"
 	"github.com/belune-hq/belune/internal/quota"
@@ -67,6 +68,7 @@ type TaskHandler struct {
 	// CrowdSec bans addresses whose WAF detections cross the operator's line. Nil
 	// when CrowdSec is not wired, in which case the task does nothing.
 	CrowdSec AutobanEvaluator
+	CAPI     *crowdsec.CAPIManager
 	// UpdateManifestURL overrides defaultUpdateManifestURL. Empty means the
 	// real belune.dev manifest; tests point it at an httptest.Server so the
 	// daily check never makes a real outbound request.
@@ -175,6 +177,7 @@ func (w *Worker) Start() error {
 		w.handler.HandleCrowdSecAutoban(ctx)
 		return nil
 	})
+	mux.HandleFunc(TypeCrowdSecCAPI, w.handler.HandleCrowdSecCAPITask)
 	mux.HandleFunc(TypeTemplateFinalize, w.handler.HandleTemplateFinalizeTask)
 	mux.HandleFunc(TypeNotifyDeliver, w.handler.HandleNotifyDeliverTask)
 	mux.HandleFunc(TypeTLSProbe, func(ctx context.Context, t *asynq.Task) error {

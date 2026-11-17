@@ -185,28 +185,48 @@ func tarDirectory(dir string) (io.Reader, error) {
 			return filepath.SkipDir
 		}
 
-		header, err := tar.FileInfoHeader(info, "")
+		// Preserve links rather than copying their target into a zero-size entry.
+		link := ""
+		if info.Mode()&os.ModeSymlink != 0 {
+			link, err = os.Readlink(path)
+			if err != nil {
+				return fmt.Errorf("readlink %s: %w", relPath, err)
+			}
+		}
+		header, err := tar.FileInfoHeader(info, link)
 		if err != nil {
-			return err
+			return fmt.Errorf("archive header %s: %w", relPath, err)
 		}
-		header.Name = strings.ReplaceAll(relPath, string(filepath.Separator), "/")
-
-		if err := tw.WriteHeader(header); err != nil {
-			return err
-		}
-
-		if info.IsDir() {
+		header.Name = filepath.ToSlash(relPath)
+		writeHeader := func() error {
+			if err := tw.WriteHeader(header); err != nil {
+				return fmt.Errorf("write header %s: %w", relPath, err)
+			}
 			return nil
+		}
+		if !info.Mode().IsRegular() {
+			return writeHeader()
 		}
 
 		f, err := os.Open(path)
 		if err != nil {
-			return err
+			return fmt.Errorf("open %s: %w", relPath, err)
 		}
 		defer f.Close()
-
-		_, err = io.Copy(tw, f)
-		return err
+		// Size from the descriptor, then bound the copy so later growth cannot
+		// overflow the entry. Shrinkage must fail rather than truncate silently.
+		st, err := f.Stat()
+		if err != nil {
+			return fmt.Errorf("stat %s: %w", relPath, err)
+		}
+		header.Size = st.Size()
+		if err := writeHeader(); err != nil {
+			return err
+		}
+		if _, err := io.CopyN(tw, f, header.Size); err != nil {
+			return fmt.Errorf("%s changed while the build context was being archived: %w", relPath, err)
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err

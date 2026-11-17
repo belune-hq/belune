@@ -161,7 +161,7 @@ export function ProcessTypesSection({ projectId, applicationId }: Props) {
                 <h3 id="proc-routable" className="text-sm font-medium">
                   Routable
                 </h3>
-                <ul className="space-y-3">
+                <ul className="grid gap-3 md:grid-cols-2">
                   <TypeCard
                     pt={routable}
                     projectId={projectId}

@@ -54,6 +54,7 @@ import {
   useReloadInstance,
   useRestartInstance,
 } from "@/lib/hooks/use-process-types";
+import { shortContainerName } from "@/lib/utils/container-name";
 import { useVolumes } from "@/lib/hooks/use-volumes";
 import { useAuthStore } from "@/lib/stores/auth";
 import type { ProcessInstance, ProcessType } from "@/lib/types";
@@ -234,11 +235,15 @@ export function ProcessTypesSection({ projectId, applicationId }: Props) {
   );
 }
 
+const HEALTH_KIND_LABEL = {
+  http: "HTTP probe",
+  command: "Command",
+  none: "None",
+} as const;
+
 function healthText(pt: ProcessType): string {
   const h = pt.resolved_health;
-  const label = { http: "HTTP probe", command: "Command", none: "None" }[
-    h.kind
-  ];
+  const label = HEALTH_KIND_LABEL[h.kind];
   if (h.kind === "command" && pt.health_check_command) {
     return `${label}: ${pt.health_check_command}`;
   }
@@ -339,20 +344,38 @@ function TypeCard({
         </dd>
         <dt>Health check</dt>
         {pt.resolved_health.inert ? (
-          // Loud and visible, never behind a hover (unreachable on touch): http with no
-          // path means a deploy replaces a working version unverified.
-          <dd
-            className="flex min-w-0 items-start gap-1.5 text-amber-700 dark:text-amber-400"
-            data-testid="health-inert"
-          >
-            <TriangleAlertIcon
-              aria-hidden="true"
-              className="mt-0.5 size-3.5 shrink-0"
-            />
-            <span>
-              {healthText(pt)}. A deploy replaces the running version without
-              checking the new one.
-            </span>
+          // Still amber, with the warning icon: http with no path means a deploy replaces a
+          // working version unverified, and the colour and icon say so at a glance. The owner
+          // chose to keep the card short, so the sentence is the tooltip's; a screen-reader
+          // copy keeps it available without hovering. (A tooltip is not reachable on touch.)
+          <dd data-testid="health-inert" className="min-w-0">
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span
+                    tabIndex={0}
+                    className="inline-flex cursor-help items-center gap-1.5 text-amber-700 dark:text-amber-400"
+                  />
+                }
+              >
+                <TriangleAlertIcon
+                  aria-hidden="true"
+                  className="size-3.5 shrink-0"
+                />
+                {HEALTH_KIND_LABEL[pt.resolved_health.kind]}
+                <span className="sr-only">
+                  {" "}
+                  — no path set, so nothing is checked. A deploy replaces the
+                  running version without checking the new one.
+                </span>
+              </TooltipTrigger>
+              <TooltipPositioner>
+                <TooltipContent>
+                  {healthText(pt)}. A deploy replaces the running version
+                  without checking the new one.
+                </TooltipContent>
+              </TooltipPositioner>
+            </Tooltip>
           </dd>
         ) : (
           <dd className="min-w-0">
@@ -522,8 +545,12 @@ function InstanceRow({
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         {/* A word, not just a colour: unhealthy, stopped and error are different facts. */}
         <StatusPill status={inst.status} />
-        <span className="text-text-faint min-w-0 truncate font-mono text-xs">
-          {inst.container_name}
+        {/* Short on purpose; the full name is the title and the menu's accessible name. */}
+        <span
+          title={inst.container_name}
+          className="text-text-faint min-w-0 truncate font-mono text-xs"
+        >
+          {shortContainerName(pt.name, inst)}
         </span>
       </div>
       <DropdownMenu>

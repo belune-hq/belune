@@ -188,8 +188,10 @@ test("a type with two replicas shows two rows, the metrics heading names the web
   // Two replicas, two rows, each with its own container name and Restart control.
   const workerRow = page.getByRole("listitem").filter({ hasText: /^worker/ });
   await expect(workerRow).toBeVisible();
-  await expect(workerRow.getByText(`${app.slug}-worker-1`)).toBeVisible();
-  await expect(workerRow.getByText(`${app.slug}-worker-2`)).toBeVisible();
+  // Shortened to {type}-{idx}[-suffix]: worker-1 was minted by the API (with a suffix),
+  // worker-2 was seeded by psql under a bare name.
+  await expect(workerRow.getByText(/^worker-1(-[0-9a-f]{8})?$/)).toBeVisible();
+  await expect(workerRow.getByText("worker-2", { exact: true })).toBeVisible();
   for (const n of [1, 2]) {
     await workerRow
       .getByRole("button", {

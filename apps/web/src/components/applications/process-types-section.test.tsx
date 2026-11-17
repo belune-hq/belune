@@ -234,7 +234,9 @@ describe("ProcessTypesSection", () => {
 
   it("shows each type's container and status", () => {
     renderIt();
-    expect(screen.getByText("proj-app-1234abcd-worker-1")).toBeTruthy();
+    // Shortened to {type}-{idx}; the full name is the row's title.
+    expect(screen.getByText("worker-1")).toBeTruthy();
+    expect(screen.getByTitle("proj-app-1234abcd-worker-1")).toBeTruthy();
     // A WORD, not just a colour: unhealthy, stopped and error are different facts.
     expect(screen.getByText("Pending")).toBeTruthy();
     expect(screen.getByText("Running")).toBeTruthy();
@@ -352,16 +354,18 @@ describe("ProcessTypesSection", () => {
     ];
     renderIt();
     const warn = screen.getByTestId("health-inert");
-    expect(warn.textContent).toContain(
-      "HTTP probe — no path set, so nothing is checked",
-    );
-    expect(warn.textContent).toContain("without checking the new one");
-    // ⚠️ jsdom has no layout engine, so this proves the text is in the document and NOT in
-    // a tooltip: it does not prove it renders (toBeVisible() passes on an opacity: 0
-    // block). Only a browser does.
-    expect(document.body.contains(warn)).toBe(true);
-    expect(warn.closest('[data-slot="tooltip-trigger"]')).toBeNull();
-    expect(warn.closest("[role='tooltip']")).toBeNull();
+    // The card is short: the amber icon and "HTTP probe". The sentence is the tooltip's,
+    // with a screen-reader copy so it is not lost to someone who cannot hover.
+    const label = within(warn).getByText("HTTP probe", { selector: "span" });
+    expect(label.className).toMatch(/amber/);
+    expect(warn.querySelector("svg")).not.toBeNull();
+    const sr = warn.querySelector(".sr-only");
+    expect(sr?.textContent).toContain("no path set, so nothing is checked");
+    expect(sr?.textContent).toContain("without checking the new one");
+    // ⚠️ jsdom has no layout engine: this proves the label, icon and text are in the document,
+    // not that they render (toBeVisible() passes on an opacity: 0 block) or that the tooltip
+    // opens. Only a browser does. A tooltip is also unreachable on touch: the amber icon and
+    // label are what a touch user sees.
   });
 
   it("shows the plain label, no warning, for a probe that can run", () => {
@@ -559,16 +563,16 @@ describe("ProcessTypesSection", () => {
         pt({ id: "k", name: "worker", replicas: 7, instances: many(7) }),
       ];
       renderIt();
-      expect(screen.getByText("w-3")).toBeTruthy();
-      expect(screen.queryByText("w-4")).toBeNull();
+      expect(screen.getByText("worker-3")).toBeTruthy();
+      expect(screen.queryByText("worker-4")).toBeNull();
       const more = screen.getByRole("button", { name: "4 more" });
       expect(more.getAttribute("aria-expanded")).toBe("false");
       fireEvent.click(more);
-      expect(screen.getByText("w-7")).toBeTruthy();
+      expect(screen.getByText("worker-7")).toBeTruthy();
       const fewer = screen.getByRole("button", { name: "Show fewer" });
       expect(fewer.getAttribute("aria-expanded")).toBe("true");
       fireEvent.click(fewer);
-      expect(screen.queryByText("w-4")).toBeNull();
+      expect(screen.queryByText("worker-4")).toBeNull();
     });
 
     it("has no control when everything fits", () => {

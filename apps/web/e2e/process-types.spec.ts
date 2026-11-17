@@ -87,7 +87,9 @@ test("the Processes tab shows the routable type, adds a worker, and offers no wa
   await expect(health).toBeVisible();
   expect((await settled(health)).height).toBeGreaterThan(10);
   await expect(webRow.getByTestId("health-inert")).toHaveCount(0);
-  await expect(webRow.getByText(app.slug, { exact: true })).toBeVisible();
+  // The container shows as {type}-{idx}[-suffix]; a new application's is named by its slug,
+  // so no suffix.
+  await expect(webRow.getByText("web-1", { exact: true })).toBeVisible();
   // The type's kebab: Edit, and no Delete (domains route to this type) and no Stop.
   await webRow
     .getByRole("button", { name: "Actions for web", exact: true })
@@ -132,7 +134,7 @@ test("the Processes tab shows the routable type, adds a worker, and offers no wa
   await expect(workerRow).toBeVisible();
   // A worker with nothing set resolves to none, never the application's http.
   await expect(workerRow.getByText("Default", { exact: true })).toBeVisible();
-  await expect(workerRow.getByText(`${app.slug}-worker-1`)).toBeVisible();
+  await expect(workerRow.getByText(/^worker-1(-[0-9a-f]{8})?$/)).toBeVisible();
   const pill = workerRow.getByText("Pending", { exact: true });
   await expect(pill).toBeVisible();
   expect((await settled(pill)).width).toBeGreaterThan(20);

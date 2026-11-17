@@ -63,6 +63,18 @@ export function deleteProcessType(
   );
 }
 
+// Recreates ONE container from the current image and config. Always 202: it is a queued
+// task, and the outcome shows in the instance's status.
+export function reloadInstance(
+  projectId: string,
+  applicationId: string,
+  instanceId: string,
+) {
+  return api.post<{ status: "reloading" }>(
+    `/projects/${projectId}/applications/${applicationId}/instances/${instanceId}/reload`,
+  );
+}
+
 // Restarts ONE container. 200 when it finished, 202 when it is still going (the
 // restart completes either way).
 export function restartInstance(

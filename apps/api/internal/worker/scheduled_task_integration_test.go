@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/belune-hq/belune/internal/config"
+	"github.com/belune-hq/belune/internal/runtime"
 	"github.com/belune-hq/belune/internal/service"
 	"github.com/belune-hq/belune/internal/store/generated"
 	"github.com/belune-hq/belune/internal/testutil"
@@ -184,12 +186,14 @@ func TestScheduledTaskSweep_DoesNotReapARunStillQueued(t *testing.T) {
 func TestScheduledTaskRun_RecordsOutputThatIsNotValidUTF8(t *testing.T) {
 	app, _ := seedApp(t)
 	setAppStatus(t, app.ID, "running")
+	setInstance(t, app.ID, "utf8-web", "running")
 	task := seedTask(t, app.ID, "0 3 1 1 *")
 	rt := &testutil.MockContainerRuntime{ExecFunc: func(_ context.Context, _ string, _ []string, _ io.Reader, stdout, _ io.Writer) (int, error) {
 		_, _ = stdout.Write([]byte(strings.Repeat("€", 40000)))
 		_, _ = stdout.Write([]byte("nul\x00byte \xff"))
 		return 0, nil
 	}}
+	dockerAgrees(t, rt, app.ID)
 	got := runTask(t, newTestHandler(rt, nil), task)
 
 	assert.Equal(t, "succeeded", got.Status)
@@ -285,6 +289,7 @@ func TestScheduledTaskRun_MapsExitCodes(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			app, _ := seedApp(t)
 			setAppStatus(t, app.ID, "running")
+			setInstance(t, app.ID, "exit-web", "running")
 			task := seedTask(t, app.ID, "0 3 1 1 *")
 
 			var gotCmd []string
@@ -298,6 +303,7 @@ func TestScheduledTaskRun_MapsExitCodes(t *testing.T) {
 				_, _ = stdout.Write([]byte("some output"))
 				return c.exit, c.execErr
 			}}
+			dockerAgrees(t, rt, app.ID)
 			h := newTestHandler(rt, nil)
 			got := runTask(t, h, task)
 
@@ -327,7 +333,10 @@ func TestScheduledTaskRun_PrunesHistoryPerPool(t *testing.T) {
 		})
 		require.NoError(t, err)
 	}
-	h := newTestHandler(&testutil.MockContainerRuntime{}, nil)
+	setInstance(t, app.ID, "prune-web", "running")
+	pruneRT := &testutil.MockContainerRuntime{}
+	dockerAgrees(t, pruneRT, app.ID)
+	h := newTestHandler(pruneRT, nil)
 	for i := 0; i < 5; i++ {
 		runTask(t, h, task)
 	}
@@ -342,6 +351,22 @@ func TestScheduledTaskRun_PrunesHistoryPerPool(t *testing.T) {
 	}
 	assert.Equal(t, 3, ran, "real runs are capped at keep_runs")
 	assert.Equal(t, 3, skipped, "skips are pruned on their own budget so they cannot evict real runs")
+}
+
+// dockerAgrees makes the runtime's container listing say what the instance ROWS say: every
+// row whose status is "running" has a running container. It is the world the existing tests
+// were written in (row and Docker never disagreed); the tests of the disagreement set
+// ListContainers_ themselves.
+func dockerAgrees(t *testing.T, rt *testutil.MockContainerRuntime, appID pgtype.UUID) {
+	t.Helper()
+	rows, err := testQueries.ListInstancesByApplication(context.Background(), appID)
+	require.NoError(t, err)
+	rt.ListContainers_ = nil
+	for _, r := range rows {
+		if r.Status == "running" {
+			rt.ListContainers_ = append(rt.ListContainers_, runtime.ContainerInfo{Name: r.ContainerName, Status: "running"})
+		}
+	}
 }
 
 // execRecorder returns a runtime whose exec records the container it was pointed at, so
@@ -384,7 +409,9 @@ func TestScheduledTaskRun_RecordsTheContainerItExecutedIn(t *testing.T) {
 	task := seedTask(t, app.ID, "0 3 1 1 *")
 
 	var execd []string
-	got := runTask(t, newTestHandler(execRecorder(&execd), nil), task)
+	rt := execRecorder(&execd)
+	dockerAgrees(t, rt, app.ID)
+	got := runTask(t, newTestHandler(rt, nil), task)
 
 	require.Equal(t, []string{app.Slug + "-web-1-5726bda2"}, execd)
 	require.True(t, got.ContainerName.Valid)
@@ -404,7 +431,9 @@ func TestScheduledTaskRun_RecordsTheLowestRunningReplica(t *testing.T) {
 	task := seedTask(t, app.ID, "0 3 1 1 *")
 
 	var execd []string
-	got := runTask(t, newTestHandler(execRecorder(&execd), nil), task)
+	rt := execRecorder(&execd)
+	dockerAgrees(t, rt, app.ID)
+	got := runTask(t, newTestHandler(rt, nil), task)
 
 	assert.Equal(t, []string{"replica-two"}, execd, "exactly one container runs the command")
 	assert.Equal(t, "replica-two", got.ContainerName.String)
@@ -423,7 +452,9 @@ func TestScheduledTaskRun_FailingBeforeResolveRecordsNothing(t *testing.T) {
 	task := seedTask(t, app.ID, "0 3 1 1 *")
 
 	var execd []string
-	got := runTask(t, newTestHandler(execRecorder(&execd), nil), task)
+	rt := execRecorder(&execd)
+	dockerAgrees(t, rt, app.ID)
+	got := runTask(t, newTestHandler(rt, nil), task)
 
 	assert.Equal(t, "failed", got.Status)
 	assert.Contains(t, got.Output, "resolve instance")
@@ -443,7 +474,9 @@ func TestScheduledTaskRun_RecordSurvivesTheInstanceBeingDeleted(t *testing.T) {
 	task := seedTask(t, app.ID, "0 3 1 1 *")
 
 	var execd []string
-	got := runTask(t, newTestHandler(execRecorder(&execd), nil), task)
+	rt := execRecorder(&execd)
+	dockerAgrees(t, rt, app.ID)
+	got := runTask(t, newTestHandler(rt, nil), task)
 	require.Equal(t, "replica-one", got.ContainerName.String)
 
 	insts, err := testQueries.ListInstancesByApplication(context.Background(), app.ID)
@@ -457,4 +490,153 @@ func TestScheduledTaskRun_RecordSurvivesTheInstanceBeingDeleted(t *testing.T) {
 	assert.Equal(t, "replica-one", runs[0].ContainerName.String, "still names the container after the instance row is gone")
 	assert.Equal(t, "web", runs[0].ProcessTypeName.String)
 	assert.EqualValues(t, 1, runs[0].InstanceIdx.Int32)
+}
+
+// recordingNotifier counts what the worker tried to tell the owner.
+type recordingNotifier struct {
+	mu    sync.Mutex
+	calls []string
+}
+
+func (n *recordingNotifier) Notify(_, notifType, _, body, _ string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.calls = append(n.calls, notifType+": "+body)
+}
+
+func (n *recordingNotifier) count() int {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return len(n.calls)
+}
+
+// The defect. Two routable replicas, and the lowest idx's ROW still says "running" while
+// Docker no longer has that container (the window #227 addressed at application level).
+// ResolveOne trusts the row, the exec lands on the dead one, the run is recorded failed and
+// the operator is paged while the other replica is up. The run must go to the replica Docker
+// says is running, and the record must say THAT one -- asserted, not just "it succeeded".
+func TestScheduledTaskRun_SkipsADeadReplicaTheRowStillCallsRunning(t *testing.T) {
+	app, _ := seedApp(t)
+	setAppStatus(t, app.ID, "running")
+	setInstance(t, app.ID, "replica-dead", "running") // idx 1: the row lies
+	replica(t, app.ID, 2, "replica-live", "running")
+	task := seedTask(t, app.ID, "0 3 1 1 *")
+
+	var execd []string
+	rt := &testutil.MockContainerRuntime{ExecFunc: func(_ context.Context, name string, cmd []string, _ io.Reader, _, _ io.Writer) (int, error) {
+		if cmd[0] == "env" {
+			execd = append(execd, name)
+			if name == "replica-dead" {
+				return -1, fmt.Errorf("no such container")
+			}
+		}
+		return 0, nil
+	}}
+	rt.ListContainers_ = []runtime.ContainerInfo{{Name: "replica-live", Status: "running"}}
+	h := newTestHandler(rt, nil)
+	notes := &recordingNotifier{}
+	h.Notifier = notes
+
+	got := runTask(t, h, task)
+
+	assert.Equal(t, []string{"replica-live"}, execd, "never exec'd into the container Docker does not have")
+	assert.Equal(t, "succeeded", got.Status)
+	assert.Equal(t, "replica-live", got.ContainerName.String, "the record names the container that actually ran it")
+	assert.EqualValues(t, 2, got.InstanceIdx.Int32)
+	assert.Equal(t, "web", got.ProcessTypeName.String)
+	assert.Zero(t, notes.count(), "a healthy run pages nobody")
+}
+
+// Nothing of the routable type is running although the application row says it is: a
+// SKIP with a reason, not a failure, and -- half the defect -- no failure notification.
+func TestScheduledTaskRun_NoRunningContainerIsASkipNotAFailure(t *testing.T) {
+	app, _ := seedApp(t)
+	setAppStatus(t, app.ID, "running")
+	setInstance(t, app.ID, "replica-gone", "running")
+	replica(t, app.ID, 2, "replica-exited", "running")
+	task := seedTask(t, app.ID, "0 3 1 1 *")
+
+	var execd []string
+	rt := execRecorder(&execd)
+	rt.ListContainers_ = []runtime.ContainerInfo{{Name: "replica-exited", Status: "exited"}}
+	h := newTestHandler(rt, nil)
+	notes := &recordingNotifier{}
+	h.Notifier = notes
+
+	got := runTask(t, h, task)
+
+	assert.Equal(t, "skipped", got.Status)
+	assert.Equal(t, "no running container", got.SkipReason.String)
+	assert.True(t, got.FinishedAt.Valid)
+	assert.Empty(t, execd, "nothing was exec'd")
+	assert.False(t, got.ContainerName.Valid, "a skip never reached a container, so none is recorded")
+	assert.False(t, got.InstanceIdx.Valid)
+	assert.Zero(t, notes.count(), "a skip is normal operation, not something to page about")
+}
+
+// The control for the test above: the recorder really is wired, and a genuine exec failure
+// (the race this check cannot close) still reports failed AND notifies.
+func TestScheduledTaskRun_AnExecFailureAfterTheCheckStillFailsAndNotifies(t *testing.T) {
+	app, _ := seedApp(t)
+	setAppStatus(t, app.ID, "running")
+	setInstance(t, app.ID, "replica-flaky", "running")
+	task := seedTask(t, app.ID, "0 3 1 1 *")
+
+	rt := &testutil.MockContainerRuntime{ExecFunc: func(context.Context, string, []string, io.Reader, io.Writer, io.Writer) (int, error) {
+		return -1, fmt.Errorf("container died between the check and the exec")
+	}}
+	rt.ListContainers_ = []runtime.ContainerInfo{{Name: "replica-flaky", Status: "running"}}
+	h := newTestHandler(rt, nil)
+	notes := &recordingNotifier{}
+	h.Notifier = notes
+
+	got := runTask(t, h, task)
+
+	assert.Equal(t, "failed", got.Status)
+	assert.Equal(t, 1, notes.count())
+	assert.Equal(t, "replica-flaky", got.ContainerName.String)
+}
+
+// The row is stale in BOTH directions. A row that says "pending" (or "stopped") whose
+// container IS running is eligible, and wins on idx over a higher-idx row that says
+// "running". ResolveOne would have passed it over. This pins that resolveRunInstance asks
+// Docker about every routable row instead of pre-filtering on the row's status, which would
+// quietly restore the blind spot in the other direction.
+func TestScheduledTaskRun_ARowThatSaysPendingButIsRunningIsEligible(t *testing.T) {
+	app, _ := seedApp(t)
+	setAppStatus(t, app.ID, "running")
+	setInstance(t, app.ID, "replica-pending", "pending") // idx 1: the row is behind
+	replica(t, app.ID, 2, "replica-running", "running")
+	task := seedTask(t, app.ID, "0 3 1 1 *")
+
+	var execd []string
+	rt := execRecorder(&execd)
+	rt.ListContainers_ = []runtime.ContainerInfo{
+		{Name: "replica-pending", Status: "running"},
+		{Name: "replica-running", Status: "running"},
+	}
+	got := runTask(t, newTestHandler(rt, nil), task)
+
+	assert.Equal(t, []string{"replica-pending"}, execd, "the lowest idx Docker runs, whatever its row says")
+	assert.Equal(t, "replica-pending", got.ContainerName.String)
+	assert.EqualValues(t, 1, got.InstanceIdx.Int32)
+}
+
+// If Docker cannot be asked, the run falls back to ResolveOne's answer (the rows) rather
+// than skipping: no worse than before. With the lowest row stopped, that is idx 2.
+func TestScheduledTaskRun_FallsBackToTheRowsWhenDockerCannotBeListed(t *testing.T) {
+	app, _ := seedApp(t)
+	setAppStatus(t, app.ID, "running")
+	setInstance(t, app.ID, "replica-stopped", "stopped")
+	replica(t, app.ID, 2, "replica-up", "running")
+	task := seedTask(t, app.ID, "0 3 1 1 *")
+
+	var execd []string
+	rt := execRecorder(&execd)
+	rt.ListContainersErr = fmt.Errorf("docker unreachable")
+	got := runTask(t, newTestHandler(rt, nil), task)
+
+	assert.Equal(t, "succeeded", got.Status, "an unreachable listing is not a reason to skip")
+	assert.Equal(t, []string{"replica-up"}, execd)
+	assert.Equal(t, "replica-up", got.ContainerName.String)
 }

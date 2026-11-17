@@ -133,6 +133,7 @@ func (w *Worker) Start() error {
 	mux := asynq.NewServeMux()
 	mux.HandleFunc(TypeDeploy, w.handler.HandleDeployTask)
 	mux.HandleFunc(TypeScaleProcessType, w.handler.HandleScaleProcessTask)
+	mux.HandleFunc(TypeReloadInstance, w.handler.HandleReloadInstanceTask)
 	mux.HandleFunc(TypeBuild, w.handler.HandleBuildTask)
 	mux.HandleFunc(TypeCleanup, w.handler.HandleCleanupTask)
 	mux.HandleFunc(TypeProvisionDB, w.handler.HandleProvisionDBTask)

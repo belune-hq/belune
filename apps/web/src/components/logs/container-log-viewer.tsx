@@ -4,6 +4,7 @@ import {
   LevelFilter,
   type LevelFilterValue,
 } from "@/components/logs/level-filter";
+import { groupEntries, sourceWidth } from "@/components/logs/group";
 import { LogView } from "@/components/logs/log-view";
 import { mergeLogEntries } from "@/components/logs/merge";
 import { stripAnsi, type LogEntry } from "@/components/logs/parse";
@@ -40,6 +41,36 @@ function sessionKey(s: ContainerLogSession): string {
   return s.container_id ?? SESSION_NONE;
 }
 
+// "web-0", "web" when the replica is unknown (-1: the query cannot return NULL), or
+// nothing. A session is one container, so the picker names it; a DIVIDER names a
+// deployment, which spans types, and so never carries one.
+function sessionSource(s: ContainerLogSession): string | null {
+  if (!s.process_type) return null;
+  return s.instance_idx >= 0
+    ? `${s.process_type}-${s.instance_idx}`
+    : s.process_type;
+}
+
+// The divider label for one GROUP of sessions: a deployment (all its containers) or,
+// for a database, a single container run. Built from the earliest start among the
+// group's sessions, and never from a process type -- a deployment spans types.
+function groupLabel(group: ContainerLogSession[]): string {
+  const first = group[0];
+  if (!first.container_id) return "Earlier logs";
+  const when = group
+    .map((s) => s.started_at ?? s.first_at ?? s.last_at)
+    .filter((t): t is string => !!t)
+    .sort()[0];
+  if (first.deployment_id) {
+    const parts = [`#${first.deployment_id.slice(0, 7)}`];
+    const by = group.find((s) => s.triggered_by)?.triggered_by;
+    if (by) parts.push(by);
+    if (when) parts.push(formatRelativeTime(when));
+    return parts.join(" · ");
+  }
+  return `Run · ${when ? formatRelativeTime(when) : first.container_id.slice(0, 12)}`;
+}
+
 // A short, human-readable label. An application session is named by the deploy
 // that produced it ("#a1b2c3d · rollback · 2h ago"); a database has no
 // deployment, so its runs are named by when they started ("Run · 2h ago").
@@ -51,13 +82,15 @@ function sessionLabel(s: ContainerLogSession): string {
   const when = s.started_at ?? s.first_at ?? s.last_at;
   if (s.deployment_id) {
     const parts = [`#${s.deployment_id.slice(0, 7)}`];
-    if (s.process_type) parts.push(s.process_type);
+    const who = sessionSource(s);
+    if (who) parts.push(who);
     if (s.triggered_by) parts.push(s.triggered_by);
     if (when) parts.push(formatRelativeTime(when));
     return parts.join(" · ");
   }
   const run = ["Run"];
-  if (s.process_type) run.push(s.process_type);
+  const who = sessionSource(s);
+  if (who) run.push(who);
   run.push(when ? formatRelativeTime(when) : s.container_id.slice(0, 12));
   return run.join(" · ");
 }
@@ -93,18 +126,31 @@ export function ContainerLogViewer({
   source,
   projectId,
   sourceId,
+  defaultProcessType,
+  initialSession,
 }: {
   source: ContainerLogSource;
   projectId: string;
   sourceId: string;
+  // The process type the view starts on (an application passes its routable one). The
+  // viewer is shared with databases and has no idea which type is routable, so it is
+  // told. "All process types" stays one click away: only the default moves.
+  defaultProcessType?: string;
+  // A container id to open on, from a deep link. Seeds the session selector. It also
+  // lifts the process-type default: a link to a worker's container must not land on a
+  // pane filtered to the routable type, which would show nothing.
+  initialSession?: string;
 }) {
   const [q, setQ] = useState("");
   const [inputValue, setInputValue] = useState("");
   const [level, setLevel] = useState<LevelFilterValue>("");
   const [limit, setLimit] = useState(500);
   const [timeRange, setTimeRange] = useState("all");
-  const [session, setSession] = useState<string>(SESSION_ALL);
-  const [processType, setProcessType] = useState<string>(TYPE_ALL);
+  const [session, setSession] = useState<string>(initialSession ?? SESSION_ALL);
+  // null until the user picks: the default applies only while they have not.
+  const [chosenType, setChosenType] = useState<string | null>(
+    initialSession ? TYPE_ALL : null,
+  );
   const [wrap, setWrap] = useState(false);
   const [follow, setFollow] = useState(true);
   const [liveLogs, setLiveLogs] = useState<LogEntry[]>([]);
@@ -120,7 +166,6 @@ export function ContainerLogViewer({
   // Server-side session filter: one container generation, the "none" bucket, or
   // (for SESSION_ALL) nothing.
   const sessionParam = session === SESSION_ALL ? undefined : session;
-  const processTypeParam = processType === TYPE_ALL ? undefined : processType;
 
   // The selector offers the types the sessions actually contain, so it needs no
   // query of its own and cannot list a type that has produced no output. It is
@@ -132,6 +177,16 @@ export function ContainerLogViewer({
       if (s.process_type) names.add(s.process_type);
     return [...names].sort();
   }, [sessions]);
+  // The default is honoured only if that type has produced output: an application whose
+  // web container has not logged yet would otherwise open on an empty pane, behind a
+  // selector that is hidden when only one type has logs. Until the sessions load the
+  // default is assumed present, which avoids a flash of the wrong view.
+  const defaultUsable =
+    defaultProcessType !== undefined &&
+    (sessions === undefined || processTypes.includes(defaultProcessType));
+  const processType =
+    chosenType ?? (defaultUsable ? defaultProcessType : TYPE_ALL);
+  const processTypeParam = processType === TYPE_ALL ? undefined : processType;
   const visibleSessions = useMemo(
     () =>
       (sessions ?? []).filter(
@@ -176,7 +231,9 @@ export function ContainerLogViewer({
       message?: string;
       recorded_at?: string;
       container_id?: string;
+      deployment_id?: string | null;
       process_type?: string | null;
+      instance_idx?: number | null;
     };
     if (typeof obj.message !== "string") return;
 
@@ -193,6 +250,9 @@ export function ContainerLogViewer({
           // Empty string from the collector means no session → unassigned.
           sessionId: obj.container_id ? obj.container_id : null,
           processType: obj.process_type ?? null,
+          // "" for a database (no deployment), as with container_id.
+          deploymentId: obj.deployment_id ? obj.deployment_id : null,
+          instanceIdx: obj.instance_idx ?? null,
         },
       ].slice(-MAX_LIVE),
     );
@@ -200,10 +260,18 @@ export function ContainerLogViewer({
 
   const { connected } = useChannel(`container-logs:${sourceId}`, handleMessage);
 
-  // Map of session key → label, for divider rendering.
-  const sessionLabels = useMemo(() => {
+  // Group key (a deployment, or a container for a database) -> divider label. Enrichment
+  // only: the line itself always carries enough to label a group, because this list
+  // refetches on a timer and a new container's lines arrive long before it does.
+  const groupLabels = useMemo(() => {
+    const byGroup = new Map<string, ContainerLogSession[]>();
+    for (const s of sessions ?? []) {
+      const key = s.deployment_id ?? s.container_id;
+      if (!key) continue;
+      byGroup.set(key, [...(byGroup.get(key) ?? []), s]);
+    }
     const map = new Map<string, string>();
-    for (const s of sessions ?? []) map.set(sessionKey(s), sessionLabel(s));
+    for (const [key, group] of byGroup) map.set(key, groupLabel(group));
     return map;
   }, [sessions]);
 
@@ -225,6 +293,8 @@ export function ContainerLogViewer({
           recordedAt: e.recorded_at,
           sessionId: e.container_id,
           processType: e.process_type,
+          deploymentId: e.deployment_id,
+          instanceIdx: e.instance_idx,
         }))
       : [];
     const live = liveLogs.filter((e) => {
@@ -243,40 +313,19 @@ export function ContainerLogViewer({
     // session is selected the whole surface is already that one run.
     if (session !== SESSION_ALL) return merged;
 
-    // Skip dividers entirely when everything in view belongs to a single
-    // session (databases, or an app with just one deployment) — a lone divider
-    // header would be noise, and "Earlier logs" would misdescribe all of it.
-    const distinctSessions = new Set(merged.map((e) => e.sessionId ?? null));
-    if (distinctSessions.size < 2) return merged;
-
-    const withDividers: LogEntry[] = [];
-    let prevKey: string | null | undefined = undefined;
-    for (let i = 0; i < merged.length; i++) {
-      const e = merged[i];
-      const key = e.sessionId ?? null;
-      if (key !== prevKey) {
-        const label =
-          sessionLabels.get(e.sessionId ?? SESSION_NONE) ??
-          (e.sessionId ? `Run · ${e.sessionId.slice(0, 12)}` : "Earlier logs");
-        withDividers.push({
-          id: `divider-${e.id}`,
-          level: "info",
-          message: "",
-          divider: label,
-        });
-        prevKey = key;
-      }
-      withDividers.push(e);
-    }
-    return withDividers;
-  }, [history, liveLogs, level, q, session, processTypeParam, sessionLabels]);
+    // groupEntries decides whether there is anything to separate: it counts GROUPS, so a
+    // database (one container run) or an application with one deployment gets no header,
+    // however many replicas wrote.
+    return groupEntries(merged, groupLabels);
+  }, [history, liveLogs, level, q, session, processTypeParam, groupLabels]);
 
   const filtered =
     q ||
     level ||
     timeRange !== "all" ||
     session !== SESSION_ALL ||
-    processType !== TYPE_ALL;
+    (processType !== TYPE_ALL && processTypes.length > 1);
+  const columnWidth = useMemo(() => sourceWidth(entries), [entries]);
   const lineCount = entries.reduce(
     (n, e) => (e.divider === undefined ? n + 1 : n),
     0,
@@ -348,7 +397,7 @@ export function ContainerLogViewer({
               value={processType}
               onValueChange={(v) => {
                 if (!v) return;
-                setProcessType(v);
+                setChosenType(v);
                 // A session belongs to one type; keeping a stale one selected
                 // would show an empty pane for a combination that cannot match.
                 setSession(SESSION_ALL);
@@ -438,6 +487,7 @@ export function ContainerLogViewer({
             wrap={wrap}
             showTimestamp
             showLevel
+            sourceWidth={columnWidth}
             isLoading={isLoading}
             error={
               error ? `Failed to load log history: ${error.message}` : null

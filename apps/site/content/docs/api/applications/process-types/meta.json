@@ -2,6 +2,7 @@
   "title": "Process Types",
   "pages": [
     "restart-instance",
+    "reload-instance",
     "list-process-types",
     "create-process-type",
     "update-process-type"

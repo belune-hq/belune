@@ -1,0 +1,13 @@
+-- Which replica of its process type a log line came from ("web-0").
+--
+-- Read from the container's instance-idx label by the collector. A container's NAME cannot
+-- say it: a rolling deploy renames the routable container, and a historical container's id
+-- matches no live instance row (the row is repointed at cutover), so the idx has to be
+-- recorded on the line at collection time.
+--
+-- Nullable, no backfill, no CHECK. NULL means "unknown" and is permanent for some rows: the
+-- label is written on create only, so a container created before it existed carries none
+-- until its application is redeployed. There is no CHECK because the value reaches a COPY,
+-- which fails the whole batch on one bad row, and a label is attacker-controllable; the
+-- collector stores anything surprising as NULL instead.
+ALTER TABLE container_logs ADD COLUMN instance_idx integer;

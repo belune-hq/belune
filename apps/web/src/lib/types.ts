@@ -278,6 +278,27 @@ export interface ServiceMetrics {
   status: string;
   domain?: string;
   port?: number;
+  /**
+   * Every container of the application, with Docker's status. Usage is null where the
+   * container was not sampled (a worker, one that did not answer, an over-budget
+   * project), never 0.
+   */
+  instances: ServiceInstanceMetrics[];
+  // Coverage of the top-level sums, in AppMetricPoint's vocabulary: Expected is the routable
+  // containers Docker reports running, Sampled the ones that answered. There is no
+  // all-types pair on purpose: this endpoint never samples workers, so it would read as
+  // partial coverage on every healthy application that has one.
+  routable_sampled: number;
+  routable_expected: number;
+}
+
+export interface ServiceInstanceMetrics {
+  process_type: string;
+  idx: number;
+  routable: boolean;
+  status: string;
+  cpu_percent: number | null;
+  memory_used: number | null;
 }
 
 /** Per-service runtime snapshot keyed by application id. */
@@ -403,6 +424,9 @@ export interface ContainerLog {
   // The process type that produced the line; null = unknown (rows from before
   // the column existed, databases).
   process_type: string | null;
+  // Which replica of the type; null = unknown, permanently for a container created before
+  // the label existed.
+  instance_idx: number | null;
 }
 
 // A log "session": one container generation that produced log lines, or the
@@ -413,6 +437,8 @@ export interface ContainerLogSession {
   container_id: string | null;
   deployment_id: string | null;
   process_type: string | null;
+  // -1 = unknown (the sessions query cannot return NULL through its cast).
+  instance_idx: number;
   first_at: string;
   last_at: string;
   line_count: number;

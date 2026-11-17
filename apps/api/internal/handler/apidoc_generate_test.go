@@ -1168,7 +1168,7 @@ type apidocDirective struct {
 
 // apidocDirectivePrefix has NO space after "//" — it's a directive line,
 // not prose, so it can sit inside an otherwise ordinary doc comment
-// without reading as part of it (CLAUDE.md's "comments explain why, not
+// without reading as part of it (AGENTS.md's "comments explain why, not
 // what" is about prose comments; this is closer to //go:generate or to
 // a //nolint: directive, an established idiom for a machine-read comment).
 //

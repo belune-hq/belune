@@ -18,9 +18,15 @@ function stateVariant(status: string): "default" | "secondary" | "destructive" {
   return "secondary";
 }
 
-export function DockerContainersTab({ enabled }: { enabled: boolean }) {
+export function DockerContainersTab({
+  enabled,
+  initialSearch = "",
+}: {
+  enabled: boolean;
+  initialSearch?: string;
+}) {
   const { data, isPending } = useDockerContainers(enabled);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialSearch);
 
   const columns = useMemo<ColumnDef<DockerContainer>[]>(
     () => [

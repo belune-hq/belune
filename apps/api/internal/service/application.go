@@ -274,7 +274,7 @@ func branchValue(branch string) pgtype.Text {
 // The DB delete cascades deployments, env vars, and domains via FK ON DELETE CASCADE.
 //
 // ⛔ The whole delete runs on a context DETACHED from the request, and the container removal is
-// BOUNDED (see removeContainersBounded). The request is under the 15s handler timeout and Docker's
+// BOUNDED (see RemoveContainersBounded). The request is under the 15s handler timeout and Docker's
 // stop grace is 30s, so a container whose PID 1 ignores SIGTERM used to outlive the request: the
 // request context died mid-stop, the removal and the row delete that followed ran on the dead
 // context and did nothing, and the app was left half-deleted (container Exited (137) but not
@@ -306,7 +306,7 @@ func (s *ApplicationService) Delete(ctx context.Context, appID pgtype.UUID, proj
 			}
 		}
 	}
-	removeContainersBounded(ctx, rt, names, "app deletion")
+	RemoveContainersBounded(ctx, rt, names, "app deletion")
 
 	// Drop the per-app CNB cache volumes too. They are tagged belune-cache=true
 	// so PruneVolumes would not have reclaimed them; leaving them behind after

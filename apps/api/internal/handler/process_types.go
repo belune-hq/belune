@@ -379,6 +379,72 @@ func (h *Handler) RestartInstance(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ReloadInstance recreates ONE container from the application's current image and config,
+// so a config change reaches it without a deploy. The work is a queued task, so the request
+// only validates and enqueues and always answers 202: nothing here can outlive the 15s
+// handler timeout. The outcome shows in the instance's status.
+// POST /api/projects/{projectId}/applications/{applicationId}/instances/{instanceId}/reload
+//
+// In place: the container keeps its name, so the route is untouched, and THIS container has
+// a gap while it is replaced. Reloading one replica of several leaves it on the new config
+// and the rest on the old until the next deploy. The application-level Reload is the
+// zero-gap roll of every container.
+//
+//apidoc:tag applications/process-types
+//apidoc:title Reload Instance
+//apidoc:order 6
+func (h *Handler) ReloadInstance(w http.ResponseWriter, r *http.Request) {
+	var appUUID, instUUID pgtype.UUID
+	if err := appUUID.Scan(chi.URLParam(r, "applicationId")); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid application id")
+		return
+	}
+	if err := instUUID.Scan(chi.URLParam(r, "instanceId")); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid instance id")
+		return
+	}
+	if !h.canAccessApplication(r, appUUID) {
+		writeError(w, http.StatusForbidden, "access denied")
+		return
+	}
+	inst, err := h.queries.GetInstance(r.Context(), instUUID)
+	if err != nil || inst.ApplicationID != appUUID {
+		writeError(w, http.StatusNotFound, service.ErrInstanceNotFound.Error())
+		return
+	}
+	if _, err := h.queries.GetLatestSuccessfulDeployment(r.Context(), appUUID); err != nil {
+		writeError(w, http.StatusConflict, "no successful deployment to reload from: deploy the application first")
+		return
+	}
+	if h.asynq == nil {
+		writeError(w, http.StatusServiceUnavailable, "the task queue is unavailable")
+		return
+	}
+	task, opts, err := worker.NewReloadInstanceTask(appUUID, instUUID)
+	if err != nil {
+		slog.Error("reload instance: could not build the task", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to queue the reload")
+		return
+	}
+
+	// Audited when queued, as RestartInstance: the operator's intent is the fact worth
+	// recording; the outcome is the task's.
+	h.audit(r, "reload_instance", "application", uuidToString(appUUID), map[string]any{
+		"instance_id":    uuidToString(instUUID),
+		"container_name": inst.ContainerName,
+	})
+	if _, err := h.asynq.Enqueue(task, opts...); err != nil {
+		if errors.Is(err, asynq.ErrTaskIDConflict) {
+			writeError(w, http.StatusConflict, "a reload of this container is already in progress")
+			return
+		}
+		slog.Error("reload instance: could not queue the task", "instance_id", uuidToString(instUUID), "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to queue the reload")
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "reloading"})
+}
+
 // enqueueScale hands the container half of a scale change to the worker. The rows are
 // already committed; if the queue is unavailable the next deploy still converges the
 // containers on the rows, so this is logged, not failed.

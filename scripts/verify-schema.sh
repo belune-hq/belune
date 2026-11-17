@@ -18,7 +18,7 @@
 #
 # ⚠️ Editing an already-applied migration is only safe BEFORE release. Once a
 # version ships, its migration is immutable — see "Dropping or restructuring
-# existing data" in CLAUDE.md. This script is how you find out that the rule
+# existing data" in AGENTS.md. This script is how you find out that the rule
 # was broken, on your own machine, rather than from an operator's 500.
 #
 # Usage:

@@ -106,29 +106,79 @@ func (h *TaskHandler) HandleScaleProcessTask(ctx context.Context, t *asynq.Task)
 	return h.scaleUp(ctx, appID, typeID)
 }
 
-// scaleUp creates the containers of the type's instances that do not exist yet.
-func (h *TaskHandler) scaleUp(ctx context.Context, appID, typeID pgtype.UUID) error {
-	dep, err := h.Queries.GetLatestSuccessfulDeployment(ctx, appID)
+// scaleContext loads what creating containers from the latest successful deployment needs:
+// its image, the application's current config and the instance rows. ok is false when there
+// is no successful deployment yet, which is not an error: the containers appear on the next
+// deploy.
+func (h *TaskHandler) scaleContext(ctx context.Context, appID pgtype.UUID) (dc *deployContext, dep generated.Deployment, ok bool, err error) {
+	dep, err = h.Queries.GetLatestSuccessfulDeployment(ctx, appID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		slog.Info("scale up: no successful deployment yet; the containers will appear on the next deploy",
-			"application_id", appID.String())
-		return nil
+		return nil, dep, false, nil
 	}
 	if err != nil {
-		return fmt.Errorf("latest successful deployment: %w", err)
+		return nil, dep, false, fmt.Errorf("latest successful deployment: %w", err)
 	}
-
-	dc := &deployContext{
+	dc = &deployContext{
 		applicationID: appID,
 		deploymentID:  dep.ID,
 		payload:       deployPayload{ApplicationID: appID.String(), DeploymentID: dep.ID.String()},
 		imageName:     dep.ImageTag.String,
 	}
 	if err := h.loadApplication(ctx, dc); err != nil {
-		return fmt.Errorf("load application: %w", err)
+		return nil, dep, false, fmt.Errorf("load application: %w", err)
 	}
 	h.ensureNetworks(ctx, dc)
+	return dc, dep, true, nil
+}
 
+// startInstance creates and starts ONE instance's container from the deployment's image and
+// the application's current config, gates a worker that has a command health check, and
+// repoints the instance row at the new container. It is the single rule for "create this
+// instance's container now": scale-up and Reload both go through it.
+//
+// The name is the row's, never minted (only a roll mints one), so the route's upstream is
+// unchanged. DeploymentID stays the deployment that built the image, which is true and keeps
+// the log viewer's deployment grouping honest; no deployment row is created.
+func (h *TaskHandler) startInstance(ctx context.Context, dc *deployContext, tg *deployTarget, pt generated.ApplicationProcessType, dep generated.Deployment) error {
+	fail := func(err error) error {
+		slog.Error("could not start instance", "container", tg.containerName, "error", err)
+		if _, uerr := h.Queries.UpdateInstanceStatus(ctx, generated.UpdateInstanceStatusParams{
+			ID: tg.instanceID, Status: status.ApplicationError,
+		}); uerr != nil {
+			slog.Warn("could not mark instance errored", "error", uerr)
+		}
+		return err
+	}
+	if err := h.createAndStart(ctx, dc, tg); err != nil {
+		return fail(err)
+	}
+	// A worker with a command health check is gated, as in a deploy. The routable type has
+	// no gate here: Caddy's own upstream health check keeps a bad replica out of the pool.
+	if !pt.Routable {
+		if err := h.verifyWorker(ctx, dc, tg); err != nil {
+			return fail(err)
+		}
+	}
+	if _, err := h.Queries.UpdateInstanceContainer(ctx, generated.UpdateInstanceContainerParams{
+		ID: tg.instanceID, ContainerName: tg.containerName, DeploymentID: dep.ID,
+		ContainerID: pgtype.Text{String: tg.containerID, Valid: tg.containerID != ""}, Status: status.ApplicationRunning,
+	}); err != nil {
+		slog.Warn("could not record the container", "container", tg.containerName, "error", err)
+	}
+	return nil
+}
+
+// scaleUp creates the containers of the type's instances that do not exist yet.
+func (h *TaskHandler) scaleUp(ctx context.Context, appID, typeID pgtype.UUID) error {
+	dc, dep, ok, err := h.scaleContext(ctx, appID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		slog.Info("scale up: no successful deployment yet; the containers will appear on the next deploy",
+			"application_id", appID.String())
+		return nil
+	}
 	pt, err := h.Queries.GetProcessType(ctx, typeID)
 	if err != nil {
 		return fmt.Errorf("load process type: %w", err)
@@ -143,35 +193,8 @@ func (h *TaskHandler) scaleUp(ctx context.Context, appID, typeID pgtype.UUID) er
 		if err == nil && exists {
 			continue
 		}
-		fail := func(err error) {
-			slog.Error("scale up: could not start instance", "container", tg.containerName, "error", err)
-			if _, uerr := h.Queries.UpdateInstanceStatus(ctx, generated.UpdateInstanceStatusParams{
-				ID: tg.instanceID, Status: status.ApplicationError,
-			}); uerr != nil {
-				slog.Warn("scale up: could not mark instance errored", "error", uerr)
-			}
-			if firstErr == nil {
-				firstErr = err
-			}
-		}
-		if err := h.createAndStart(ctx, dc, tg); err != nil {
-			fail(err)
-			continue
-		}
-		// A worker with a command health check is gated, as in a deploy. The routable
-		// type has no gate here: Caddy's own upstream health check keeps a bad replica
-		// out of the pool.
-		if !pt.Routable {
-			if err := h.verifyWorker(ctx, dc, tg); err != nil {
-				fail(err)
-				continue
-			}
-		}
-		if _, err := h.Queries.UpdateInstanceContainer(ctx, generated.UpdateInstanceContainerParams{
-			ID: tg.instanceID, ContainerName: tg.containerName, DeploymentID: dep.ID,
-			ContainerID: pgtype.Text{String: tg.containerID, Valid: tg.containerID != ""}, Status: status.ApplicationRunning,
-		}); err != nil {
-			slog.Warn("scale up: could not record the container", "container", tg.containerName, "error", err)
+		if err := h.startInstance(ctx, dc, tg, pt, dep); err != nil && firstErr == nil {
+			firstErr = err
 		}
 	}
 	return firstErr

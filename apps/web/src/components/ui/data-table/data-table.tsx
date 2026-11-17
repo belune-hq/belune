@@ -82,6 +82,12 @@ export interface DataTableProps<TData, TValue = unknown> {
   rowClassName?: (row: TData) => string | undefined;
   /** Renders an expandable detail row; adds a leading expand toggle column. */
   renderDetailPanel?: DetailPanelFn<TData>;
+  /**
+   * Which rows can expand. Defaults to every row, which is what the existing callers rely
+   * on; pass it when only some rows have a detail panel, so the others get no chevron
+   * that opens onto nothing.
+   */
+  getRowCanExpand?: (row: Row<TData>) => boolean;
   /** Renders rows as cards/list (sharing sort/filter/pagination) instead of a table. */
   customView?: CustomViewProps<TData>;
   enableSorting?: boolean;
@@ -107,6 +113,7 @@ export function DataTable<TData, TValue = unknown>({
   onRowClick,
   rowClassName,
   renderDetailPanel,
+  getRowCanExpand = () => true,
   customView,
   enableSorting = false,
   sorting,
@@ -131,25 +138,26 @@ export function DataTable<TData, TValue = unknown>({
       enableSorting: false,
       enableGlobalFilter: false,
       meta: { className: "w-9" },
-      cell: ({ row }) => (
-        <button
-          type="button"
-          aria-label={row.getIsExpanded() ? "Collapse row" : "Expand row"}
-          onClick={(e) => {
-            e.stopPropagation();
-            row.toggleExpanded();
-          }}
-          className="text-text-faint hover:text-foreground grid size-6 place-items-center rounded transition-colors"
-        >
-          <ChevronDown
-            aria-hidden="true"
-            className={cn(
-              "size-4 transition-transform",
-              row.getIsExpanded() && "rotate-180",
-            )}
-          />
-        </button>
-      ),
+      cell: ({ row }) =>
+        !row.getCanExpand() ? null : (
+          <button
+            type="button"
+            aria-label={row.getIsExpanded() ? "Collapse row" : "Expand row"}
+            onClick={(e) => {
+              e.stopPropagation();
+              row.toggleExpanded();
+            }}
+            className="text-text-faint hover:text-foreground grid size-6 place-items-center rounded transition-colors"
+          >
+            <ChevronDown
+              aria-hidden="true"
+              className={cn(
+                "size-4 transition-transform",
+                row.getIsExpanded() && "rotate-180",
+              )}
+            />
+          </button>
+        ),
     };
     return [expander, ...columns];
   }, [columns, renderDetailPanel]);
@@ -194,7 +202,7 @@ export function DataTable<TData, TValue = unknown>({
     ...(renderDetailPanel
       ? {
           getExpandedRowModel: getExpandedRowModel(),
-          getRowCanExpand: () => true,
+          getRowCanExpand,
         }
       : {}),
     ...(pagination?.mode === "client" && pagination.pageSize

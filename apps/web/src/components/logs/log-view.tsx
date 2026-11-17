@@ -12,11 +12,13 @@ function LogLine({
   entry,
   showTimestamp,
   showLevel,
+  sourceWidth,
   wrap,
 }: {
   entry: LogEntry;
   showTimestamp?: boolean;
   showLevel?: boolean;
+  sourceWidth: number;
   wrap?: boolean;
 }) {
   // A session divider: a full-width labeled rule separating one deployment's
@@ -35,7 +37,10 @@ function LogLine({
 
   // When wrapping, hang-indent continuation lines so they align under the
   // message column (timestamp = 20 chars incl. trailing space, level = 10).
-  const indentCh = (showTimestamp ? 20 : 0) + (showLevel ? 10 : 0);
+  // The source column (when there is one) sits between them: its width plus the
+  // trailing space feeds this same sum, or wrapped lines misalign.
+  const sourceCh = sourceWidth > 0 ? sourceWidth + 1 : 0;
+  const indentCh = (showTimestamp ? 20 : 0) + sourceCh + (showLevel ? 10 : 0);
   const hangingIndent =
     wrap && indentCh > 0
       ? { paddingLeft: `${indentCh}ch`, textIndent: `-${indentCh}ch` }
@@ -53,6 +58,15 @@ function LogLine({
       {showTimestamp && entry.recordedAt && (
         <span className="text-zinc-500">
           {formatDateTime(entry.recordedAt)}{" "}
+        </span>
+      )}
+      {sourceWidth > 0 && (
+        // Padded to the column width even when this line has no source of its own, so
+        // the level and message columns stay aligned down the view.
+        <span className="text-zinc-400">
+          {(entry.source ?? "")
+            .slice(0, sourceWidth)
+            .padEnd(sourceWidth, " ")}{" "}
         </span>
       )}
       {showLevel &&
@@ -77,6 +91,7 @@ export function LogView({
   follow = true,
   showTimestamp = false,
   showLevel = false,
+  sourceWidth = 0,
   wrap = false,
   isLoading = false,
   error,
@@ -87,6 +102,10 @@ export function LogView({
   follow?: boolean;
   showTimestamp?: boolean;
   showLevel?: boolean;
+  // Width in characters of the per-line source column; 0 (the default) renders none.
+  // The viewer computes it, so the hanging-indent math stays in one place. Off by
+  // default because the build, backup and restore viewers share this component.
+  sourceWidth?: number;
   wrap?: boolean;
   isLoading?: boolean;
   error?: string | null;
@@ -146,6 +165,7 @@ export function LogView({
               entry={entry}
               showTimestamp={showTimestamp}
               showLevel={showLevel}
+              sourceWidth={sourceWidth}
               wrap={wrap}
             />
           ))}

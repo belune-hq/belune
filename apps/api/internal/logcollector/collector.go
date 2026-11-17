@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -315,6 +316,7 @@ func (c *Collector) watchContainer(ctx context.Context, ctr runtime.ContainerInf
 		}
 	}
 	processType := processTypeOf(src.typ, ctr)
+	instanceIdx := instanceIdxOf(src.typ, ctr)
 	span.SetAttributes(
 		attribute.String("log.source_type", src.typ),
 		attribute.String("log.source_id", src.id),
@@ -403,6 +405,7 @@ func (c *Collector) watchContainer(ctx context.Context, ctr runtime.ContainerInf
 			ContainerID:  pgtype.Text{String: ctr.ID, Valid: ctr.ID != ""},
 			DeploymentID: deploymentUUID,
 			ProcessType:  processType,
+			InstanceIdx:  instanceIdx,
 		})
 	}
 
@@ -496,6 +499,9 @@ func (c *Collector) flush(ctx context.Context, src containerSource, batch []gene
 			// null when unknown, so a live viewer filtering by type agrees with
 			// the history query, which never matches a NULL row to a named type.
 			"process_type": nullableText(p.ProcessType),
+			// null when unknown, as process_type: a container created before the label
+			// existed carries none, and that is permanent for its lines.
+			"instance_idx": nullableInt(p.InstanceIdx),
 		})
 		c.rdb.Publish(ctx, channel, string(payload))
 	}
@@ -522,6 +528,37 @@ func processTypeOf(sourceType string, ctr runtime.ContainerInfo) pgtype.Text {
 		return pgtype.Text{}
 	}
 	return pgtype.Text{String: v, Valid: true}
+}
+
+// maxInstanceIdx bounds the replica index. Replicas are capped at 20 per type; this is
+// deliberately far above that, as slack so a future raise of the cap does not silently
+// turn real replicas into "unknown". It only has to exclude the absurd (a forged or foreign
+// label), not enforce the product limit.
+const maxInstanceIdx = 1000
+
+// instanceIdxOf returns the validated instance-idx label for an application container, or
+// NULL for anything else.
+//
+// ⛔ Same rule and same reason as processTypeOf: the value reaches a COPY, which fails the
+// WHOLE batch on one bad row, and a label is attacker-controllable. A non-numeric, signed,
+// padded or out-of-range value is stored as NULL ("unknown"), never allowed to take its
+// batch with it. Parsed strictly: ParseUint accepts neither a sign nor whitespace.
+func instanceIdxOf(sourceType string, ctr runtime.ContainerInfo) pgtype.Int4 {
+	if sourceType != sourceApplication {
+		return pgtype.Int4{}
+	}
+	n, err := strconv.ParseUint(ctr.Labels[runtime.LabelInstanceIdx], 10, 32)
+	if err != nil || n > maxInstanceIdx {
+		return pgtype.Int4{}
+	}
+	return pgtype.Int4{Int32: int32(n), Valid: true}
+}
+
+func nullableInt(i pgtype.Int4) any {
+	if !i.Valid {
+		return nil
+	}
+	return i.Int32
 }
 
 func nullableText(t pgtype.Text) any {

@@ -7932,6 +7932,81 @@
         ]
       }
     },
+    "/api/projects/{projectId}/applications/{applicationId}/instances/{instanceId}/reload": {
+      "post": {
+        "operationId": "ReloadInstance",
+        "summary": "Reload Instance",
+        "description": "Scoped to a project-pinned token's pin set — a project outside it is rejected, regardless of scope.",
+        "tags": [
+          "Application Process Types"
+        ],
+        "x-belune-order": 6,
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "instanceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "deploy": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/projects/{projectId}/applications/{applicationId}/instances/{instanceId}/restart": {
       "post": {
         "operationId": "RestartInstance",
@@ -15952,6 +16027,12 @@
               "null"
             ]
           },
+          "instance_idx": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "level": {
             "type": "string"
           },
@@ -16961,6 +17042,9 @@
               "string",
               "null"
             ]
+          },
+          "instance_idx": {
+            "type": "integer"
           },
           "last_at": {
             "format": "date-time",
@@ -21505,6 +21589,35 @@
         },
         "type": "object"
       },
+      "serviceInstance": {
+        "properties": {
+          "cpu_percent": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "idx": {
+            "type": "integer"
+          },
+          "memory_used": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "process_type": {
+            "type": "string"
+          },
+          "routable": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "serviceMetrics": {
         "properties": {
           "cpu_percent": {
@@ -21516,6 +21629,12 @@
           "domain": {
             "type": "string"
           },
+          "instances": {
+            "items": {
+              "$ref": "#/components/schemas/serviceInstance"
+            },
+            "type": "array"
+          },
           "memory_limit": {
             "type": "integer"
           },
@@ -21526,6 +21645,12 @@
             ]
           },
           "port": {
+            "type": "integer"
+          },
+          "routable_expected": {
+            "type": "integer"
+          },
+          "routable_sampled": {
             "type": "integer"
           },
           "status": {

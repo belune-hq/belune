@@ -65,3 +65,69 @@ describe("LogView scroll-content box", () => {
     expect(box.children).toHaveLength(entries.length);
   });
 });
+
+// The source column feeds the hanging indent, or wrapped continuation lines misalign. The
+// numbers are the existing rule (timestamp 20, level 10) plus the column and its space.
+describe("LogView source column", () => {
+  const withSource: LogEntry[] = [
+    {
+      id: "1",
+      level: "info",
+      message: "wrapped line",
+      recordedAt: "2026-10-09T06:00:00.000Z",
+      source: "web-0",
+    },
+    {
+      id: "2",
+      level: "info",
+      message: "another",
+      recordedAt: "2026-10-09T06:00:01.000Z",
+    },
+  ];
+  const rows = (c: HTMLElement) =>
+    Array.from(
+      c.querySelector("pre")!.firstElementChild!.children,
+    ) as HTMLElement[];
+
+  it("renders no column, and leaves the indent alone, by default", () => {
+    const { container } = render(
+      <LogView entries={withSource} wrap showTimestamp showLevel />,
+    );
+    expect(container.textContent).not.toContain("web-0");
+    expect(rows(container)[0].style.paddingLeft).toBe("30ch");
+  });
+
+  it("adds the column width and its space to the hanging indent", () => {
+    const { container } = render(
+      <LogView
+        entries={withSource}
+        wrap
+        showTimestamp
+        showLevel
+        sourceWidth={8}
+      />,
+    );
+    expect(rows(container)[0].style.paddingLeft).toBe("39ch"); // 20 + (8 + 1) + 10
+    expect(rows(container)[0].style.textIndent).toBe("-39ch");
+  });
+
+  it("pads a line with no source, so the message column stays aligned", () => {
+    const { container } = render(
+      <LogView entries={withSource} showTimestamp showLevel sourceWidth={8} />,
+    );
+    const [a, b] = rows(container).map((r) => r.textContent ?? "");
+    expect(a.indexOf("[Info]")).toBe(b.indexOf("[Info]"));
+    expect(a).toContain("web-0    ");
+  });
+
+  it("truncates a source longer than the column rather than pushing the message out", () => {
+    const long: LogEntry[] = [
+      { ...withSource[0], source: "worker-12 · 5726bda2 (old)" },
+    ];
+    const { container } = render(
+      <LogView entries={long} showLevel sourceWidth={10} />,
+    );
+    expect(container.textContent).toContain("worker-12 ");
+    expect(container.textContent).not.toContain("5726bda2");
+  });
+});

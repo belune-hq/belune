@@ -62,8 +62,9 @@ type MockContainerRuntime struct {
 	ListAllContainers_    []runtime.ContainerInfo
 	ContainerLogsTail_    string
 	ListSystemContainers_ []runtime.ContainerInfo
-	// ListContainersErr, when set, fails both container listings — the runtime
-	// being unreachable, as distinct from the container simply not existing.
+	// ListContainersErr, when set, fails every container listing (ListContainers,
+	// ListAllContainers, ListSystemContainers) — the runtime being unreachable, as
+	// distinct from the container simply not existing.
 	ListContainersErr error
 	ListImages_       []runtime.ImageInfo
 	ListVolumes_      []runtime.VolumeInfo
@@ -173,6 +174,9 @@ func (m *MockContainerRuntime) ContainerLogsTail(_ context.Context, _ string, _ 
 func (m *MockContainerRuntime) ListContainers(_ context.Context) ([]runtime.ContainerInfo, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.ListContainersErr != nil {
+		return nil, m.ListContainersErr
+	}
 	if m.ListContainers_ == nil {
 		return []runtime.ContainerInfo{}, nil
 	}

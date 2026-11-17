@@ -70,3 +70,14 @@ export function useRestartInstance(projectId: string, applicationId: string) {
     onSuccess: refresh,
   });
 }
+
+// Refreshes straight away, which shows the container going away; the task finishes later
+// and the polling refetch shows it back.
+export function useReloadInstance(projectId: string, applicationId: string) {
+  const refresh = useRefresh(projectId, applicationId);
+  return useMutation({
+    mutationFn: (instanceId: string) =>
+      api.reloadInstance(projectId, applicationId, instanceId),
+    onSuccess: refresh,
+  });
+}

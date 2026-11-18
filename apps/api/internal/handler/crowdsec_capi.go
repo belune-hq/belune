@@ -13,7 +13,7 @@ import (
 
 func (h *Handler) SetCAPI(manager *crowdsec.CAPIManager) { h.capi = manager }
 
-// GetCrowdSecCAPI reads live Central API registration and sharing preferences.
+// GetCrowdSecCAPI reads local Central API configuration and the last deliberate check.
 //
 //apidoc:tag platform/maintenance
 //apidoc:title Get Central API Status
@@ -73,4 +73,27 @@ func (h *Handler) UpdateCrowdSecCAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	h.audit(r, "update_crowdsec_capi", "crowdsec", "default", details)
 	writeJSON(w, http.StatusAccepted, map[string]string{"status": "queued"})
+}
+
+// CheckCrowdSecCAPI deliberately authenticates once; status polling never does.
+//
+//apidoc:tag platform/maintenance
+//apidoc:title Check Central API Connection
+//apidoc:order 17
+func (h *Handler) CheckCrowdSecCAPI(w http.ResponseWriter, r *http.Request) {
+	if h.capi == nil {
+		writeError(w, http.StatusServiceUnavailable, "Central API management is unavailable")
+		return
+	}
+	result, err := h.capi.CheckConnection(r.Context())
+	if err != nil {
+		if errors.Is(err, crowdsec.ErrCAPIBusy) {
+			writeError(w, http.StatusConflict, "a Central API change or connection check is already in progress")
+		} else {
+			writeServerError(w, r, "could not check Central API connection", err)
+		}
+		return
+	}
+	h.audit(r, "check_crowdsec_capi", "crowdsec", "default", map[string]any{"state": result.State})
+	writeJSON(w, http.StatusOK, result)
 }

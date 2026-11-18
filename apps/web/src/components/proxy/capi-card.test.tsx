@@ -10,10 +10,12 @@ import type { CAPIStatus } from "@/lib/api/capi";
 const h = vi.hoisted(() => ({
   status: undefined as CAPIStatus | undefined,
   change: vi.fn(),
+  check: vi.fn(),
 }));
 vi.mock("@/lib/hooks/use-capi", () => ({
   useCAPIStatus: () => ({ data: h.status, isLoading: false, isError: false }),
   useChangeCAPI: () => ({ mutateAsync: h.change, isPending: false }),
+  useCheckCAPIConnection: () => ({ mutateAsync: h.check, isPending: false }),
 }));
 import { CAPICard } from "./capi-card";
 const initial: CAPIStatus = {
@@ -32,6 +34,7 @@ const initial: CAPIStatus = {
 beforeEach(() => {
   h.status = structuredClone(initial);
   h.change.mockReset();
+  h.check.mockReset();
   h.change.mockResolvedValue({ status: "queued" });
 });
 describe("Central API consent and recovery", () => {
@@ -114,5 +117,27 @@ describe("Central API consent and recovery", () => {
     );
     for (const toggle of screen.getAllByRole("switch"))
       expect(toggle.getAttribute("aria-disabled")).toBe("true");
+  });
+  it("checks the connection only after an explicit click", async () => {
+    h.status = { ...initial, state: "enabled" };
+    render(<CAPICard />);
+    expect(h.check).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Check connection" }));
+    await waitFor(() => expect(h.check).toHaveBeenCalledTimes(1));
+  });
+  it("explains the rate limit without claiming local protection failed", () => {
+    h.status = {
+      ...initial,
+      state: "enabled",
+      connection: {
+        state: "rate_limited",
+        reason:
+          "CrowdSec is rate-limiting this server's IP; disable Central API and wait about an hour",
+      },
+    };
+    render(<CAPICard />);
+    expect(screen.getByText("Central API rate limit")).toBeTruthy();
+    expect(screen.getByText(/wait about an hour/)).toBeTruthy();
+    expect(h.check).not.toHaveBeenCalled();
   });
 });

@@ -3281,6 +3281,47 @@
         ]
       }
     },
+    "/api/maintenance/proxy/crowdsec/capi/check": {
+      "post": {
+        "operationId": "CheckCrowdSecCAPI",
+        "summary": "Check Central API Connection",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "Maintenance (Admin)"
+        ],
+        "x-belune-order": 17,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CAPIConnectionCheck"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/maintenance/proxy/crowdsec/decisions": {
       "delete": {
         "operationId": "DeleteCrowdSecBan",
@@ -16069,6 +16110,21 @@
         },
         "type": "object"
       },
+      "CAPIConnectionCheck": {
+        "properties": {
+          "checked_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "CAPISharing": {
         "properties": {
           "share_context": {
@@ -16090,6 +16146,16 @@
         "properties": {
           "busy": {
             "type": "boolean"
+          },
+          "connection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CAPIConnectionCheck"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "health": {
             "type": "string"

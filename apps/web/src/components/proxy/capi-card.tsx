@@ -23,7 +23,11 @@ import { Field, FieldDescription, FieldGroup } from "@/components/ui/field";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import { useCAPIStatus, useChangeCAPI } from "@/lib/hooks/use-capi";
+import {
+  useCAPIStatus,
+  useChangeCAPI,
+  useCheckCAPIConnection,
+} from "@/lib/hooks/use-capi";
 import type { CAPIChange, CAPISharing, CAPIStatus } from "@/lib/api/capi";
 
 const options: {
@@ -99,8 +103,21 @@ export function CAPICard() {
 
 function CAPIForm({ status }: { status: CAPIStatus }) {
   const change = useChangeCAPI();
+  const connectionCheck = useCheckCAPIConnection();
   const [confirm, setConfirm] = useState(false);
-  const busy = status.busy || change.isPending;
+  const busy = status.busy || change.isPending || connectionCheck.isPending;
+  const connection = status.connection ?? connectionCheck.data;
+  const checkConnection = async () => {
+    try {
+      await connectionCheck.mutateAsync();
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Could not check Central API connection",
+      );
+    }
+  };
   const queue = async (request: CAPIChange) => {
     try {
       await change.mutateAsync(request);
@@ -164,6 +181,39 @@ function CAPIForm({ status }: { status: CAPIStatus }) {
           </Button>
         ) : null}
       </div>
+      <p className="text-muted-foreground text-sm">
+        Status refreshes use local configuration and health only. Checking the
+        connection contacts CrowdSec and authenticates once.
+      </p>
+      <Button
+        variant="outline"
+        className="self-start"
+        disabled={busy || status.state !== "enabled"}
+        onClick={() => void checkConnection()}
+      >
+        {connectionCheck.isPending
+          ? "Checking connection…"
+          : "Check connection"}
+      </Button>
+      {connection && (
+        <Alert
+          variant={connection.state === "connected" ? "default" : "destructive"}
+        >
+          <AlertTitle>
+            {connection.state === "rate_limited"
+              ? "Central API rate limit"
+              : "Last connection check"}
+          </AlertTitle>
+          <AlertDescription>
+            {connection.reason}
+            {connection.checked_at && (
+              <span className="block">
+                Checked {new Date(connection.checked_at).toLocaleString()}
+              </span>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
       {status.reason && (
         <Alert variant="destructive">
           <AlertTitle>

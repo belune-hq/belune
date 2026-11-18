@@ -144,6 +144,10 @@ In **Proxy → CrowdSec**, the **Community protection (Central API)** card lets 
 
 The card reads this instance's actual sharing preferences. Four switches control additional data: manual ban decisions (including their target addresses), custom scenario alerts, locally modified scenario alerts, and alert context that may include request or log details. CrowdSec ships custom and modified scenario sharing enabled; Belune shows those existing settings in the confirmation before registration. You can adjust the switches before confirming or save changes later. No CrowdSec console account or enrollment key is needed.
 
+The card refreshes local configuration and health without contacting CrowdSec's Central API. **Check connection** is an explicit authenticated request; the last result and its timestamp are displayed separately. Enabling performs one connection check after startup succeeds. Checks never run on a timer.
+
+If CrowdSec returns HTTP 403, the card explains that the server's egress IP is rate-limited. Disable Central API and wait about an hour before enabling or checking again: continued authentication attempts can extend the cooldown. Belune reuses a recorded rate-limit result for an hour instead of repeating the check. See [CrowdSec's CAPI rate-limit guidance](https://docs.crowdsec.net/u/troubleshooting/capi_403/).
+
 Changes run in the background and the card reports the result automatically. CrowdSec restarts while applying them. If registration or startup fails after configuration changes, Belune restores the previous configuration and verifies that the local API is healthy before reporting **Failed and reverted**. A recovery that cannot be verified is reported as a failure requiring attention. Turning Central API off stops community API communication and preserves unrelated operator overrides; local bans and bouncer authentication continue to work.
 
 Central API credentials and settings persist across container restarts and upgrades. Its toggle controls the external service; the separate CrowdSec switch still controls whether Caddy enforces the local decision list.

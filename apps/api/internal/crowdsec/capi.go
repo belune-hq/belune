@@ -39,13 +39,14 @@ type CAPIOperation struct {
 }
 
 type CAPIStatus struct {
-	State            string      `json:"state"`
-	Busy             bool        `json:"busy"`
-	Phase            string      `json:"phase"`
-	Reason           string      `json:"reason,omitempty"`
-	Health           string      `json:"health"`
-	Sharing          CAPISharing `json:"sharing"`
-	SharingAvailable bool        `json:"sharing_available"`
+	State            string               `json:"state"`
+	Busy             bool                 `json:"busy"`
+	Phase            string               `json:"phase"`
+	Reason           string               `json:"reason,omitempty"`
+	Health           string               `json:"health"`
+	Sharing          CAPISharing          `json:"sharing"`
+	SharingAvailable bool                 `json:"sharing_available"`
+	Connection       *CAPIConnectionCheck `json:"connection,omitempty"`
 }
 
 type CAPIStore interface {
@@ -60,6 +61,7 @@ type CAPIManager struct {
 	store         CAPIStore
 	queueMu       sync.Mutex
 	applyMu       sync.Mutex
+	checkMu       sync.Mutex
 	healthTimeout time.Duration
 	pollInterval  time.Duration
 }
@@ -194,23 +196,32 @@ func (m *CAPIManager) Status(ctx context.Context) (CAPIStatus, error) {
 		result.Sharing = sharing
 		result.SharingAvailable = true
 	}
-	_, statusErr := m.runner.Run(ctx, "capi", "status")
+	result.Connection, err = m.connectionRecord(ctx)
+	if err != nil {
+		return CAPIStatus{}, err
+	}
+	configured, localErr := m.localState(ctx, name)
 	switch {
-	case statusErr == nil:
+	case configured && localErr == nil && result.Health == "healthy":
 		result.State = "enabled"
 	case operation.Reason != "" && operation.Reverted && result.Health == "healthy":
 		result.State = "failed_reverted"
 	case operation.Reason != "" && result.Health != "healthy":
 		result.State = "failed"
-	case strings.Contains(statusErr.Error(), "no configuration for Central API") || strings.Contains(statusErr.Error(), "must be configured"):
-		result.State = "not_registered"
-	case operation.Reason != "":
+	case localErr != nil && configured:
 		result.State = "failed"
-	default:
+		if result.Reason == "" {
+			result.Reason = "Central API local credentials are missing, invalid or unsupported"
+		}
+	case localErr != nil:
 		result.State = "unavailable"
 		if result.Reason == "" {
-			result.Reason = "central API status could not be verified"
+			result.Reason = "Central API local configuration could not be read or is incomplete"
 		}
+	case result.Health != "healthy":
+		result.State = "unavailable"
+	default:
+		result.State = "not_registered"
 	}
 	return result, nil
 }
@@ -251,6 +262,9 @@ func (m *CAPIManager) exec(ctx context.Context, name string, command []string, i
 		return "", errors.New("CrowdSec command could not run")
 	}
 	if code != 0 {
+		if capiRateLimited(stderr.String()) {
+			return "", ErrCAPIRateLimited
+		}
 		return "", fmt.Errorf("CrowdSec command failed (exit %d)", code)
 	}
 	return stdout.String(), nil
@@ -416,12 +430,22 @@ func (m *CAPIManager) apply(ctx context.Context, change CAPIChange) (reverted bo
 		return false, err
 	}
 	if change.Enabled != nil {
-		_, err := m.runner.Run(ctx, "capi", "status")
-		if *change.Enabled && err != nil {
-			return false, errors.New("central API authentication did not succeed after restart")
-		}
-		if !*change.Enabled && (err == nil || !strings.Contains(err.Error(), "no configuration for Central API")) {
-			return false, errors.New("central API disable could not be verified")
+		if *change.Enabled {
+			checked, err := m.checkConnection(ctx)
+			if err != nil {
+				return false, err
+			}
+			if checked.State != "connected" {
+				if checked.State == "rate_limited" {
+					return false, ErrCAPIRateLimited
+				}
+				return false, errors.New(checked.Reason)
+			}
+		} else {
+			configured, err := m.localState(ctx, name)
+			if err != nil || configured {
+				return false, errors.New("central API disable could not be verified locally")
+			}
 		}
 	}
 	if err := files.commit(ctx); err != nil {

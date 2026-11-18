@@ -70,3 +70,51 @@ test("Central API explains sharing and requires explicit consent", async ({
   });
   await expect(dialog).toHaveCount(0);
 });
+
+test("Central API polls stay local and connection checks require a click", async ({
+  page,
+}) => {
+  let checks = 0;
+  const connection = {
+    state: "rate_limited",
+    reason:
+      "CrowdSec's Central API is rate-limiting this server's IP address. Disable Central API and wait about an hour before enabling or checking again; ongoing retries can extend the limit",
+    checked_at: new Date().toISOString(),
+  };
+  await page.route("**/api/maintenance/proxy/crowdsec/capi", (route) =>
+    route.fulfill({
+      json: {
+        state: "enabled",
+        busy: false,
+        phase: "idle",
+        health: "healthy",
+        sharing_available: true,
+        sharing: {
+          share_manual_decisions: false,
+          share_custom: true,
+          share_tainted: true,
+          share_context: false,
+        },
+      },
+    }),
+  );
+  await page.route("**/api/maintenance/proxy/crowdsec/capi/check", (route) => {
+    checks++;
+    return route.fulfill({ json: connection });
+  });
+  await page.goto("/proxy?tab=crowdsec");
+  const button = page.getByRole("button", {
+    name: "Check connection",
+    exact: true,
+  });
+  await expect(button).toBeEnabled();
+  expect(checks).toBe(0);
+  await button.click();
+  await expect(
+    page.getByText("Central API rate limit", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(connection.reason, { exact: true }),
+  ).toBeVisible();
+  expect(checks).toBe(1);
+});

@@ -100,7 +100,7 @@ type csFixture struct {
 func crowdsecFixture(t *testing.T) *csFixture {
 	t.Helper()
 	resetDB(t)
-	_, err := env.Pool.Exec(context.Background(), "DELETE FROM settings WHERE key = 'crowdsec_capi_operation'")
+	_, err := env.Pool.Exec(context.Background(), "DELETE FROM settings WHERE key IN ('crowdsec_capi_operation', 'crowdsec_capi_connection')")
 	require.NoError(t, err)
 	env.Capabilities.Set(crowdsecCaddy)
 	env.Reconciler.ReconcileNowCalls = 0

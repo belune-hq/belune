@@ -54,20 +54,23 @@ func TestCAPISharingRequiresActualValues(t *testing.T) {
 }
 
 type capiMemoryStore struct {
-	row    generated.Setting
-	exists bool
+	rows map[string]generated.Setting
 }
 
-func (s *capiMemoryStore) GetSetting(context.Context, string) (generated.Setting, error) {
-	if !s.exists {
+func (s *capiMemoryStore) GetSetting(_ context.Context, key string) (generated.Setting, error) {
+	row, ok := s.rows[key]
+	if !ok {
 		return generated.Setting{}, pgx.ErrNoRows
 	}
-	return s.row, nil
+	return row, nil
 }
 func (s *capiMemoryStore) UpsertSetting(_ context.Context, arg generated.UpsertSettingParams) (generated.Setting, error) {
-	s.row = generated.Setting{Key: arg.Key, Value: arg.Value}
-	s.exists = true
-	return s.row, nil
+	if s.rows == nil {
+		s.rows = map[string]generated.Setting{}
+	}
+	row := generated.Setting{Key: arg.Key, Value: arg.Value}
+	s.rows[arg.Key] = row
+	return row, nil
 }
 func TestCAPIQueueRestoresStateOnEnqueueFailure(t *testing.T) {
 	store := &capiMemoryStore{}

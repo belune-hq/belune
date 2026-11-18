@@ -28,6 +28,7 @@ type capiDrillRuntime struct {
 	badIssued         bool
 	waitedForFatal    bool
 	sawFatal          bool
+	capiCalls         int
 }
 
 func (r *capiDrillRuntime) ListSystemContainers(ctx context.Context) ([]runtime.ContainerInfo, error) {
@@ -41,6 +42,9 @@ func (r *capiDrillRuntime) ListSystemContainers(ctx context.Context) ([]runtime.
 	return own, err
 }
 func (r *capiDrillRuntime) ContainerExec(ctx context.Context, name string, cmd []string, in io.Reader, out, stderr io.Writer) (int, error) {
+	if len(cmd) > 2 && cmd[0] == "cscli" && cmd[1] == "capi" {
+		r.capiCalls++
+	}
 	if r.badRegistration && name == r.name && len(cmd) == 3 && strings.Contains(cmd[2], "capi register --file") {
 		r.badIssued = true
 		_, err := io.WriteString(out, "login: belune-deliberately-invalid\npassword: invalid-drill-password\nurl: https://api.crowdsec.net/\n")
@@ -92,7 +96,7 @@ func (r *capiDrillRuntime) ContainerHealth(ctx context.Context, name string) (st
 	return health, err
 }
 
-func newCAPIDrill(t *testing.T) (*CAPIManager, *capiDrillRuntime, *dockerruntime.Client, string, CAPIStatus) {
+func newCAPIDrill(t *testing.T, offline bool) (*CAPIManager, *capiDrillRuntime, *dockerruntime.Client, string, CAPIStatus) {
 	if os.Getenv("BELUNE_CAPI_INTEGRATION") != "1" {
 		t.Skip("set BELUNE_CAPI_INTEGRATION=1 for a disposable real CAPI registration and rollback drill")
 	}
@@ -106,8 +110,12 @@ func newCAPIDrill(t *testing.T) (*CAPIManager, *capiDrillRuntime, *dockerruntime
 		require.NoError(t, docker.CreateDataVolume(ctx, volume))
 		t.Cleanup(func() { require.NoError(t, docker.RemoveVolume(ctx, volume)) })
 	}
+	network := ""
+	if offline {
+		network = "none"
+	}
 	id, err := docker.CreateContainer(ctx, runtime.ContainerConfig{
-		Name: name, Image: "crowdsecurity/crowdsec:v1.8.1",
+		Name: name, Image: "crowdsecurity/crowdsec:v1.8.1", Network: network,
 		Env:                 map[string]string{"DISABLE_AGENT": "true", "DISABLE_ONLINE_API": "true"},
 		Volumes:             map[string]string{configVolume: "/etc/crowdsec", dataVolume: "/var/lib/crowdsec/data"},
 		Labels:              map[string]string{"belune-system": SystemLabel},
@@ -134,8 +142,11 @@ func newCAPIDrill(t *testing.T) (*CAPIManager, *capiDrillRuntime, *dockerruntime
 }
 
 func TestCAPIDockerRollback(t *testing.T) {
+	if os.Getenv("BELUNE_CAPI_ROLLBACK") != "1" {
+		t.Skip("set BELUNE_CAPI_ROLLBACK=1 for deliberate fatal-startup injection; allow an hour of cooldown before any registration drill")
+	}
 	ctx := context.Background()
-	m, rt, docker, name, _ := newCAPIDrill(t)
+	m, rt, docker, name, _ := newCAPIDrill(t, false)
 	enabled := true
 	// Establish exact pre-apply bytes, including credentials and console preferences.
 	files, err := newCAPIFiles(ctx, rt, name)
@@ -194,7 +205,7 @@ func TestCAPIDockerLifecycle(t *testing.T) {
 		t.Skip("set BELUNE_CAPI_REGISTER=1 to opt into real anonymous registration with CrowdSec")
 	}
 	ctx := context.Background()
-	m, rt, _, name, initial := newCAPIDrill(t)
+	m, rt, _, name, initial := newCAPIDrill(t, false)
 	enabled, disabled := true, false
 	require.NoError(t, m.Apply(ctx, CAPIChange{Enabled: &enabled, Sharing: &initial.Sharing}))
 	state, err := m.Status(ctx)
@@ -231,4 +242,23 @@ func TestCAPIDockerLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	t.Log("disable verified; local API and real bouncer authenticate")
 
+}
+
+// Network isolation proves even a configured enabled poll does not need CAPI.
+func TestCAPIDockerLocalPolling(t *testing.T) {
+	ctx := context.Background()
+	m, rt, _, name, _ := newCAPIDrill(t, true)
+	_, err := m.exec(ctx, name, []string{"sh", "-ec", "cat > /etc/crowdsec/config.yaml.local"}, "api:\n  server:\n    online_client:\n      credentials_path: /etc/crowdsec/online_api_credentials.yaml\n")
+	require.NoError(t, err)
+	_, err = m.exec(ctx, name, []string{"sh", "-ec", "umask 077; cat > /etc/crowdsec/online_api_credentials.yaml"}, "login: offline-fixture\npassword: fixture-only\nurl: https://api.crowdsec.net/\n")
+	require.NoError(t, err)
+	// The daemon stays in local-only mode; no restart and no registration occur.
+	for range 20 {
+		state, err := m.Status(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "enabled", state.State)
+		require.True(t, state.SharingAvailable)
+	}
+	require.Zero(t, rt.capiCalls)
+	t.Log("20 enabled-state polls passed with Network=none and zero cscli capi calls")
 }

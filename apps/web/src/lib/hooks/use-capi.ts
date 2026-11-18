@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getCAPIStatus, changeCAPI } from "@/lib/api/capi";
+import { getCAPIStatus, changeCAPI, checkCAPIConnection } from "@/lib/api/capi";
 import { queryKeys } from "./query-keys";
 
 export function useCAPIStatus() {
@@ -13,6 +13,17 @@ export function useChangeCAPI() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: changeCAPI,
+    onSuccess: () =>
+      client.invalidateQueries({ queryKey: queryKeys.crowdsec.capi }),
+  });
+}
+
+// No timer, focus handler or query retry may initiate an upstream login.
+export function useCheckCAPIConnection() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: checkCAPIConnection,
+    retry: false,
     onSuccess: () =>
       client.invalidateQueries({ queryKey: queryKeys.crowdsec.capi }),
   });

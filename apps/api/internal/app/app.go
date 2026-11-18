@@ -140,7 +140,7 @@ func New(cfg *config.Config) (*App, error) {
 		dockerfile.New(dockerClient),
 		buildpacks.New(dockerClient),
 		railpack.New(),
-		image.New(dockerClient),
+		image.New(dockerClient, service.NewRegistryCredentialService(queries, cfg.Keyring)),
 	)
 
 	metricsSvc := service.NewMetricsService(queries, rdb)

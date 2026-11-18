@@ -88,7 +88,8 @@ type MockContainerRuntime struct {
 	// container ever starting.
 	SpawnUpdateHelperCalls []runtime.UpdateHelperConfig
 	// PullErr, when set, is returned by PullImage after recording the call.
-	PullErr error
+	PullErr   error
+	PullAuths []*runtime.RegistryAuth
 	// PullFunc, when set, runs inside PullImage (outside the mock's lock) and
 	// its error is returned — lets a test block a pull to prove it does not
 	// depend on the caller's context.
@@ -256,9 +257,10 @@ func (m *MockContainerRuntime) ResolveImageDigest(_ context.Context, ref string)
 	return m.ResolveImageDigest_, nil
 }
 
-func (m *MockContainerRuntime) PullImage(ctx context.Context, image string) error {
+func (m *MockContainerRuntime) PullImage(ctx context.Context, image string, auth *runtime.RegistryAuth) error {
 	m.mu.Lock()
 	m.PullCalls = append(m.PullCalls, image)
+	m.PullAuths = append(m.PullAuths, auth)
 	fn, err := m.PullFunc, m.PullErr
 	m.mu.Unlock()
 	if fn != nil {

@@ -72,6 +72,7 @@ import { SystemBackupsPanel } from "@/components/backups/system-backups-panel";
 import { MaintenanceSection } from "@/components/server/maintenance-section";
 import { useServerIP } from "@/lib/hooks/use-maintenance";
 import { DashboardDomainSection } from "@/components/server/dashboard-domain-section";
+import { RegistriesSection } from "@/components/server/registries-section";
 import { SmtpSection } from "@/components/server/smtp-section";
 import { cn } from "@/lib/utils";
 import { formatDateTimeShort } from "@/lib/utils/format";
@@ -508,6 +509,8 @@ function ServerSettingsPage() {
             <p className="text-text-faint text-[10.5px] font-semibold tracking-wider uppercase">
               Operations
             </p>
+
+            <RegistriesSection />
 
             <Card>
               <CardHeader>

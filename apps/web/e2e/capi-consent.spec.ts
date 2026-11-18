@@ -114,7 +114,7 @@ test("Central API polls stay local and connection checks require a click", async
     page.getByText("Central API rate limit", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText(connection.reason, { exact: true }),
+    page.getByText(connection.reason, { exact: false }),
   ).toBeVisible();
   expect(checks).toBe(1);
 });

@@ -202,7 +202,7 @@ type ContainerRuntime interface {
 	SystemInfo(ctx context.Context) (*DockerSystemInfo, error)
 	// SystemDiskUsage returns a `docker system df` summary (read-only).
 	SystemDiskUsage(ctx context.Context) (*DockerDiskUsage, error)
-	PullImage(ctx context.Context, image string) error
+	PullImage(ctx context.Context, image string, auth *RegistryAuth) error
 	BuildImage(ctx context.Context, contextDir, dockerfile, tag string) error
 	CreateNetwork(ctx context.Context, name string) error
 	RemoveNetwork(ctx context.Context, name string) error

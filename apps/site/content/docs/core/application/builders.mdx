@@ -33,6 +33,14 @@ Point the application at any registry image and Belune skips building entirely �
 
 Every deploy resolves the tag to its immutable digest and runs that instead of the mutable tag, falling back to the tag only if resolution fails. That's what makes a later reload or rollback reproduce the exact same image, rather than whatever the tag happens to point at by then — you'll see `Pinned to digest sha256:...` in the deploy log when it happens.
 
+### Private Registries
+
+An administrator can add a registry host, username, and password under **Server → Configuration → Registries**. Use the host only, such as `ghcr.io`, `registry.example.com:5000`, or `docker.io` for Docker Hub. Credentials are shared across the installation, so image applications in every project can use the matching registry login.
+
+Passwords are encrypted and write-only. Editing a credential with the password left blank preserves the stored password; supplying a new password rotates it. Removing a credential makes future pulls anonymous and leaves running applications unchanged. A host-side `docker login` does not configure Belune's pulls.
+
+If a private image fails to pull, the deployment log names the registry and distinguishes a missing login from failed authentication. Add or correct the registry credential, then deploy again.
+
 ## Build Cache
 
 Git-sourced applications get a persistent per-app layer cache (build layers + launch layers, in Cloud Native Buildpacks terms), reused across builds so an unchanged dependency doesn't get rebuilt every time. 

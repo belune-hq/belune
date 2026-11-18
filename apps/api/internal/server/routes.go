@@ -650,6 +650,11 @@ func registerRoutes(r chi.Router, h *handler.Handler, auth *service.AuthService,
 					// config disclosure and posture recon a leaked token shouldn't get.
 					r.With(middleware.RequireSession()).Get("/api/settings", h.ListSettings)
 					r.With(middleware.RequireSession()).Put("/api/settings", h.UpdateSettings)
+					// Registry credentials are global, admin-only platform settings.
+					r.With(middleware.RequireSession(), withTimeout(handlerTimeout)).Get("/api/settings/registries", h.ListRegistryCredentials)
+					r.With(middleware.RequireSession(), withTimeout(handlerTimeout)).Post("/api/settings/registries", h.CreateRegistryCredential)
+					r.With(middleware.RequireSession(), withTimeout(handlerTimeout)).Put("/api/settings/registries/{credentialId}", h.UpdateRegistryCredential)
+					r.With(middleware.RequireSession(), withTimeout(handlerTimeout)).Delete("/api/settings/registries/{credentialId}", h.DeleteRegistryCredential)
 					// SMTP config: dedicated endpoints so the password stays
 					// keyring-encrypted and masked (never in the generic settings list).
 					r.With(middleware.RequireSession()).Get("/api/settings/smtp", h.GetSMTPSettings)

@@ -330,7 +330,7 @@ func (h *TaskHandler) provisionDBContainer(ctx context.Context, rt runtime.Conta
 	if pinned {
 		image = db.ImageDigest.String
 	}
-	if err := rt.PullImage(ctx, image); err != nil {
+	if err := rt.PullImage(ctx, image, nil); err != nil {
 		return fmt.Errorf("pull image: %w", err)
 	}
 	if !pinned {

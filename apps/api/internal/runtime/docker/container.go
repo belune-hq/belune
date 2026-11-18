@@ -89,6 +89,14 @@ func (c *Client) CreateContainer(ctx context.Context, cfg runtime.ContainerConfi
 		}
 	}
 
+	restartPolicy := container.RestartPolicy{Name: "unless-stopped"}
+	if cfg.AutoRemove {
+		restartPolicy.Name = "no"
+	}
+	var networkMode container.NetworkMode
+	if cfg.Network == "none" {
+		networkMode = "none"
+	}
 	resp, err := c.cli.ContainerCreate(ctx,
 		&container.Config{
 			Image:        cfg.Image,
@@ -100,9 +108,11 @@ func (c *Client) CreateContainer(ctx context.Context, cfg runtime.ContainerConfi
 			Healthcheck:  healthConfig,
 		},
 		&container.HostConfig{
+			AutoRemove:     cfg.AutoRemove,
 			PortBindings:   portBindings,
 			Binds:          binds,
-			RestartPolicy:  container.RestartPolicy{Name: "unless-stopped"},
+			RestartPolicy:  restartPolicy,
+			NetworkMode:    networkMode,
 			Resources:      resources,
 			CapDrop:        cfg.CapDrop,
 			CapAdd:         cfg.CapAdd,
@@ -112,7 +122,7 @@ func (c *Client) CreateContainer(ctx context.Context, cfg runtime.ContainerConfi
 		},
 		&network.NetworkingConfig{
 			EndpointsConfig: func() map[string]*network.EndpointSettings {
-				if cfg.Network == "" {
+				if cfg.Network == "" || cfg.Network == "none" {
 					return nil
 				}
 				return map[string]*network.EndpointSettings{
@@ -449,4 +459,17 @@ func (c *Client) ContainerEvents(ctx context.Context, eventFilters map[string][]
 	}()
 
 	return outCh, errCh
+}
+
+// ContainerStorage uses inspect rather than guessing Compose-derived volume names.
+func (c *Client) ContainerStorage(ctx context.Context, id string) (runtime.ContainerStorage, error) {
+	info, err := c.cli.ContainerInspect(ctx, id)
+	if err != nil {
+		return runtime.ContainerStorage{}, fmt.Errorf("inspect container storage: %w", err)
+	}
+	result := runtime.ContainerStorage{Image: info.Image}
+	for _, m := range info.Mounts {
+		result.Mounts = append(result.Mounts, runtime.ContainerMount{Type: string(m.Type), Name: m.Name, Destination: m.Destination, Writable: m.RW})
+	}
+	return result, nil
 }

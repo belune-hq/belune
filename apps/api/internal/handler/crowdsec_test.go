@@ -100,6 +100,8 @@ type csFixture struct {
 func crowdsecFixture(t *testing.T) *csFixture {
 	t.Helper()
 	resetDB(t)
+	_, err := env.Pool.Exec(context.Background(), "DELETE FROM settings WHERE key IN ('crowdsec_capi_operation', 'crowdsec_capi_connection')")
+	require.NoError(t, err)
 	env.Capabilities.Set(crowdsecCaddy)
 	env.Reconciler.ReconcileNowCalls = 0
 	env.Reconciler.CrowdSec_ = proxy.CrowdSecState{}
@@ -121,6 +123,7 @@ func crowdsecFixture(t *testing.T) *csFixture {
 		nil, auditSvc, nil, terminal.NewManager(2), nil)
 	srv.SetCapabilities(env.Capabilities)
 	srv.SetCrowdSec(f.svc)
+	srv.SetCAPI(crowdsec.NewCAPIManager(env.Runtime, env.Queries))
 	ts := httptest.NewServer(srv.Router())
 	t.Cleanup(ts.Close)
 	f.url = ts.URL

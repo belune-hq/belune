@@ -679,3 +679,7 @@ func (m *MockTaskEnqueuer) Enqueue(task *asynq.Task, opts ...asynq.Option) (*asy
 	m.Tasks = append(m.Tasks, et)
 	return &asynq.TaskInfo{}, nil
 }
+
+func (m *MockContainerRuntime) ContainerStorage(_ context.Context, _ string) (runtime.ContainerStorage, error) {
+	return runtime.ContainerStorage{}, nil
+}

@@ -26,6 +26,7 @@ const (
 	TypeTLSStatusSweep      = "tls:status_sweep"
 	TypeWAFEventsSweep      = "waf:events_sweep"
 	TypeCrowdSecAutoban     = "crowdsec:autoban"
+	TypeCrowdSecCAPI        = "crowdsec:capi-apply"
 	TypeTLSProbe            = "tls:probe"
 	TypeTemplateFinalize    = "template:finalize"
 	TypeNotifyDeliver       = "notify:deliver"

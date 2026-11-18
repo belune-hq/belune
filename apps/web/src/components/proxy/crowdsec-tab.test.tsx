@@ -67,6 +67,10 @@ vi.mock("@/lib/hooks/use-waf", () => ({
   useWafStatus: () => ({ data: { enabled: h.state.wafEnabled } }),
 }));
 
+vi.mock("@/lib/hooks/use-capi", () => ({
+  useCAPIStatus: () => ({ data: undefined, isLoading: true, isError: false }),
+}));
+
 import { CrowdSecTab } from "./crowdsec-tab";
 
 const base = (over: Partial<CrowdSecStatus> = {}): CrowdSecStatus => ({

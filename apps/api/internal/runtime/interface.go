@@ -21,6 +21,7 @@ type BindMount struct {
 }
 
 type ContainerConfig struct {
+	AutoRemove    bool // One-shot helpers clean themselves up if their caller exits.
 	Name          string
 	Image         string
 	Env           map[string]string
@@ -68,6 +69,18 @@ type ContainerConfig struct {
 	SecurityOpt    []string          // security options (e.g. "no-new-privileges")
 	ReadonlyRootfs bool              // when true, container rootfs is read-only
 	Tmpfs          map[string]string // path → mount options (empty options OK)
+}
+
+// ContainerStorage identifies the image and actual mounts of one container.
+type ContainerStorage struct {
+	Image  string
+	Mounts []ContainerMount
+}
+type ContainerMount struct {
+	Type        string
+	Name        string
+	Destination string
+	Writable    bool
 }
 
 type ContainerInfo struct {
@@ -229,6 +242,7 @@ type ContainerRuntime interface {
 	// ContainerHealth returns Docker's health status for a container: one of
 	// "healthy", "unhealthy", "starting", or "none" (no HEALTHCHECK configured).
 	ContainerHealth(ctx context.Context, containerID string) (string, error)
+	ContainerStorage(ctx context.Context, containerID string) (ContainerStorage, error)
 	ContainerEvents(ctx context.Context, filters map[string][]string) (<-chan ContainerEvent, <-chan error)
 	// ContainerExecTTY creates a new exec session in the named container with TTY enabled.
 	// cmd is the command to run (e.g. ["sh"] or ["bash"]).

@@ -311,6 +311,7 @@ export const queryKeys = {
       ["proxy", "waf", "clients", window, clientIp, ruleId] as const,
   },
   crowdsec: {
+    capi: ["proxy", "crowdsec", "capi"] as const,
     status: ["proxy", "crowdsec", "status"] as const,
     decisions: ["proxy", "crowdsec", "decisions"] as const,
     allowlist: ["proxy", "crowdsec", "allowlist"] as const,

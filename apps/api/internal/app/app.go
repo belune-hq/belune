@@ -176,7 +176,9 @@ func New(cfg *config.Config) (*App, error) {
 	// CrowdSec runs cscli inside the crowdsec container, so it needs the same Docker
 	// client the capability prober uses to exec into Caddy's.
 	crowdsecSvc := crowdsec.NewService(queries, crowdsec.NewController(crowdsec.NewContainerRunner(dockerClient)), cfg.Keyring, auditSvc)
+	capiManager := crowdsec.NewCAPIManager(dockerClient, queries)
 	taskHandler := &worker.TaskHandler{
+		CAPI:                  capiManager,
 		Runtimes:              runtimes,
 		Proxy:                 caddyClient,
 		DB:                    db,
@@ -239,6 +241,7 @@ func New(cfg *config.Config) (*App, error) {
 	wafRecorder := waf.NewRecorder(queries)
 	httpSrv.SetWAF(wafRecorder)
 	httpSrv.SetCrowdSec(crowdsecSvc)
+	httpSrv.SetCAPI(capiManager)
 	httpSrv.SetProxyAdmin(caddyClient)
 
 	// Optional Prometheus-friendly bind. Serves /metrics without auth on the

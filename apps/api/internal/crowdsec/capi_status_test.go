@@ -119,3 +119,20 @@ func TestCAPIRegistrationRateLimitIsActionable(t *testing.T) {
 	require.Contains(t, err.Error(), "about an hour")
 	require.NotContains(t, err.Error(), "private-secret")
 }
+
+func TestCAPIUnavailableCheckReplacesPreviousSuccessWithoutAuthenticating(t *testing.T) {
+	rt := newLocalCAPIProbe()
+	m := NewCAPIManager(rt, &capiMemoryStore{})
+	_, err := m.CheckConnection(context.Background())
+	require.NoError(t, err)
+	rt.local = ""
+	checked, err := m.CheckConnection(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "unavailable", checked.State)
+	require.False(t, checked.CheckedAt.IsZero())
+	require.Equal(t, 1, rt.upstream)
+	state, err := m.Status(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "unavailable", state.Connection.State)
+	require.Equal(t, checked.CheckedAt, state.Connection.CheckedAt)
+}

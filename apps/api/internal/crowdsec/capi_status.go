@@ -115,11 +115,11 @@ func (m *CAPIManager) CheckConnection(ctx context.Context) (CAPIConnectionCheck,
 	}
 	health, healthErr := m.rt.ContainerHealth(ctx, name)
 	if healthErr != nil || health != "healthy" {
-		return CAPIConnectionCheck{State: "unavailable", Reason: "Wait for the local API to become healthy before checking Central API"}, nil
+		return m.unavailableConnection(ctx, "Wait for the local API to become healthy before checking Central API")
 	}
 	configured, err := m.localState(ctx, name)
 	if err != nil || !configured {
-		return CAPIConnectionCheck{State: "unavailable", Reason: "Enable Central API and wait for a healthy local API before checking the connection"}, nil
+		return m.unavailableConnection(ctx, "Enable Central API and wait for a healthy local API before checking the connection")
 	}
 	return m.checkConnection(ctx)
 }
@@ -149,4 +149,9 @@ func (m *CAPIManager) saveConnectionRecord(ctx context.Context, check CAPIConnec
 	defer saveCancel()
 	_, err = m.store.UpsertSetting(saveCtx, generated.UpsertSettingParams{Key: capiConnectionKey, Value: string(raw)})
 	return err
+}
+
+func (m *CAPIManager) unavailableConnection(ctx context.Context, reason string) (CAPIConnectionCheck, error) {
+	check := CAPIConnectionCheck{State: "unavailable", Reason: reason, CheckedAt: time.Now().UTC()}
+	return check, m.saveConnectionRecord(ctx, check)
 }

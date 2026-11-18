@@ -52,7 +52,7 @@ func ensureTestImage(t *testing.T, c *Client) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	require.NoError(t, c.PullImage(ctx, testImage), "pull %s", testImage)
+	require.NoError(t, c.PullImage(ctx, testImage, nil), "pull %s", testImage)
 }
 
 func TestIntegration_ImagePullRemove(t *testing.T) {
@@ -60,10 +60,10 @@ func TestIntegration_ImagePullRemove(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	require.NoError(t, c.PullImage(ctx, testImage))
+	require.NoError(t, c.PullImage(ctx, testImage, nil))
 	// Pull again — must be idempotent and fast.
 	start := time.Now()
-	require.NoError(t, c.PullImage(ctx, testImage))
+	require.NoError(t, c.PullImage(ctx, testImage, nil))
 	assert.Less(t, time.Since(start), 30*time.Second, "second pull should be fast (cached)")
 }
 

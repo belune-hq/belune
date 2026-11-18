@@ -66,7 +66,7 @@ func TestSpawnUpdateHelper_FrozenContract(t *testing.T) {
 	c := newTestDockerClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	require.NoError(t, c.PullImage(ctx, containerTestImage), "pull %s", containerTestImage)
+	require.NoError(t, c.PullImage(ctx, containerTestImage, nil), "pull %s", containerTestImage)
 
 	version := uniqueTestContainerName(t) // unique, so concurrent runs cannot collide
 	_, err := c.SpawnUpdateHelper(ctx, runtime.UpdateHelperConfig{

@@ -217,7 +217,7 @@ func (h *Handler) pullAndSpawnUpdateHelper(ctx context.Context, rt runtime.Conta
 
 	pullCtx, cancel := context.WithTimeout(ctx, updatePullTimeout)
 	defer cancel()
-	if err := rt.PullImage(pullCtx, targetImage); err != nil {
+	if err := rt.PullImage(pullCtx, targetImage, nil); err != nil {
 		if errors.Is(pullCtx.Err(), context.DeadlineExceeded) {
 			err = fmt.Errorf("timed out after %s", updatePullTimeout)
 		}

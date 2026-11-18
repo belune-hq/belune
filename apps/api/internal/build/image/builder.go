@@ -8,13 +8,18 @@ import (
 	"github.com/belune-hq/belune/internal/runtime"
 )
 
-// Builder handles pre-built images — just pull and deploy, no build step.
-type Builder struct {
-	runtime runtime.ContainerRuntime
+type AuthResolver interface {
+	Resolve(context.Context, string) (*runtime.RegistryAuth, error)
 }
 
-func New(rt runtime.ContainerRuntime) *Builder {
-	return &Builder{runtime: rt}
+// Builder handles pre-built images — just pull and deploy, no build step.
+type Builder struct {
+	runtime  runtime.ContainerRuntime
+	resolver AuthResolver
+}
+
+func New(rt runtime.ContainerRuntime, resolver AuthResolver) *Builder {
+	return &Builder{runtime: rt, resolver: resolver}
 }
 
 func (b *Builder) Name() string { return "image" }
@@ -24,7 +29,11 @@ func (b *Builder) CanBuild(ctx context.Context, sourceDir string) bool {
 }
 
 func (b *Builder) Build(ctx context.Context, opts build.BuildOptions) (*build.BuildResult, error) {
-	if err := b.runtime.PullImage(ctx, opts.ImageTag); err != nil {
+	auth, err := b.resolver.Resolve(ctx, opts.ImageTag)
+	if err != nil {
+		return nil, err
+	}
+	if err := b.runtime.PullImage(ctx, opts.ImageTag, auth); err != nil {
 		return nil, fmt.Errorf("pull image: %w", err)
 	}
 	return &build.BuildResult{ImageTag: opts.ImageTag}, nil

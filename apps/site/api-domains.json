@@ -135,6 +135,11 @@
         "title": "DNS Providers"
       },
       {
+        "slug": "registries",
+        "tag": "Registries (Admin)",
+        "title": "Registries"
+      },
+      {
         "slug": "users",
         "tag": "Users (Admin)",
         "title": "Users"

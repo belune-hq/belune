@@ -4,6 +4,8 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,30 +13,79 @@ import (
 	"strings"
 	"time"
 
+	"github.com/belune-hq/belune/internal/pkg/redact"
+	"github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/build"
 	"github.com/docker/docker/api/types/filters"
 	imagetypes "github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/api/types/registry"
+	"github.com/docker/docker/pkg/jsonmessage"
 
 	"github.com/belune-hq/belune/internal/pkg/metrics"
 	"github.com/belune-hq/belune/internal/runtime"
 )
 
-func (c *Client) PullImage(ctx context.Context, image string) (err error) {
+func (c *Client) PullImage(ctx context.Context, image string, auth *runtime.RegistryAuth) (err error) {
 	defer func() { metrics.RecordDockerOp("pull_image", err) }()
-
-	reader, err := c.cli.ImagePull(ctx, image, imagetypes.PullOptions{})
+	host, err := runtime.RegistryHost(image)
 	if err != nil {
-		return fmt.Errorf("pull image %s: %w", image, err)
+		return err
 	}
-	defer reader.Close()
-
-	// Must drain the reader for the pull to complete
-	_, err = io.Copy(io.Discard, reader)
+	options := imagetypes.PullOptions{}
+	if auth != nil {
+		if auth.ServerAddress != host {
+			return fmt.Errorf("registry credential host does not match %s", host)
+		}
+		options.RegistryAuth, err = registry.EncodeAuthConfig(registry.AuthConfig{
+			Username: auth.Username, Password: auth.Password, ServerAddress: host,
+		})
+		if err != nil {
+			return fmt.Errorf("encode registry authentication for %s: %w", host, err)
+		}
+	}
+	// Daemon errors may arrive either as an HTTP error or inside a successful
+	// streaming response. Returning nil for the latter silently deploys stale images.
+	pullError := func(cause error) error {
+		message := cause.Error()
+		if auth != nil && auth.Password != "" {
+			message = strings.ReplaceAll(message, auth.Password, "[REDACTED]")
+		}
+		if options.RegistryAuth != "" {
+			message = strings.ReplaceAll(message, options.RegistryAuth, "[REDACTED]")
+		}
+		lower := strings.ToLower(message)
+		if errdefs.IsUnauthorized(cause) || errdefs.IsPermissionDenied(cause) || strings.Contains(lower, "unauthorized") || strings.Contains(lower, "authentication required") || strings.Contains(lower, "denied") || strings.Contains(lower, "no basic auth credentials") {
+			if auth == nil {
+				return fmt.Errorf("no credentials configured for %s — add a registry login for that host", host)
+			}
+			return fmt.Errorf("authentication failed for %s — add or correct the registry login for that host", host)
+		}
+		return fmt.Errorf("pull image from %s: %s", host, redact.Error(message))
+	}
+	reader, err := c.cli.ImagePull(ctx, image, options)
 	if err != nil {
-		return fmt.Errorf("reading pull response: %w", err)
+		return pullError(err)
 	}
-
-	return nil
+	defer func() { _ = reader.Close() }()
+	decoder := json.NewDecoder(reader)
+	for {
+		var message struct {
+			Error        *jsonmessage.JSONError `json:"errorDetail"`
+			ErrorMessage string                 `json:"error"`
+		}
+		if err := decoder.Decode(&message); err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return pullError(err)
+		}
+		if message.Error != nil {
+			return pullError(message.Error)
+		}
+		if message.ErrorMessage != "" {
+			return pullError(errors.New(message.ErrorMessage))
+		}
+	}
 }
 
 func (c *Client) BuildImage(ctx context.Context, contextDir, dockerfile, tag string) error {

@@ -610,6 +610,15 @@ type RefreshToken struct {
 	Ip         string             `json:"ip"`
 }
 
+type RegistryCredential struct {
+	ID                pgtype.UUID        `json:"id"`
+	RegistryHost      string             `json:"registry_host"`
+	Username          string             `json:"username"`
+	PasswordEncrypted []byte             `json:"password_encrypted"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+}
+
 type RequestLog struct {
 	ID            pgtype.UUID        `json:"id"`
 	ApplicationID pgtype.UUID        `json:"application_id"`

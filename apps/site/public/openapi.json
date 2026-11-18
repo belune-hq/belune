@@ -100,6 +100,9 @@
       "name": "DNS Providers (Admin)"
     },
     {
+      "name": "Registries (Admin)"
+    },
+    {
       "name": "Users (Admin)"
     },
     {
@@ -14713,6 +14716,216 @@
         ]
       }
     },
+    "/api/settings/registries": {
+      "get": {
+        "operationId": "ListRegistryCredentials",
+        "summary": "List Registry Credentials",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "Registries (Admin)"
+        ],
+        "x-belune-order": 1,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/registryCredentialResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "CreateRegistryCredential",
+        "summary": "Create Registry Credential",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "Registries (Admin)"
+        ],
+        "x-belune-order": 2,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/registryCredentialRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/registryCredentialResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/settings/registries/{credentialId}": {
+      "delete": {
+        "operationId": "DeleteRegistryCredential",
+        "summary": "Delete Registry Credential",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "Registries (Admin)"
+        ],
+        "x-belune-order": 4,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "parameters": [
+          {
+            "name": "credentialId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "UpdateRegistryCredential",
+        "summary": "Update Registry Credential",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "Registries (Admin)"
+        ],
+        "x-belune-order": 3,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "parameters": [
+          {
+            "name": "credentialId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/registryCredentialRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/registryCredentialResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/settings/smtp": {
       "get": {
         "operationId": "GetSMTPSettings",
@@ -21229,6 +21442,54 @@
             "type": "string"
           },
           "password": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "registryCredentialRequest": {
+        "properties": {
+          "password": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "registry_host": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "registryCredentialResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "password_set": {
+            "type": "boolean"
+          },
+          "registry_host": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "username": {
             "type": "string"
           }
         },

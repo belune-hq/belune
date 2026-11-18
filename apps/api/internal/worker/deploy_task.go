@@ -29,6 +29,7 @@ import (
 	"github.com/belune-hq/belune/internal/pkg/tracing"
 	"github.com/belune-hq/belune/internal/proxy"
 	"github.com/belune-hq/belune/internal/runtime"
+	"github.com/belune-hq/belune/internal/service"
 	"github.com/belune-hq/belune/internal/status"
 	"github.com/belune-hq/belune/internal/store"
 	"github.com/belune-hq/belune/internal/store/generated"
@@ -620,7 +621,14 @@ func (h *TaskHandler) prepareImage(ctx context.Context, dc *deployContext) error
 		fmt.Fprintf(out, "Pulling image %s\n", dc.imageName)
 		slog.Info("pulling image", "image", dc.imageName)
 		pullCtx, pullCancel := context.WithTimeout(ctx, time.Duration(h.Config.ImagePullTimeoutMinutes)*time.Minute)
-		if err := dc.runtime.PullImage(pullCtx, dc.imageName); err != nil {
+		auth, err := service.NewRegistryCredentialService(h.Queries, h.Keyring).Resolve(pullCtx, dc.imageName)
+		if err != nil {
+			pullCancel()
+			_, _ = fmt.Fprintf(out, "Failed to resolve registry credential: %v\n", err)
+			persistPullLog()
+			return err
+		}
+		if err := dc.runtime.PullImage(pullCtx, dc.imageName, auth); err != nil {
 			pullCancel()
 			fmt.Fprintf(out, "Failed to pull image: %v\n", err)
 			persistPullLog()

@@ -7,7 +7,6 @@ import (
 	"github.com/belune-hq/belune/internal/runtime"
 	"io"
 	"net/http"
-	"strings"
 	"testing"
 
 	"github.com/belune-hq/belune/internal/testutil"
@@ -99,10 +98,10 @@ func TestCrowdSecCAPICheckIsExplicitAuditedAndProtectsCooldown(t *testing.T) {
 		}
 		text := ""
 		if cmd[0] == "cscli" {
-			text = `{"sharing_options":{"manual":false,"custom":true,"tainted":true,"context":false}}`
-		} else if strings.Contains(cmd[2], "online_api_credentials.yaml;") {
+			t.Fatalf("status polling invoked an upstream-capable cscli command: %v", cmd)
+		} else if cmd[len(cmd)-1] == "/etc/crowdsec/online_api_credentials.yaml" {
 			text = "login: test\npassword: private-secret\nurl: https://api.crowdsec.net/\n"
-		} else if strings.Contains(cmd[2], "config.yaml.local;") {
+		} else if cmd[len(cmd)-1] == "/etc/crowdsec/config.yaml.local" {
 			text = "api:\n  server:\n    online_client:\n      credentials_path: /etc/crowdsec/online_api_credentials.yaml\n"
 		}
 		_, err := io.WriteString(out, text)

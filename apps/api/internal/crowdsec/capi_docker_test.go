@@ -29,6 +29,7 @@ type capiDrillRuntime struct {
 	waitedForFatal    bool
 	sawFatal          bool
 	capiCalls         int
+	cscliCalls        int
 }
 
 func (r *capiDrillRuntime) ListSystemContainers(ctx context.Context) ([]runtime.ContainerInfo, error) {
@@ -42,6 +43,9 @@ func (r *capiDrillRuntime) ListSystemContainers(ctx context.Context) ([]runtime.
 	return own, err
 }
 func (r *capiDrillRuntime) ContainerExec(ctx context.Context, name string, cmd []string, in io.Reader, out, stderr io.Writer) (int, error) {
+	if len(cmd) > 0 && cmd[0] == "cscli" {
+		r.cscliCalls++
+	}
 	if len(cmd) > 2 && cmd[0] == "cscli" && cmd[1] == "capi" {
 		r.capiCalls++
 	}
@@ -244,7 +248,8 @@ func TestCAPIDockerLifecycle(t *testing.T) {
 
 }
 
-// Network isolation proves even a configured enabled poll does not need CAPI.
+// Successful output and network isolation alone do not rule out login attempts.
+// Forbid cscli while exercising the polled reads against a real Docker daemon.
 func TestCAPIDockerLocalPolling(t *testing.T) {
 	ctx := context.Background()
 	m, rt, _, name, _ := newCAPIDrill(t, true)
@@ -252,6 +257,7 @@ func TestCAPIDockerLocalPolling(t *testing.T) {
 	require.NoError(t, err)
 	_, err = m.exec(ctx, name, []string{"sh", "-ec", "umask 077; cat > /etc/crowdsec/online_api_credentials.yaml"}, "login: offline-fixture\npassword: fixture-only\nurl: https://api.crowdsec.net/\n")
 	require.NoError(t, err)
+	m.runner = localOnlyRunner{t}
 	// The daemon stays in local-only mode; no restart and no registration occur.
 	for range 20 {
 		state, err := m.Status(ctx)
@@ -259,6 +265,38 @@ func TestCAPIDockerLocalPolling(t *testing.T) {
 		require.Equal(t, "enabled", state.State)
 		require.True(t, state.SharingAvailable)
 	}
-	require.Zero(t, rt.capiCalls)
-	t.Log("20 enabled-state polls passed with Network=none and zero cscli capi calls")
+	require.Zero(t, rt.cscliCalls)
+	// A deliberate write still uses cscli; the following poll must read its file.
+	_, err = m.exec(ctx, name, []string{"cscli", "console", "disable", "custom"}, "")
+	require.NoError(t, err)
+	state, err := m.Status(ctx)
+	require.NoError(t, err)
+	require.True(t, state.SharingAvailable)
+	require.False(t, state.Sharing.Custom)
+	require.True(t, state.Sharing.Tainted)
+	require.Equal(t, 1, rt.cscliCalls, "only the deliberate sharing write may invoke cscli")
+	// Exercise a configured path literally, including spaces and shell syntax.
+	custom := "/tmp/console 'custom' $(echo injected).yaml"
+	_, err = m.exec(ctx, name, []string{"sh", "-ec", `cat > "$1"`, "sh", custom}, "share_manual_decisions: true\nshare_custom: false\n")
+	require.NoError(t, err)
+	local := "api:\n  server:\n    console_path: " + custom + "\n    online_client:\n      credentials_path: /etc/crowdsec/online_api_credentials.yaml\n"
+	_, err = m.exec(ctx, name, []string{"sh", "-ec", "cat > /etc/crowdsec/config.yaml.local"}, local)
+	require.NoError(t, err)
+	state, err = m.Status(ctx)
+	require.NoError(t, err)
+	require.True(t, state.SharingAvailable)
+	require.Equal(t, CAPISharing{Manual: true, Tainted: true}, state.Sharing)
+	_, err = m.exec(ctx, name, []string{"sh", "-ec", `head -c 1048577 /dev/zero > "$1"`, "sh", custom}, "")
+	require.NoError(t, err)
+	_, err = m.readLocalFile(ctx, name, custom)
+	require.Error(t, err, "oversized files must be refused before parsing")
+	_, err = m.exec(ctx, name, []string{"sh", "-ec", `rm -f "$1"; ln -s /etc/crowdsec/console.yaml "$1"`, "sh", custom}, "")
+	require.NoError(t, err)
+	_, err = m.readLocalFile(ctx, name, custom)
+	require.Error(t, err, "symlink overrides must be refused")
+	state, err = m.Status(ctx)
+	require.NoError(t, err)
+	require.False(t, state.SharingAvailable)
+	require.Equal(t, 1, rt.cscliCalls, "unreadable files must not fall back to console status")
+	t.Log("20 enabled-state polls used no cscli; deliberate sharing write, literal console_path, size limit and symlink refusal verified with Network=none")
 }

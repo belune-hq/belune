@@ -2,6 +2,7 @@ package crowdsec
 
 import (
 	"context"
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -14,6 +15,10 @@ import (
 type localCAPIProbe struct {
 	runtime.ContainerRuntime
 	base, local, credentials string
+	files                    map[string]string
+	readPaths                []string
+	fileError                string
+	pollTest                 *testing.T
 	upstream                 int
 	code                     int
 	stderr                   string
@@ -26,23 +31,32 @@ func (r *localCAPIProbe) ContainerHealth(context.Context, string) (string, error
 	return "healthy", nil
 }
 func (r *localCAPIProbe) ContainerExec(_ context.Context, _ string, cmd []string, _ io.Reader, out, stderr io.Writer) (int, error) {
+	if r.pollTest != nil {
+		require.Len(r.pollTest, cmd, 5, "polled execs must be fixed local-file reads")
+		require.Equal(r.pollTest, "sh", cmd[0])
+		require.NotContains(r.pollTest, strings.ToLower(cmd[2]), "cscli")
+	}
+
 	if len(cmd) > 2 && cmd[0] == "cscli" && cmd[1] == "capi" {
 		r.upstream++
 		_, err := io.WriteString(stderr, r.stderr)
 		return r.code, err
 	}
 	text := ""
-	if cmd[0] == "cscli" {
-		text = `{"sharing_options":{"manual":false,"custom":true,"tainted":true,"context":false}}`
-	} else {
-		switch {
-		case strings.Contains(cmd[2], "/config.yaml.local"):
-			text = r.local
-		case strings.Contains(cmd[2], "/config.yaml"):
-			text = r.base
-		case strings.Contains(cmd[2], "/online_api_credentials.yaml"):
-			text = r.credentials
-		}
+	path := cmd[len(cmd)-1]
+	r.readPaths = append(r.readPaths, path)
+	if path == r.fileError {
+		return 0, errors.New("local file unavailable")
+	}
+	switch path {
+	case "/etc/crowdsec/config.yaml.local":
+		text = r.local
+	case "/etc/crowdsec/config.yaml":
+		text = r.base
+	case "/etc/crowdsec/online_api_credentials.yaml":
+		text = r.credentials
+	default:
+		text = r.files[path]
 	}
 	_, err := io.WriteString(out, text)
 	return 0, err
@@ -50,9 +64,11 @@ func (r *localCAPIProbe) ContainerExec(_ context.Context, _ string, cmd []string
 func newLocalCAPIProbe() *localCAPIProbe {
 	return &localCAPIProbe{base: "api:\n  server:\n    listen_uri: 0.0.0.0:8080\n", local: "api:\n  server:\n    online_client:\n      credentials_path: /etc/crowdsec/online_api_credentials.yaml\n", credentials: "login: machine\npassword: never-return-this\nurl: https://api.crowdsec.net/\n"}
 }
-func TestCAPIStatusNeverAuthenticatesWhilePolling(t *testing.T) {
+func TestCAPIStatusUsesOnlyLocalSources(t *testing.T) {
 	rt := newLocalCAPIProbe()
 	m := NewCAPIManager(rt, &capiMemoryStore{})
+	m.runner = localOnlyRunner{t}
+	rt.pollTest = t
 	for range 100 {
 		state, err := m.Status(context.Background())
 		require.NoError(t, err)
@@ -135,4 +151,40 @@ func TestCAPIUnavailableCheckReplacesPreviousSuccessWithoutAuthenticating(t *tes
 	require.NoError(t, err)
 	require.Equal(t, "unavailable", state.Connection.State)
 	require.Equal(t, checked.CheckedAt, state.Connection.CheckedAt)
+}
+
+// Reject every runner invocation, not merely one spelling of capi status.
+// Status has no reason to invoke cscli; console status can also log in upstream.
+type localOnlyRunner struct{ t *testing.T }
+
+func (r localOnlyRunner) Run(_ context.Context, args ...string) (string, error) {
+	r.t.Fatalf("Status invoked an upstream-capable command: cscli %v", args)
+	return "", nil
+}
+
+func TestCAPIStatusReadsEffectiveConsolePathWithoutCommandFallback(t *testing.T) {
+	rt := newLocalCAPIProbe()
+	custom := "/tmp/console 'custom' $(must-not-execute).yaml"
+	rt.base += "    console_path: /tmp/old-console.yaml\n"
+	rt.local += "    console_path: " + custom + "\n"
+	rt.files = map[string]string{custom: "share_manual_decisions: true\nshare_custom: false\nshare_context: true\n", "/etc/crowdsec/console.yaml": "share_tainted: false\n"}
+	m := NewCAPIManager(rt, &capiMemoryStore{})
+	m.runner = localOnlyRunner{t}
+	rt.pollTest = t
+	state, err := m.Status(context.Background())
+	require.NoError(t, err)
+	require.True(t, state.SharingAvailable)
+	require.Equal(t, CAPISharing{Manual: true, Tainted: true, Context: true}, state.Sharing)
+	require.Contains(t, rt.readPaths, custom)
+	require.NotContains(t, rt.readPaths, "/etc/crowdsec/console.yaml")
+	require.NotContains(t, rt.readPaths, custom+".local")
+	rt.fileError = custom
+	state, err = m.Status(context.Background())
+	require.NoError(t, err)
+	require.False(t, state.SharingAvailable)
+	rt.fileError = ""
+	rt.files[custom] = "share_custom: [invalid]"
+	state, err = m.Status(context.Background())
+	require.NoError(t, err)
+	require.False(t, state.SharingAvailable)
 }

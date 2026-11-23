@@ -26,30 +26,45 @@ func capiRateLimited(message string) bool {
 	return strings.Contains(lower, "403") || strings.Contains(lower, "api error: forbidden")
 }
 
-// Polling must never authenticate: capi status forces a new upstream login on
-// every invocation. Read only local files and return the last deliberate check.
-func (m *CAPIManager) localState(ctx context.Context, name string) (bool, error) {
-	read := func(file string) ([]byte, error) {
-		raw, err := m.exec(ctx, name, []string{"sh", "-ec", `test ! -L /etc/crowdsec/` + file + `; if [ -f /etc/crowdsec/` + file + ` ]; then test "$(wc -c < /etc/crowdsec/` + file + `)" -le 1048576; cat /etc/crowdsec/` + file + `; fi`}, "")
-		return []byte(raw), err
-	}
-	base, err := read("config.yaml")
+// readLocalFile is shared by all polled configuration reads. Keep paths in
+// argv: console_path is operator-controlled and may contain shell metacharacters.
+func (m *CAPIManager) readLocalFile(ctx context.Context, name, path string) ([]byte, error) {
+	raw, err := m.exec(ctx, name, []string{"sh", "-ec", `file=$1; test ! -L "$file"; if [ -e "$file" ]; then test -f "$file"; test "$(wc -c < "$file")" -le 1048576; cat -- "$file"; fi`, "sh", path}, "")
+	return []byte(raw), err
+}
+
+func (m *CAPIManager) localConfig(ctx context.Context, name string) (map[string]any, error) {
+	base, err := m.readLocalFile(ctx, name, "/etc/crowdsec/config.yaml")
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	local, err := read("config.yaml.local")
+	local, err := m.readLocalFile(ctx, name, "/etc/crowdsec/config.yaml.local")
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	config, err := capiMapping(base)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	override, err := capiMapping(local)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	mergeCAPIMaps(config, override)
+	return config, nil
+}
+
+// Polling must never authenticate. Both capi status and console status can log
+// in upstream; use only files, container health and stored deliberate checks.
+func (m *CAPIManager) localState(ctx context.Context, name string) (bool, error) {
+	config, err := m.localConfig(ctx, name)
+	if err != nil {
+		return false, err
+	}
+	return m.localStateFromConfig(ctx, name, config)
+}
+
+func (m *CAPIManager) localStateFromConfig(ctx context.Context, name string, config map[string]any) (bool, error) {
 	api, _ := config["api"].(map[string]any)
 	server, _ := api["server"].(map[string]any)
 	online, exists := server["online_client"]
@@ -60,7 +75,7 @@ func (m *CAPIManager) localState(ctx context.Context, name string) (bool, error)
 	if !ok || stanza["credentials_path"] != onlineCredentialsPath {
 		return true, errors.New("unsupported Central API credential configuration")
 	}
-	credentials, err := read("online_api_credentials.yaml")
+	credentials, err := m.readLocalFile(ctx, name, onlineCredentialsPath)
 	if err != nil {
 		return false, err
 	}

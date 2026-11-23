@@ -89,6 +89,8 @@ func (s *ApplicationService) cleanupVolumeBackups(ctx context.Context, appID pgt
 
 // CreateApplicationParams holds the parameters for creating an application.
 type CreateApplicationParams struct {
+	RegistryUsername *string
+	RegistryPassword *string
 	ProjectID        pgtype.UUID
 	ProjectSlug      string
 	Name             string
@@ -128,27 +130,33 @@ func (s *ApplicationService) Create(ctx context.Context, p CreateApplicationPara
 		gitCreds = encrypted
 	}
 
+	registryUser, registryPassword, err := s.ApplicationRegistryCredentials(generated.Application{}, p.Type, p.SourceImage, p.RegistryUsername, p.RegistryPassword, false)
+	if err != nil {
+		return generated.Application{}, err
+	}
 	var app generated.Application
 	err = store.WithTx(ctx, s.db, func(q *generated.Queries) error {
 		var err error
 		app, err = q.CreateApplication(ctx, generated.CreateApplicationParams{
-			ProjectID:               p.ProjectID,
-			Name:                    p.Name,
-			Slug:                    p.BaseSlug,
-			Type:                    p.Type,
-			SourceRepo:              pgtype.Text{String: p.SourceRepo, Valid: p.SourceRepo != ""},
-			SourceImage:             pgtype.Text{String: p.SourceImage, Valid: p.SourceImage != ""},
-			DockerfilePath:          pgtype.Text{String: p.DockerfilePath, Valid: p.DockerfilePath != ""},
-			BuildType:               p.BuildType,
-			CpuLimit:                p.CPULimit,
-			MemoryLimit:             p.MemoryLimit,
-			WebhookSecretEncrypted:  encryptedSecret,
-			GitCredentialsEncrypted: gitCreds,
-			HealthCheckPath:         pgtype.Text{String: p.HealthCheckPath, Valid: p.HealthCheckPath != ""},
-			GitIntegrationID:        p.GitIntegrationID,
-			Branch:                  branchValue(p.Branch),
-			AutoDeployBranch:        branchValue(p.Branch),
-			RootDirectory:           pgtype.Text{String: p.RootDirectory, Valid: p.RootDirectory != ""},
+			RegistryUsername:          registryUser,
+			RegistryPasswordEncrypted: registryPassword,
+			ProjectID:                 p.ProjectID,
+			Name:                      p.Name,
+			Slug:                      p.BaseSlug,
+			Type:                      p.Type,
+			SourceRepo:                pgtype.Text{String: p.SourceRepo, Valid: p.SourceRepo != ""},
+			SourceImage:               pgtype.Text{String: p.SourceImage, Valid: p.SourceImage != ""},
+			DockerfilePath:            pgtype.Text{String: p.DockerfilePath, Valid: p.DockerfilePath != ""},
+			BuildType:                 p.BuildType,
+			CpuLimit:                  p.CPULimit,
+			MemoryLimit:               p.MemoryLimit,
+			WebhookSecretEncrypted:    encryptedSecret,
+			GitCredentialsEncrypted:   gitCreds,
+			HealthCheckPath:           pgtype.Text{String: p.HealthCheckPath, Valid: p.HealthCheckPath != ""},
+			GitIntegrationID:          p.GitIntegrationID,
+			Branch:                    branchValue(p.Branch),
+			AutoDeployBranch:          branchValue(p.Branch),
+			RootDirectory:             pgtype.Text{String: p.RootDirectory, Valid: p.RootDirectory != ""},
 		})
 		if err != nil {
 			return err
@@ -190,19 +198,22 @@ func createDefaultInstance(ctx context.Context, q *generated.Queries, appID pgty
 
 // UpdateApplicationParams holds parameters for updating an application.
 type UpdateApplicationParams struct {
-	Name              string
-	SourceRepo        string
-	SourceImage       string
-	DockerfilePath    string
-	BuildTypeOverride string
-	BuilderImage      string
-	CPULimit          float64
-	MemoryLimit       int64
-	GitToken          string      // plaintext PAT; encrypted before storage; empty = no change
-	HealthCheckPath   string      // empty = clear existing
-	GitIntegrationID  pgtype.UUID // optional FK to a connected provider account; zero = clear
-	Branch            string      // ref to build; empty = the repository's default ref
-	RootDirectory     string      // subdirectory to build from; empty = the repo root
+	RegistryUsername         *string
+	RegistryPassword         *string
+	ClearRegistryCredentials bool
+	Name                     string
+	SourceRepo               string
+	SourceImage              string
+	DockerfilePath           string
+	BuildTypeOverride        string
+	BuilderImage             string
+	CPULimit                 float64
+	MemoryLimit              int64
+	GitToken                 string      // plaintext PAT; encrypted before storage; empty = no change
+	HealthCheckPath          string      // empty = clear existing
+	GitIntegrationID         pgtype.UUID // optional FK to a connected provider account; zero = clear
+	Branch                   string      // ref to build; empty = the repository's default ref
+	RootDirectory            string      // subdirectory to build from; empty = the repo root
 }
 
 // Update applies field changes to an application.
@@ -235,16 +246,22 @@ func (s *ApplicationService) Update(
 		gitCreds = encrypted
 	}
 
+	registryUser, registryPassword, err := s.ApplicationRegistryCredentials(current, current.Type, p.SourceImage, p.RegistryUsername, p.RegistryPassword, p.ClearRegistryCredentials)
+	if err != nil {
+		return generated.Application{}, err
+	}
 	return s.queries.UpdateApplication(ctx, generated.UpdateApplicationParams{
-		ID:                appID,
-		Name:              name,
-		SourceRepo:        pgtype.Text{String: p.SourceRepo, Valid: p.SourceRepo != ""},
-		SourceImage:       pgtype.Text{String: p.SourceImage, Valid: p.SourceImage != ""},
-		DockerfilePath:    pgtype.Text{String: p.DockerfilePath, Valid: p.DockerfilePath != ""},
-		BuildTypeOverride: pgtype.Text{String: p.BuildTypeOverride, Valid: p.BuildTypeOverride != ""},
-		BuilderImage:      pgtype.Text{String: p.BuilderImage, Valid: p.BuilderImage != ""},
-		CustomBuildpacks:  current.CustomBuildpacks,
-		Status:            current.Status,
+		RegistryUsername:          registryUser,
+		RegistryPasswordEncrypted: registryPassword,
+		ID:                        appID,
+		Name:                      name,
+		SourceRepo:                pgtype.Text{String: p.SourceRepo, Valid: p.SourceRepo != ""},
+		SourceImage:               pgtype.Text{String: p.SourceImage, Valid: p.SourceImage != ""},
+		DockerfilePath:            pgtype.Text{String: p.DockerfilePath, Valid: p.DockerfilePath != ""},
+		BuildTypeOverride:         pgtype.Text{String: p.BuildTypeOverride, Valid: p.BuildTypeOverride != ""},
+		BuilderImage:              pgtype.Text{String: p.BuilderImage, Valid: p.BuilderImage != ""},
+		CustomBuildpacks:          current.CustomBuildpacks,
+		Status:                    current.Status,
 		// Resource limits are owned by SetApplicationResources, not this general
 		// update — preserve them so saving settings can never reset them to
 		// unlimited out from under the Resources section.
@@ -380,22 +397,24 @@ func (s *ApplicationService) FindOrCreatePreview(
 	err = store.WithTx(ctx, s.db, func(q *generated.Queries) error {
 		var txErr error
 		created, txErr = q.CreatePreviewApplication(ctx, generated.CreatePreviewApplicationParams{
-			ProjectID:               parent.ProjectID,
-			Name:                    fmt.Sprintf("%s (%s)", parent.Name, branch),
-			Slug:                    previewBaseSlug,
-			Type:                    parent.Type,
-			SourceRepo:              parent.SourceRepo,
-			SourceImage:             parent.SourceImage,
-			DockerfilePath:          parent.DockerfilePath,
-			BuildType:               parent.BuildType,
-			CpuLimit:                parent.CpuLimit,
-			MemoryLimit:             parent.MemoryLimit,
-			GitCredentialsEncrypted: parent.GitCredentialsEncrypted,
-			HealthCheckPath:         parent.HealthCheckPath,
-			GitIntegrationID:        parent.GitIntegrationID,
-			ParentApplicationID:     pgtype.UUID{Bytes: parent.ID.Bytes, Valid: true},
-			Branch:                  pgtype.Text{String: branch, Valid: true},
-			RootDirectory:           parent.RootDirectory,
+			ProjectID:                 parent.ProjectID,
+			Name:                      fmt.Sprintf("%s (%s)", parent.Name, branch),
+			Slug:                      previewBaseSlug,
+			Type:                      parent.Type,
+			SourceRepo:                parent.SourceRepo,
+			SourceImage:               parent.SourceImage,
+			DockerfilePath:            parent.DockerfilePath,
+			BuildType:                 parent.BuildType,
+			CpuLimit:                  parent.CpuLimit,
+			MemoryLimit:               parent.MemoryLimit,
+			GitCredentialsEncrypted:   parent.GitCredentialsEncrypted,
+			RegistryUsername:          parent.RegistryUsername,
+			RegistryPasswordEncrypted: parent.RegistryPasswordEncrypted,
+			HealthCheckPath:           parent.HealthCheckPath,
+			GitIntegrationID:          parent.GitIntegrationID,
+			ParentApplicationID:       pgtype.UUID{Bytes: parent.ID.Bytes, Valid: true},
+			Branch:                    pgtype.Text{String: branch, Valid: true},
+			RootDirectory:             parent.RootDirectory,
 		})
 		if txErr != nil {
 			return txErr

@@ -26,7 +26,10 @@ export function useSaveRegistryCredential() {
     }) =>
       id ? updateRegistryCredential(id, data) : createRegistryCredential(data),
     onSuccess: () =>
-      client.invalidateQueries({ queryKey: queryKeys.registries.all }),
+      Promise.all([
+        client.invalidateQueries({ queryKey: queryKeys.registries.all }),
+        client.invalidateQueries({ queryKey: queryKeys.projects.all }),
+      ]),
   });
 }
 export function useDeleteRegistryCredential() {
@@ -34,6 +37,9 @@ export function useDeleteRegistryCredential() {
   return useMutation({
     mutationFn: deleteRegistryCredential,
     onSuccess: () =>
-      client.invalidateQueries({ queryKey: queryKeys.registries.all }),
+      Promise.all([
+        client.invalidateQueries({ queryKey: queryKeys.registries.all }),
+        client.invalidateQueries({ queryKey: queryKeys.projects.all }),
+      ]),
   });
 }

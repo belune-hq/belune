@@ -92,7 +92,7 @@ export function IntegrationRepoPicker({
       <p className="text-muted-foreground text-sm">
         No connected accounts.{" "}
         <Link
-          to="/git"
+          to="/sources"
           search={{ tab: undefined, connected: undefined, error: undefined }}
           className="text-foreground font-medium underline underline-offset-2"
         >

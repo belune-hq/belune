@@ -6,7 +6,7 @@ test("registry credentials stay write-only through create, edit and remove", asy
   page,
 }) => {
   const host = `registry-${Date.now()}.invalid:5055`;
-  await page.goto("/server?tab=configuration");
+  await page.goto("/sources?tab=registries");
   await page.getByRole("button", { name: "Add registry", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await dialog

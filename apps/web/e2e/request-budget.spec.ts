@@ -104,6 +104,7 @@ const WINDOW_MS = Number(process.env.BUDGET_WINDOW_MS ?? 65_000);
 const PAGES: [string, string][] = [
   ["/projects", "Projects (landing)"],
   ["/server?tab=configuration", "Server - Configuration"],
+  ["/sources?tab=registries", "Sources - Registries"],
   ["/server", "Server - Overview"],
   ["/docker", "Docker"],
   ["/requests", "Requests"],

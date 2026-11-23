@@ -1,16 +1,16 @@
 ---
-title: Git
-description: Connect GitHub, GitLab, Bitbucket, or Gitea for private repositories and push-to-deploy.
+title: Sources
+description: Connect git accounts and manage registry credentials for code and images.
 ---
 
-Git integrations let Belune clone private repositories and deploy automatically on push.
+The **Sources** page brings together personal git connections, admin-managed provider apps, and install-wide registry credentials. Non-admins see Connections; administrators also see Providers and Registries.
 
 <Screenshot
   name="git-providers"
-  alt="The Git page's Providers tab, listing configured provider apps."
+  alt="The Sources page's Providers tab, listing configured provider apps."
 />
 
-## Providers vs. Connections
+## Providers Vs. Connections
 
 - A **Provider** is an app registration — a GitHub App, or an OAuth client ID/secret pair, that makes connecting possible at all.
 - A **Connection** is one actual linked account, authenticated through one of those providers.
@@ -31,7 +31,7 @@ Four providers are supported, added from **Providers → Add provider**:
 - **Bitbucket** — cloud-hosted.
 - **Gitea** — self-hosted only; a base URL is required.
 
-### Register a GitHub App
+### Register A GitHub App
 
 GitHub gets a dedicated flow instead of manual OAuth:
 
@@ -41,7 +41,7 @@ GitHub gets a dedicated flow instead of manual OAuth:
 4. Click **Create GitHub App** button. You're redirected to GitHub to create and install the App from a manifest
 5. After redirect back, the provider is configured automatically.
 
-### Register an OAuth Provider
+### Register An OAuth Provider
 
 GitLab, Bitbucket, and Gitea are registered as standard OAuth apps:
 
@@ -62,7 +62,7 @@ GitLab, Bitbucket, and Gitea are registered as standard OAuth apps:
 
 <Screenshot
   name="git-connections"
-  alt="The Git page's Connections tab, listing linked accounts."
+  alt="The Sources page's Connections tab, listing linked accounts."
 />
 
 From the **Connections** tab, pick any available provider to be redirected there and authorize Belune. Once connected, the table shows the account login, host, and when it was connected.
@@ -72,10 +72,20 @@ From the **Connections** tab, pick any available provider to be redirected there
   deploying through it will need to be pointed at a different connection.
 </Callout>
 
-## Deploy from a Connection
+## Deploy From A Connection
 
 When creating a Git-based application, pick **Connected Account** on the repository source field, then the repository and branch. The pickers only list repositories that connection can actually see; an existing application's Settings tab shows the same fields and lets you change them.
 
-## Push-to-Deploy
+## Push-To-Deploy
 
 Connecting a repository registers a webhook on it automatically. A push to the application's configured branch triggers a build the same way a manual deploy does — see [Deployments](/docs/core/application/deployments) for what happens after the webhook fires, and for deploy hooks as a git-independent alternative.
+
+## Registries
+
+Administrators manage install-wide registry logins under **Sources → Registries**. Enter a host such as `ghcr.io`, `docker.io`, or `registry.example.com:5000`, a username, and a password or token. The password is encrypted and write-only; leaving it blank during an edit preserves the existing value.
+
+An image application's **Settings** can hold its own registry username and password. Project members can manage that credential without administrator privileges. Pulls choose the application credential first, a matching install-wide credential second, and anonymous access last. Application settings show when an install-wide credential covers the image's registry, without exposing that login.
+
+An application credential applies to the registry derived from its image reference. Replacing the image with another registry host requires a new password or explicit removal of the credential; an existing token is never silently sent to another host. Removing the application credential restores fallback behavior. Switching the source to git removes the image credential; running containers remain unchanged until a deploy applies the new source.
+
+Existing `/git` links redirect to `/sources`, preserving the selected tab and connection outcome. Git provider callback URLs under `/api/git` remain unchanged.

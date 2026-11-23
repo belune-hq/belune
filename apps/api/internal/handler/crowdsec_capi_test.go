@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/belune-hq/belune/internal/runtime"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/belune-hq/belune/internal/testutil"
@@ -129,4 +131,75 @@ func TestCrowdSecCAPICheckIsExplicitAuditedAndProtectsCooldown(t *testing.T) {
 	}
 	require.Equal(t, 1, upstream)
 	f.awaitAudit("check_crowdsec_capi", "check_crowdsec_capi")
+}
+
+func TestConsoleEnrollmentIsAdminSessionOnlyAndNeverQueuesTheKey(t *testing.T) {
+	f := crowdsecFixture(t)
+	oldExec, oldContainers := env.Runtime.ExecFunc, env.Runtime.ListSystemContainers_
+	t.Cleanup(func() { env.Runtime.ExecFunc = oldExec; env.Runtime.ListSystemContainers_ = oldContainers })
+	env.Runtime.ListSystemContainers_ = []runtime.ContainerInfo{{Name: "crowdsec", Labels: map[string]string{"belune-system": "crowdsec"}}}
+	calls := 0
+	env.Runtime.ExecFunc = func(_ context.Context, _ string, cmd []string, _ io.Reader, out, stderr io.Writer) (int, error) {
+		text := ""
+		if cmd[0] == "sh" && strings.Contains(cmd[2], "console enroll") {
+			calls++
+			_, err := io.WriteString(stderr, "Watcher successfully enrolled. Visit https://app.crowdsec.net to accept it.")
+			return 0, err
+		}
+		if cmd[0] == "timeout" {
+			calls++
+			text = `| Central API (CAPI) | ✅ authenticated |
+| Enrolled | ❌ not enrolled |`
+		} else {
+			switch cmd[len(cmd)-1] {
+			case "/etc/crowdsec/config.yaml.local":
+				text = "api:\n  server:\n    online_client:\n      credentials_path: /etc/crowdsec/online_api_credentials.yaml\n"
+			case "/etc/crowdsec/online_api_credentials.yaml":
+				text = "login: watcher\npassword: do-not-return\nurl: https://api.crowdsec.net/\n"
+			}
+		}
+		_, err := io.WriteString(out, text)
+		return 0, err
+	}
+	path := "/api/maintenance/proxy/crowdsec/capi"
+	body := map[string]any{"mode": "key", "key": "one-shot-never-persist", "consent": true, "sharing": map[string]bool{"share_custom": true, "share_tainted": true}}
+	original := f.token
+	token := mintScoped(t, original, []string{"write"})
+	// Test the actual token gate, independent of business validation.
+	f.token = token
+	for _, endpoint := range []string{"/enroll", "/enrollment/check"} {
+		code, _ := f.json("POST", path+endpoint, body)
+		require.Equal(t, http.StatusForbidden, code)
+	}
+	f.token = original
+	response := env.DoRequest(t, "POST", "/api/users", map[string]string{"email": "console-member@test.com", "password": "password123", "role": "member"}, testutil.AuthHeader(original))
+	require.Equal(t, http.StatusCreated, response.StatusCode)
+	_ = response.Body.Close()
+	f.token = env.LoginAs(t, "console-member@test.com", "password123")
+	for _, endpoint := range []string{"/enroll", "/enrollment/check"} {
+		code, _ := f.json("POST", path+endpoint, body)
+		require.Equal(t, http.StatusForbidden, code)
+	}
+	f.token = original
+	before := len(env.Asynq.Tasks)
+	code, result := f.json("POST", path+"/enroll", body)
+	require.Equal(t, http.StatusOK, code)
+	require.Equal(t, "awaiting_approval", result["state"])
+	require.NotContains(t, fmt.Sprint(result), "one-shot-never-persist")
+	require.Len(t, env.Asynq.Tasks, before, "enrollment keys never enter Redis job payloads")
+	code, result = f.json("POST", path+"/enrollment/check", nil)
+	require.Equal(t, http.StatusOK, code)
+	require.Equal(t, "awaiting_approval", result["state"])
+	for range 5 {
+		code, result = f.json("GET", path, nil)
+		require.Equal(t, http.StatusOK, code)
+		require.Equal(t, "awaiting_approval", result["enrollment"].(map[string]any)["state"])
+	}
+	require.Equal(t, 2, calls)
+	f.awaitAudit("enroll_crowdsec_console", "check_crowdsec_console")
+	var leaks int
+	require.NoError(t, env.Pool.QueryRow(context.Background(), "SELECT count(*) FROM settings WHERE value LIKE '%one-shot-never-persist%'").Scan(&leaks))
+	require.Zero(t, leaks)
+	require.NoError(t, env.Pool.QueryRow(context.Background(), "SELECT count(*) FROM audit_logs WHERE details::text LIKE '%one-shot-never-persist%'").Scan(&leaks))
+	require.Zero(t, leaks)
 }

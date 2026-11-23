@@ -3325,6 +3325,98 @@
         ]
       }
     },
+    "/api/maintenance/proxy/crowdsec/capi/enroll": {
+      "post": {
+        "operationId": "EnrollCrowdSecConsole",
+        "summary": "Enroll In CrowdSec Console",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "Maintenance (Admin)"
+        ],
+        "x-belune-order": 18,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CAPIEnrollRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CAPIEnrollment"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/maintenance/proxy/crowdsec/capi/enrollment/check": {
+      "post": {
+        "operationId": "CheckCrowdSecConsole",
+        "summary": "Check CrowdSec Console Enrollment",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "Maintenance (Admin)"
+        ],
+        "x-belune-order": 19,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CAPIEnrollment"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/maintenance/proxy/crowdsec/decisions": {
       "delete": {
         "operationId": "DeleteCrowdSecBan",
@@ -16310,6 +16402,9 @@
               "null"
             ]
           },
+          "restart_console": {
+            "type": "boolean"
+          },
           "sharing": {
             "anyOf": [
               {
@@ -16333,6 +16428,67 @@
             "type": "string"
           },
           "state": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "CAPIEnrollRequest": {
+        "properties": {
+          "consent": {
+            "type": "boolean"
+          },
+          "key": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "overwrite": {
+            "type": "boolean"
+          },
+          "sharing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CAPISharing"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "CAPIEnrollment": {
+        "properties": {
+          "checked_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "requested_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "restart_required": {
+            "type": "boolean"
+          },
+          "state": {
+            "type": "string"
+          },
+          "url": {
             "type": "string"
           }
         },
@@ -16369,6 +16525,9 @@
                 "type": "null"
               }
             ]
+          },
+          "enrollment": {
+            "$ref": "#/components/schemas/CAPIEnrollment"
           },
           "health": {
             "type": "string"
@@ -18779,6 +18938,9 @@
           "has_git_credentials": {
             "type": "boolean"
           },
+          "has_registry_credentials": {
+            "type": "boolean"
+          },
           "has_webhook_secret": {
             "type": "boolean"
           },
@@ -18885,6 +19047,18 @@
           },
           "readonly_rootfs": {
             "type": "boolean"
+          },
+          "registry_credential_source": {
+            "type": "string"
+          },
+          "registry_host": {
+            "type": "string"
+          },
+          "registry_username": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "root_directory": {
             "type": [
@@ -19319,6 +19493,18 @@
           "git_token": {
             "type": "string"
           },
+          "registry_password": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "registry_username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "root_directory": {
             "type": "string"
           },
@@ -19410,6 +19596,18 @@
           },
           "name": {
             "type": "string"
+          },
+          "registry_password": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "registry_username": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "root_directory": {
             "type": "string"
@@ -22542,6 +22740,9 @@
               "null"
             ]
           },
+          "clear_registry_credentials": {
+            "type": "boolean"
+          },
           "cpu_limit": {
             "type": "number"
           },
@@ -22568,6 +22769,18 @@
           },
           "name": {
             "type": "string"
+          },
+          "registry_password": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "registry_username": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "root_directory": {
             "type": [

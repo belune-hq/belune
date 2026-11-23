@@ -43,25 +43,29 @@ UPDATE applications SET
     webhook_secret_encrypted = $11,
     webhook_secret = NULL,
     root_directory = $12,
+    registry_username = $13,
+    registry_password_encrypted = $14,
     source_changed_at = NOW(),
     updated_at = NOW()
 WHERE id = $1
-RETURNING id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking
+RETURNING id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking, registry_username, registry_password_encrypted
 `
 
 type ChangeApplicationSourceParams struct {
-	ID                      pgtype.UUID `json:"id"`
-	Type                    string      `json:"type"`
-	BuildType               string      `json:"build_type"`
-	SourceRepo              pgtype.Text `json:"source_repo"`
-	SourceImage             pgtype.Text `json:"source_image"`
-	DockerfilePath          pgtype.Text `json:"dockerfile_path"`
-	Branch                  pgtype.Text `json:"branch"`
-	AutoDeployBranch        pgtype.Text `json:"auto_deploy_branch"`
-	GitIntegrationID        pgtype.UUID `json:"git_integration_id"`
-	GitCredentialsEncrypted []byte      `json:"git_credentials_encrypted"`
-	WebhookSecretEncrypted  []byte      `json:"webhook_secret_encrypted"`
-	RootDirectory           pgtype.Text `json:"root_directory"`
+	ID                        pgtype.UUID `json:"id"`
+	Type                      string      `json:"type"`
+	BuildType                 string      `json:"build_type"`
+	SourceRepo                pgtype.Text `json:"source_repo"`
+	SourceImage               pgtype.Text `json:"source_image"`
+	DockerfilePath            pgtype.Text `json:"dockerfile_path"`
+	Branch                    pgtype.Text `json:"branch"`
+	AutoDeployBranch          pgtype.Text `json:"auto_deploy_branch"`
+	GitIntegrationID          pgtype.UUID `json:"git_integration_id"`
+	GitCredentialsEncrypted   []byte      `json:"git_credentials_encrypted"`
+	WebhookSecretEncrypted    []byte      `json:"webhook_secret_encrypted"`
+	RootDirectory             pgtype.Text `json:"root_directory"`
+	RegistryUsername          pgtype.Text `json:"registry_username"`
+	RegistryPasswordEncrypted []byte      `json:"registry_password_encrypted"`
 }
 
 // Swaps an application between git and image in one statement, so it is never
@@ -91,6 +95,8 @@ func (q *Queries) ChangeApplicationSource(ctx context.Context, arg ChangeApplica
 		arg.GitCredentialsEncrypted,
 		arg.WebhookSecretEncrypted,
 		arg.RootDirectory,
+		arg.RegistryUsername,
+		arg.RegistryPasswordEncrypted,
 	)
 	var i Application
 	err := row.Scan(
@@ -141,6 +147,8 @@ func (q *Queries) ChangeApplicationSource(ctx context.Context, arg ChangeApplica
 		&i.HealthCheckStartPeriodSeconds,
 		&i.RootDirectory,
 		&i.WafBlocking,
+		&i.RegistryUsername,
+		&i.RegistryPasswordEncrypted,
 	)
 	return i, err
 }
@@ -171,7 +179,7 @@ UPDATE applications SET
     deploy_hook_token_hash = NULL,
     deploy_hook_token_encrypted = NULL,
     updated_at = NOW()
-WHERE id = $1 RETURNING id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking
+WHERE id = $1 RETURNING id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking, registry_username, registry_password_encrypted
 `
 
 func (q *Queries) ClearApplicationDeployHook(ctx context.Context, id pgtype.UUID) (Application, error) {
@@ -225,6 +233,8 @@ func (q *Queries) ClearApplicationDeployHook(ctx context.Context, id pgtype.UUID
 		&i.HealthCheckStartPeriodSeconds,
 		&i.RootDirectory,
 		&i.WafBlocking,
+		&i.RegistryUsername,
+		&i.RegistryPasswordEncrypted,
 	)
 	return i, err
 }
@@ -261,29 +271,31 @@ func (q *Queries) CountApplications(ctx context.Context) (int64, error) {
 }
 
 const createApplication = `-- name: CreateApplication :one
-INSERT INTO applications (project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, cpu_limit, memory_limit, webhook_secret_encrypted, git_credentials_encrypted, health_check_path, git_integration_id, branch, auto_deploy_branch, root_directory)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-RETURNING id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking
+INSERT INTO applications (project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, cpu_limit, memory_limit, webhook_secret_encrypted, git_credentials_encrypted, health_check_path, git_integration_id, branch, auto_deploy_branch, root_directory, registry_username, registry_password_encrypted)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+RETURNING id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking, registry_username, registry_password_encrypted
 `
 
 type CreateApplicationParams struct {
-	ProjectID               pgtype.UUID `json:"project_id"`
-	Name                    string      `json:"name"`
-	Slug                    string      `json:"slug"`
-	Type                    string      `json:"type"`
-	SourceRepo              pgtype.Text `json:"source_repo"`
-	SourceImage             pgtype.Text `json:"source_image"`
-	DockerfilePath          pgtype.Text `json:"dockerfile_path"`
-	BuildType               string      `json:"build_type"`
-	CpuLimit                float64     `json:"cpu_limit"`
-	MemoryLimit             int64       `json:"memory_limit"`
-	WebhookSecretEncrypted  []byte      `json:"webhook_secret_encrypted"`
-	GitCredentialsEncrypted []byte      `json:"git_credentials_encrypted"`
-	HealthCheckPath         pgtype.Text `json:"health_check_path"`
-	GitIntegrationID        pgtype.UUID `json:"git_integration_id"`
-	Branch                  pgtype.Text `json:"branch"`
-	AutoDeployBranch        pgtype.Text `json:"auto_deploy_branch"`
-	RootDirectory           pgtype.Text `json:"root_directory"`
+	ProjectID                 pgtype.UUID `json:"project_id"`
+	Name                      string      `json:"name"`
+	Slug                      string      `json:"slug"`
+	Type                      string      `json:"type"`
+	SourceRepo                pgtype.Text `json:"source_repo"`
+	SourceImage               pgtype.Text `json:"source_image"`
+	DockerfilePath            pgtype.Text `json:"dockerfile_path"`
+	BuildType                 string      `json:"build_type"`
+	CpuLimit                  float64     `json:"cpu_limit"`
+	MemoryLimit               int64       `json:"memory_limit"`
+	WebhookSecretEncrypted    []byte      `json:"webhook_secret_encrypted"`
+	GitCredentialsEncrypted   []byte      `json:"git_credentials_encrypted"`
+	HealthCheckPath           pgtype.Text `json:"health_check_path"`
+	GitIntegrationID          pgtype.UUID `json:"git_integration_id"`
+	Branch                    pgtype.Text `json:"branch"`
+	AutoDeployBranch          pgtype.Text `json:"auto_deploy_branch"`
+	RootDirectory             pgtype.Text `json:"root_directory"`
+	RegistryUsername          pgtype.Text `json:"registry_username"`
+	RegistryPasswordEncrypted []byte      `json:"registry_password_encrypted"`
 }
 
 // branch: the ref to build. NULL means the repository's default ref, which is
@@ -309,6 +321,8 @@ func (q *Queries) CreateApplication(ctx context.Context, arg CreateApplicationPa
 		arg.Branch,
 		arg.AutoDeployBranch,
 		arg.RootDirectory,
+		arg.RegistryUsername,
+		arg.RegistryPasswordEncrypted,
 	)
 	var i Application
 	err := row.Scan(
@@ -359,6 +373,8 @@ func (q *Queries) CreateApplication(ctx context.Context, arg CreateApplicationPa
 		&i.HealthCheckStartPeriodSeconds,
 		&i.RootDirectory,
 		&i.WafBlocking,
+		&i.RegistryUsername,
+		&i.RegistryPasswordEncrypted,
 	)
 	return i, err
 }
@@ -368,29 +384,31 @@ INSERT INTO applications (
     project_id, name, slug, type,
     source_repo, source_image, dockerfile_path, build_type,
     cpu_limit, memory_limit, git_credentials_encrypted, health_check_path,
-    git_integration_id, parent_application_id, branch, root_directory
+    git_integration_id, parent_application_id, branch, root_directory, registry_username, registry_password_encrypted
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-RETURNING id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+RETURNING id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking, registry_username, registry_password_encrypted
 `
 
 type CreatePreviewApplicationParams struct {
-	ProjectID               pgtype.UUID `json:"project_id"`
-	Name                    string      `json:"name"`
-	Slug                    string      `json:"slug"`
-	Type                    string      `json:"type"`
-	SourceRepo              pgtype.Text `json:"source_repo"`
-	SourceImage             pgtype.Text `json:"source_image"`
-	DockerfilePath          pgtype.Text `json:"dockerfile_path"`
-	BuildType               string      `json:"build_type"`
-	CpuLimit                float64     `json:"cpu_limit"`
-	MemoryLimit             int64       `json:"memory_limit"`
-	GitCredentialsEncrypted []byte      `json:"git_credentials_encrypted"`
-	HealthCheckPath         pgtype.Text `json:"health_check_path"`
-	GitIntegrationID        pgtype.UUID `json:"git_integration_id"`
-	ParentApplicationID     pgtype.UUID `json:"parent_application_id"`
-	Branch                  pgtype.Text `json:"branch"`
-	RootDirectory           pgtype.Text `json:"root_directory"`
+	ProjectID                 pgtype.UUID `json:"project_id"`
+	Name                      string      `json:"name"`
+	Slug                      string      `json:"slug"`
+	Type                      string      `json:"type"`
+	SourceRepo                pgtype.Text `json:"source_repo"`
+	SourceImage               pgtype.Text `json:"source_image"`
+	DockerfilePath            pgtype.Text `json:"dockerfile_path"`
+	BuildType                 string      `json:"build_type"`
+	CpuLimit                  float64     `json:"cpu_limit"`
+	MemoryLimit               int64       `json:"memory_limit"`
+	GitCredentialsEncrypted   []byte      `json:"git_credentials_encrypted"`
+	HealthCheckPath           pgtype.Text `json:"health_check_path"`
+	GitIntegrationID          pgtype.UUID `json:"git_integration_id"`
+	ParentApplicationID       pgtype.UUID `json:"parent_application_id"`
+	Branch                    pgtype.Text `json:"branch"`
+	RootDirectory             pgtype.Text `json:"root_directory"`
+	RegistryUsername          pgtype.Text `json:"registry_username"`
+	RegistryPasswordEncrypted []byte      `json:"registry_password_encrypted"`
 }
 
 func (q *Queries) CreatePreviewApplication(ctx context.Context, arg CreatePreviewApplicationParams) (Application, error) {
@@ -411,6 +429,8 @@ func (q *Queries) CreatePreviewApplication(ctx context.Context, arg CreatePrevie
 		arg.ParentApplicationID,
 		arg.Branch,
 		arg.RootDirectory,
+		arg.RegistryUsername,
+		arg.RegistryPasswordEncrypted,
 	)
 	var i Application
 	err := row.Scan(
@@ -461,6 +481,8 @@ func (q *Queries) CreatePreviewApplication(ctx context.Context, arg CreatePrevie
 		&i.HealthCheckStartPeriodSeconds,
 		&i.RootDirectory,
 		&i.WafBlocking,
+		&i.RegistryUsername,
+		&i.RegistryPasswordEncrypted,
 	)
 	return i, err
 }
@@ -475,7 +497,7 @@ func (q *Queries) DeleteApplication(ctx context.Context, id pgtype.UUID) error {
 }
 
 const getApplication = `-- name: GetApplication :one
-SELECT id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking FROM applications WHERE id = $1
+SELECT id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking, registry_username, registry_password_encrypted FROM applications WHERE id = $1
 `
 
 func (q *Queries) GetApplication(ctx context.Context, id pgtype.UUID) (Application, error) {
@@ -529,12 +551,14 @@ func (q *Queries) GetApplication(ctx context.Context, id pgtype.UUID) (Applicati
 		&i.HealthCheckStartPeriodSeconds,
 		&i.RootDirectory,
 		&i.WafBlocking,
+		&i.RegistryUsername,
+		&i.RegistryPasswordEncrypted,
 	)
 	return i, err
 }
 
 const getApplicationByDeployHookToken = `-- name: GetApplicationByDeployHookToken :one
-SELECT id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking FROM applications WHERE deploy_hook_token_hash = $1
+SELECT id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking, registry_username, registry_password_encrypted FROM applications WHERE deploy_hook_token_hash = $1
 `
 
 func (q *Queries) GetApplicationByDeployHookToken(ctx context.Context, deployHookTokenHash []byte) (Application, error) {
@@ -588,6 +612,8 @@ func (q *Queries) GetApplicationByDeployHookToken(ctx context.Context, deployHoo
 		&i.HealthCheckStartPeriodSeconds,
 		&i.RootDirectory,
 		&i.WafBlocking,
+		&i.RegistryUsername,
+		&i.RegistryPasswordEncrypted,
 	)
 	return i, err
 }
@@ -661,7 +687,7 @@ func (q *Queries) GetApplicationOwnerUserID(ctx context.Context, id pgtype.UUID)
 }
 
 const getApplicationWithProjectSlug = `-- name: GetApplicationWithProjectSlug :one
-SELECT a.id, a.project_id, a.name, a.slug, a.type, a.source_repo, a.source_image, a.dockerfile_path, a.build_type, a.build_type_override, a.builder_image, a.custom_buildpacks, a.cpu_limit, a.memory_limit, a.webhook_secret, a.auto_deploy_branch, a.status, a.git_credentials_encrypted, a.health_check_path, a.created_at, a.updated_at, a.parent_application_id, a.branch, a.preview_branch_pattern, a.preview_domain_template, a.last_activity_at, a.git_integration_id, a.source_kind, a.source_ref, a.readonly_rootfs, a.container_caps, a.container_port, a.health_check_timeout_seconds, a.health_check_expect_status, a.deploy_hook_token_hash, a.deploy_hook_token_encrypted, a.webhook_secret_encrypted, a.config_changed_at, a.source_changed_at, a.last_deployed_at, a.health_check_type, a.health_check_command, a.health_check_interval_seconds, a.health_check_retries, a.health_check_start_period_seconds, a.root_directory, a.waf_blocking, p.slug as project_slug, p.server_id as server_id
+SELECT a.id, a.project_id, a.name, a.slug, a.type, a.source_repo, a.source_image, a.dockerfile_path, a.build_type, a.build_type_override, a.builder_image, a.custom_buildpacks, a.cpu_limit, a.memory_limit, a.webhook_secret, a.auto_deploy_branch, a.status, a.git_credentials_encrypted, a.health_check_path, a.created_at, a.updated_at, a.parent_application_id, a.branch, a.preview_branch_pattern, a.preview_domain_template, a.last_activity_at, a.git_integration_id, a.source_kind, a.source_ref, a.readonly_rootfs, a.container_caps, a.container_port, a.health_check_timeout_seconds, a.health_check_expect_status, a.deploy_hook_token_hash, a.deploy_hook_token_encrypted, a.webhook_secret_encrypted, a.config_changed_at, a.source_changed_at, a.last_deployed_at, a.health_check_type, a.health_check_command, a.health_check_interval_seconds, a.health_check_retries, a.health_check_start_period_seconds, a.root_directory, a.waf_blocking, a.registry_username, a.registry_password_encrypted, p.slug as project_slug, p.server_id as server_id
 FROM applications a
 JOIN projects p ON p.id = a.project_id
 WHERE a.id = $1
@@ -715,6 +741,8 @@ type GetApplicationWithProjectSlugRow struct {
 	HealthCheckStartPeriodSeconds pgtype.Int4        `json:"health_check_start_period_seconds"`
 	RootDirectory                 pgtype.Text        `json:"root_directory"`
 	WafBlocking                   bool               `json:"waf_blocking"`
+	RegistryUsername              pgtype.Text        `json:"registry_username"`
+	RegistryPasswordEncrypted     []byte             `json:"registry_password_encrypted"`
 	ProjectSlug                   string             `json:"project_slug"`
 	ServerID                      pgtype.UUID        `json:"server_id"`
 }
@@ -772,6 +800,8 @@ func (q *Queries) GetApplicationWithProjectSlug(ctx context.Context, id pgtype.U
 		&i.HealthCheckStartPeriodSeconds,
 		&i.RootDirectory,
 		&i.WafBlocking,
+		&i.RegistryUsername,
+		&i.RegistryPasswordEncrypted,
 		&i.ProjectSlug,
 		&i.ServerID,
 	)
@@ -812,7 +842,7 @@ func (q *Queries) GetDeploymentOwnerInfo(ctx context.Context, id pgtype.UUID) (G
 }
 
 const getPreviewByParentBranch = `-- name: GetPreviewByParentBranch :one
-SELECT id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking FROM applications
+SELECT id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking, registry_username, registry_password_encrypted FROM applications
 WHERE parent_application_id = $1 AND branch = $2
 `
 
@@ -872,6 +902,8 @@ func (q *Queries) GetPreviewByParentBranch(ctx context.Context, arg GetPreviewBy
 		&i.HealthCheckStartPeriodSeconds,
 		&i.RootDirectory,
 		&i.WafBlocking,
+		&i.RegistryUsername,
+		&i.RegistryPasswordEncrypted,
 	)
 	return i, err
 }
@@ -920,7 +952,7 @@ func (q *Queries) GetServerIDForApplication(ctx context.Context, id pgtype.UUID)
 }
 
 const listAllApplications = `-- name: ListAllApplications :many
-SELECT id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking FROM applications
+SELECT id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking, registry_username, registry_password_encrypted FROM applications
 `
 
 func (q *Queries) ListAllApplications(ctx context.Context) ([]Application, error) {
@@ -980,6 +1012,8 @@ func (q *Queries) ListAllApplications(ctx context.Context) ([]Application, error
 			&i.HealthCheckStartPeriodSeconds,
 			&i.RootDirectory,
 			&i.WafBlocking,
+			&i.RegistryUsername,
+			&i.RegistryPasswordEncrypted,
 		); err != nil {
 			return nil, err
 		}
@@ -992,7 +1026,7 @@ func (q *Queries) ListAllApplications(ctx context.Context) ([]Application, error
 }
 
 const listAllApplicationsWithProjectSlug = `-- name: ListAllApplicationsWithProjectSlug :many
-SELECT a.id, a.project_id, a.name, a.slug, a.type, a.source_repo, a.source_image, a.dockerfile_path, a.build_type, a.build_type_override, a.builder_image, a.custom_buildpacks, a.cpu_limit, a.memory_limit, a.webhook_secret, a.auto_deploy_branch, a.status, a.git_credentials_encrypted, a.health_check_path, a.created_at, a.updated_at, a.parent_application_id, a.branch, a.preview_branch_pattern, a.preview_domain_template, a.last_activity_at, a.git_integration_id, a.source_kind, a.source_ref, a.readonly_rootfs, a.container_caps, a.container_port, a.health_check_timeout_seconds, a.health_check_expect_status, a.deploy_hook_token_hash, a.deploy_hook_token_encrypted, a.webhook_secret_encrypted, a.config_changed_at, a.source_changed_at, a.last_deployed_at, a.health_check_type, a.health_check_command, a.health_check_interval_seconds, a.health_check_retries, a.health_check_start_period_seconds, a.root_directory, a.waf_blocking, p.slug as project_slug, p.server_id as server_id
+SELECT a.id, a.project_id, a.name, a.slug, a.type, a.source_repo, a.source_image, a.dockerfile_path, a.build_type, a.build_type_override, a.builder_image, a.custom_buildpacks, a.cpu_limit, a.memory_limit, a.webhook_secret, a.auto_deploy_branch, a.status, a.git_credentials_encrypted, a.health_check_path, a.created_at, a.updated_at, a.parent_application_id, a.branch, a.preview_branch_pattern, a.preview_domain_template, a.last_activity_at, a.git_integration_id, a.source_kind, a.source_ref, a.readonly_rootfs, a.container_caps, a.container_port, a.health_check_timeout_seconds, a.health_check_expect_status, a.deploy_hook_token_hash, a.deploy_hook_token_encrypted, a.webhook_secret_encrypted, a.config_changed_at, a.source_changed_at, a.last_deployed_at, a.health_check_type, a.health_check_command, a.health_check_interval_seconds, a.health_check_retries, a.health_check_start_period_seconds, a.root_directory, a.waf_blocking, a.registry_username, a.registry_password_encrypted, p.slug as project_slug, p.server_id as server_id
 FROM applications a
 JOIN projects p ON p.id = a.project_id
 `
@@ -1045,6 +1079,8 @@ type ListAllApplicationsWithProjectSlugRow struct {
 	HealthCheckStartPeriodSeconds pgtype.Int4        `json:"health_check_start_period_seconds"`
 	RootDirectory                 pgtype.Text        `json:"root_directory"`
 	WafBlocking                   bool               `json:"waf_blocking"`
+	RegistryUsername              pgtype.Text        `json:"registry_username"`
+	RegistryPasswordEncrypted     []byte             `json:"registry_password_encrypted"`
 	ProjectSlug                   string             `json:"project_slug"`
 	ServerID                      pgtype.UUID        `json:"server_id"`
 }
@@ -1106,6 +1142,8 @@ func (q *Queries) ListAllApplicationsWithProjectSlug(ctx context.Context) ([]Lis
 			&i.HealthCheckStartPeriodSeconds,
 			&i.RootDirectory,
 			&i.WafBlocking,
+			&i.RegistryUsername,
+			&i.RegistryPasswordEncrypted,
 			&i.ProjectSlug,
 			&i.ServerID,
 		); err != nil {
@@ -1120,7 +1158,7 @@ func (q *Queries) ListAllApplicationsWithProjectSlug(ctx context.Context) ([]Lis
 }
 
 const listApplicationsByProject = `-- name: ListApplicationsByProject :many
-SELECT id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking FROM applications
+SELECT id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking, registry_username, registry_password_encrypted FROM applications
 WHERE project_id = $1 AND parent_application_id IS NULL
 ORDER BY created_at DESC
 `
@@ -1182,6 +1220,8 @@ func (q *Queries) ListApplicationsByProject(ctx context.Context, projectID pgtyp
 			&i.HealthCheckStartPeriodSeconds,
 			&i.RootDirectory,
 			&i.WafBlocking,
+			&i.RegistryUsername,
+			&i.RegistryPasswordEncrypted,
 		); err != nil {
 			return nil, err
 		}
@@ -1194,7 +1234,7 @@ func (q *Queries) ListApplicationsByProject(ctx context.Context, projectID pgtyp
 }
 
 const listApplicationsBySourceRepo = `-- name: ListApplicationsBySourceRepo :many
-SELECT id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking FROM applications
+SELECT id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking, registry_username, registry_password_encrypted FROM applications
 WHERE source_repo = $1
   AND (webhook_secret_encrypted IS NOT NULL OR webhook_secret IS NOT NULL)
 `
@@ -1257,6 +1297,8 @@ func (q *Queries) ListApplicationsBySourceRepo(ctx context.Context, sourceRepo p
 			&i.HealthCheckStartPeriodSeconds,
 			&i.RootDirectory,
 			&i.WafBlocking,
+			&i.RegistryUsername,
+			&i.RegistryPasswordEncrypted,
 		); err != nil {
 			return nil, err
 		}
@@ -1269,7 +1311,7 @@ func (q *Queries) ListApplicationsBySourceRepo(ctx context.Context, sourceRepo p
 }
 
 const listApplicationsWithPlaintextWebhookSecret = `-- name: ListApplicationsWithPlaintextWebhookSecret :many
-SELECT id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking FROM applications
+SELECT id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking, registry_username, registry_password_encrypted FROM applications
 WHERE webhook_secret IS NOT NULL AND webhook_secret <> ''
 `
 
@@ -1330,6 +1372,8 @@ func (q *Queries) ListApplicationsWithPlaintextWebhookSecret(ctx context.Context
 			&i.HealthCheckStartPeriodSeconds,
 			&i.RootDirectory,
 			&i.WafBlocking,
+			&i.RegistryUsername,
+			&i.RegistryPasswordEncrypted,
 		); err != nil {
 			return nil, err
 		}
@@ -1342,7 +1386,7 @@ func (q *Queries) ListApplicationsWithPlaintextWebhookSecret(ctx context.Context
 }
 
 const listPreviewsByParent = `-- name: ListPreviewsByParent :many
-SELECT id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking FROM applications
+SELECT id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking, registry_username, registry_password_encrypted FROM applications
 WHERE parent_application_id = $1
 ORDER BY last_activity_at DESC
 `
@@ -1404,6 +1448,8 @@ func (q *Queries) ListPreviewsByParent(ctx context.Context, parentApplicationID 
 			&i.HealthCheckStartPeriodSeconds,
 			&i.RootDirectory,
 			&i.WafBlocking,
+			&i.RegistryUsername,
+			&i.RegistryPasswordEncrypted,
 		); err != nil {
 			return nil, err
 		}
@@ -1416,7 +1462,7 @@ func (q *Queries) ListPreviewsByParent(ctx context.Context, parentApplicationID 
 }
 
 const listStalePreviews = `-- name: ListStalePreviews :many
-SELECT id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking FROM applications
+SELECT id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking, registry_username, registry_password_encrypted FROM applications
 WHERE parent_application_id IS NOT NULL
   AND last_activity_at < $1
 `
@@ -1478,6 +1524,8 @@ func (q *Queries) ListStalePreviews(ctx context.Context, lastActivityAt pgtype.T
 			&i.HealthCheckStartPeriodSeconds,
 			&i.RootDirectory,
 			&i.WafBlocking,
+			&i.RegistryUsername,
+			&i.RegistryPasswordEncrypted,
 		); err != nil {
 			return nil, err
 		}
@@ -1490,7 +1538,7 @@ func (q *Queries) ListStalePreviews(ctx context.Context, lastActivityAt pgtype.T
 }
 
 const listStalePreviewsWithProjectSlug = `-- name: ListStalePreviewsWithProjectSlug :many
-SELECT a.id, a.project_id, a.name, a.slug, a.type, a.source_repo, a.source_image, a.dockerfile_path, a.build_type, a.build_type_override, a.builder_image, a.custom_buildpacks, a.cpu_limit, a.memory_limit, a.webhook_secret, a.auto_deploy_branch, a.status, a.git_credentials_encrypted, a.health_check_path, a.created_at, a.updated_at, a.parent_application_id, a.branch, a.preview_branch_pattern, a.preview_domain_template, a.last_activity_at, a.git_integration_id, a.source_kind, a.source_ref, a.readonly_rootfs, a.container_caps, a.container_port, a.health_check_timeout_seconds, a.health_check_expect_status, a.deploy_hook_token_hash, a.deploy_hook_token_encrypted, a.webhook_secret_encrypted, a.config_changed_at, a.source_changed_at, a.last_deployed_at, a.health_check_type, a.health_check_command, a.health_check_interval_seconds, a.health_check_retries, a.health_check_start_period_seconds, a.root_directory, a.waf_blocking, p.slug as project_slug
+SELECT a.id, a.project_id, a.name, a.slug, a.type, a.source_repo, a.source_image, a.dockerfile_path, a.build_type, a.build_type_override, a.builder_image, a.custom_buildpacks, a.cpu_limit, a.memory_limit, a.webhook_secret, a.auto_deploy_branch, a.status, a.git_credentials_encrypted, a.health_check_path, a.created_at, a.updated_at, a.parent_application_id, a.branch, a.preview_branch_pattern, a.preview_domain_template, a.last_activity_at, a.git_integration_id, a.source_kind, a.source_ref, a.readonly_rootfs, a.container_caps, a.container_port, a.health_check_timeout_seconds, a.health_check_expect_status, a.deploy_hook_token_hash, a.deploy_hook_token_encrypted, a.webhook_secret_encrypted, a.config_changed_at, a.source_changed_at, a.last_deployed_at, a.health_check_type, a.health_check_command, a.health_check_interval_seconds, a.health_check_retries, a.health_check_start_period_seconds, a.root_directory, a.waf_blocking, a.registry_username, a.registry_password_encrypted, p.slug as project_slug
 FROM applications a
 JOIN projects p ON p.id = a.project_id
 WHERE a.parent_application_id IS NOT NULL
@@ -1545,6 +1593,8 @@ type ListStalePreviewsWithProjectSlugRow struct {
 	HealthCheckStartPeriodSeconds pgtype.Int4        `json:"health_check_start_period_seconds"`
 	RootDirectory                 pgtype.Text        `json:"root_directory"`
 	WafBlocking                   bool               `json:"waf_blocking"`
+	RegistryUsername              pgtype.Text        `json:"registry_username"`
+	RegistryPasswordEncrypted     []byte             `json:"registry_password_encrypted"`
 	ProjectSlug                   string             `json:"project_slug"`
 }
 
@@ -1605,6 +1655,8 @@ func (q *Queries) ListStalePreviewsWithProjectSlug(ctx context.Context, lastActi
 			&i.HealthCheckStartPeriodSeconds,
 			&i.RootDirectory,
 			&i.WafBlocking,
+			&i.RegistryUsername,
+			&i.RegistryPasswordEncrypted,
 			&i.ProjectSlug,
 		); err != nil {
 			return nil, err
@@ -1637,7 +1689,7 @@ UPDATE applications SET
     deploy_hook_token_hash = $2,
     deploy_hook_token_encrypted = $3,
     updated_at = NOW()
-WHERE id = $1 RETURNING id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking
+WHERE id = $1 RETURNING id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking, registry_username, registry_password_encrypted
 `
 
 type SetApplicationDeployHookParams struct {
@@ -1697,6 +1749,8 @@ func (q *Queries) SetApplicationDeployHook(ctx context.Context, arg SetApplicati
 		&i.HealthCheckStartPeriodSeconds,
 		&i.RootDirectory,
 		&i.WafBlocking,
+		&i.RegistryUsername,
+		&i.RegistryPasswordEncrypted,
 	)
 	return i, err
 }
@@ -1713,7 +1767,7 @@ UPDATE applications SET
     health_check_timeout_seconds      = $9,
     updated_at = NOW()
 WHERE id = $1
-RETURNING id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking
+RETURNING id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking, registry_username, registry_password_encrypted
 `
 
 type SetApplicationHealthCheckParams struct {
@@ -1793,6 +1847,8 @@ func (q *Queries) SetApplicationHealthCheck(ctx context.Context, arg SetApplicat
 		&i.HealthCheckStartPeriodSeconds,
 		&i.RootDirectory,
 		&i.WafBlocking,
+		&i.RegistryUsername,
+		&i.RegistryPasswordEncrypted,
 	)
 	return i, err
 }
@@ -1818,7 +1874,7 @@ const setApplicationResources = `-- name: SetApplicationResources :one
 UPDATE applications
 SET cpu_limit = $2, memory_limit = $3, updated_at = NOW()
 WHERE id = $1
-RETURNING id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking
+RETURNING id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking, registry_username, registry_password_encrypted
 `
 
 type SetApplicationResourcesParams struct {
@@ -1878,6 +1934,8 @@ func (q *Queries) SetApplicationResources(ctx context.Context, arg SetApplicatio
 		&i.HealthCheckStartPeriodSeconds,
 		&i.RootDirectory,
 		&i.WafBlocking,
+		&i.RegistryUsername,
+		&i.RegistryPasswordEncrypted,
 	)
 	return i, err
 }
@@ -1935,29 +1993,31 @@ UPDATE applications SET
     build_type_override = $6, builder_image = $7, custom_buildpacks = $8,
     status = $9, cpu_limit = $10, memory_limit = $11, git_credentials_encrypted = $12,
     health_check_path = $13, git_integration_id = $14,
-    branch = $15, auto_deploy_branch = $16, root_directory = $17, updated_at = NOW()
+    branch = $15, auto_deploy_branch = $16, root_directory = $17, registry_username = $18, registry_password_encrypted = $19, updated_at = NOW()
 WHERE id = $1
-RETURNING id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking
+RETURNING id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking, registry_username, registry_password_encrypted
 `
 
 type UpdateApplicationParams struct {
-	ID                      pgtype.UUID `json:"id"`
-	Name                    string      `json:"name"`
-	SourceRepo              pgtype.Text `json:"source_repo"`
-	SourceImage             pgtype.Text `json:"source_image"`
-	DockerfilePath          pgtype.Text `json:"dockerfile_path"`
-	BuildTypeOverride       pgtype.Text `json:"build_type_override"`
-	BuilderImage            pgtype.Text `json:"builder_image"`
-	CustomBuildpacks        []byte      `json:"custom_buildpacks"`
-	Status                  string      `json:"status"`
-	CpuLimit                float64     `json:"cpu_limit"`
-	MemoryLimit             int64       `json:"memory_limit"`
-	GitCredentialsEncrypted []byte      `json:"git_credentials_encrypted"`
-	HealthCheckPath         pgtype.Text `json:"health_check_path"`
-	GitIntegrationID        pgtype.UUID `json:"git_integration_id"`
-	Branch                  pgtype.Text `json:"branch"`
-	AutoDeployBranch        pgtype.Text `json:"auto_deploy_branch"`
-	RootDirectory           pgtype.Text `json:"root_directory"`
+	ID                        pgtype.UUID `json:"id"`
+	Name                      string      `json:"name"`
+	SourceRepo                pgtype.Text `json:"source_repo"`
+	SourceImage               pgtype.Text `json:"source_image"`
+	DockerfilePath            pgtype.Text `json:"dockerfile_path"`
+	BuildTypeOverride         pgtype.Text `json:"build_type_override"`
+	BuilderImage              pgtype.Text `json:"builder_image"`
+	CustomBuildpacks          []byte      `json:"custom_buildpacks"`
+	Status                    string      `json:"status"`
+	CpuLimit                  float64     `json:"cpu_limit"`
+	MemoryLimit               int64       `json:"memory_limit"`
+	GitCredentialsEncrypted   []byte      `json:"git_credentials_encrypted"`
+	HealthCheckPath           pgtype.Text `json:"health_check_path"`
+	GitIntegrationID          pgtype.UUID `json:"git_integration_id"`
+	Branch                    pgtype.Text `json:"branch"`
+	AutoDeployBranch          pgtype.Text `json:"auto_deploy_branch"`
+	RootDirectory             pgtype.Text `json:"root_directory"`
+	RegistryUsername          pgtype.Text `json:"registry_username"`
+	RegistryPasswordEncrypted []byte      `json:"registry_password_encrypted"`
 }
 
 func (q *Queries) UpdateApplication(ctx context.Context, arg UpdateApplicationParams) (Application, error) {
@@ -1979,6 +2039,8 @@ func (q *Queries) UpdateApplication(ctx context.Context, arg UpdateApplicationPa
 		arg.Branch,
 		arg.AutoDeployBranch,
 		arg.RootDirectory,
+		arg.RegistryUsername,
+		arg.RegistryPasswordEncrypted,
 	)
 	var i Application
 	err := row.Scan(
@@ -2029,6 +2091,8 @@ func (q *Queries) UpdateApplication(ctx context.Context, arg UpdateApplicationPa
 		&i.HealthCheckStartPeriodSeconds,
 		&i.RootDirectory,
 		&i.WafBlocking,
+		&i.RegistryUsername,
+		&i.RegistryPasswordEncrypted,
 	)
 	return i, err
 }
@@ -2039,7 +2103,7 @@ UPDATE applications SET
     preview_domain_template = $3,
     updated_at = NOW()
 WHERE id = $1
-RETURNING id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking
+RETURNING id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking, registry_username, registry_password_encrypted
 `
 
 type UpdateApplicationPreviewConfigParams struct {
@@ -2099,6 +2163,8 @@ func (q *Queries) UpdateApplicationPreviewConfig(ctx context.Context, arg Update
 		&i.HealthCheckStartPeriodSeconds,
 		&i.RootDirectory,
 		&i.WafBlocking,
+		&i.RegistryUsername,
+		&i.RegistryPasswordEncrypted,
 	)
 	return i, err
 }
@@ -2152,7 +2218,7 @@ func (q *Queries) UpdateApplicationSource(ctx context.Context, arg UpdateApplica
 const updateApplicationStatus = `-- name: UpdateApplicationStatus :one
 UPDATE applications SET status = $2, updated_at = NOW()
 WHERE id = $1
-RETURNING id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking
+RETURNING id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking, registry_username, registry_password_encrypted
 `
 
 type UpdateApplicationStatusParams struct {
@@ -2211,6 +2277,8 @@ func (q *Queries) UpdateApplicationStatus(ctx context.Context, arg UpdateApplica
 		&i.HealthCheckStartPeriodSeconds,
 		&i.RootDirectory,
 		&i.WafBlocking,
+		&i.RegistryUsername,
+		&i.RegistryPasswordEncrypted,
 	)
 	return i, err
 }
@@ -2221,7 +2289,7 @@ UPDATE applications SET
     webhook_secret = NULL,
     auto_deploy_branch = $3,
     updated_at = NOW()
-WHERE id = $1 RETURNING id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking
+WHERE id = $1 RETURNING id, project_id, name, slug, type, source_repo, source_image, dockerfile_path, build_type, build_type_override, builder_image, custom_buildpacks, cpu_limit, memory_limit, webhook_secret, auto_deploy_branch, status, git_credentials_encrypted, health_check_path, created_at, updated_at, parent_application_id, branch, preview_branch_pattern, preview_domain_template, last_activity_at, git_integration_id, source_kind, source_ref, readonly_rootfs, container_caps, container_port, health_check_timeout_seconds, health_check_expect_status, deploy_hook_token_hash, deploy_hook_token_encrypted, webhook_secret_encrypted, config_changed_at, source_changed_at, last_deployed_at, health_check_type, health_check_command, health_check_interval_seconds, health_check_retries, health_check_start_period_seconds, root_directory, waf_blocking, registry_username, registry_password_encrypted
 `
 
 type UpdateApplicationWebhookParams struct {
@@ -2283,6 +2351,8 @@ func (q *Queries) UpdateApplicationWebhook(ctx context.Context, arg UpdateApplic
 		&i.HealthCheckStartPeriodSeconds,
 		&i.RootDirectory,
 		&i.WafBlocking,
+		&i.RegistryUsername,
+		&i.RegistryPasswordEncrypted,
 	)
 	return i, err
 }

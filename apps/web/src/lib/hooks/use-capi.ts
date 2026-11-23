@@ -1,5 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getCAPIStatus, changeCAPI, checkCAPIConnection } from "@/lib/api/capi";
+import {
+  getCAPIStatus,
+  changeCAPI,
+  checkCAPIConnection,
+  enrollCAPI,
+  checkCAPIEnrollment,
+} from "@/lib/api/capi";
 import { queryKeys } from "./query-keys";
 
 export function useCAPIStatus() {
@@ -25,6 +31,25 @@ export function useCheckCAPIConnection() {
     mutationFn: checkCAPIConnection,
     retry: false,
     onSuccess: () =>
+      client.invalidateQueries({ queryKey: queryKeys.crowdsec.capi }),
+  });
+}
+
+export function useEnrollCAPI() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: enrollCAPI,
+    retry: false,
+    onSettled: () =>
+      client.invalidateQueries({ queryKey: queryKeys.crowdsec.capi }),
+  });
+}
+export function useCheckCAPIEnrollment() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: checkCAPIEnrollment,
+    retry: false,
+    onSettled: () =>
       client.invalidateQueries({ queryKey: queryKeys.crowdsec.capi }),
   });
 }

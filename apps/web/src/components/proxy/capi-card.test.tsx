@@ -11,11 +11,18 @@ const h = vi.hoisted(() => ({
   status: undefined as CAPIStatus | undefined,
   change: vi.fn(),
   check: vi.fn(),
+  enroll: vi.fn(),
+  enrollmentCheck: vi.fn(),
 }));
 vi.mock("@/lib/hooks/use-capi", () => ({
   useCAPIStatus: () => ({ data: h.status, isLoading: false, isError: false }),
   useChangeCAPI: () => ({ mutateAsync: h.change, isPending: false }),
   useCheckCAPIConnection: () => ({ mutateAsync: h.check, isPending: false }),
+  useEnrollCAPI: () => ({ mutateAsync: h.enroll, isPending: false }),
+  useCheckCAPIEnrollment: () => ({
+    mutateAsync: h.enrollmentCheck,
+    isPending: false,
+  }),
 }));
 import { CAPICard } from "./capi-card";
 const initial: CAPIStatus = {

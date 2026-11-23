@@ -1,3 +1,4 @@
+import { CAPIEnrollmentSection } from "./capi-enrollment-section";
 import { useState } from "react";
 import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
@@ -105,7 +106,9 @@ function CAPIForm({ status }: { status: CAPIStatus }) {
   const change = useChangeCAPI();
   const connectionCheck = useCheckCAPIConnection();
   const [confirm, setConfirm] = useState(false);
-  const busy = status.busy || change.isPending || connectionCheck.isPending;
+  const [consoleBusy, setConsoleBusy] = useState(false);
+  const busy =
+    status.busy || change.isPending || connectionCheck.isPending || consoleBusy;
   const connection = status.connection ?? connectionCheck.data;
   const checkConnection = async () => {
     try {
@@ -304,6 +307,12 @@ function CAPIForm({ status }: { status: CAPIStatus }) {
           Your selected preferences apply when you confirm enabling Central API.
         </p>
       )}
+      <CAPIEnrollmentSection
+        status={status}
+        busy={busy}
+        onBusyChange={setConsoleBusy}
+        onRestart={() => queue({ restart_console: true })}
+      />
       <Dialog open={confirm} onOpenChange={setConfirm}>
         <DialogContent>
           <DialogHeader>

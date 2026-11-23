@@ -17,8 +17,11 @@ func (h *TaskHandler) HandleCrowdSecCAPITask(ctx context.Context, task *asynq.Ta
 	if err := json.Unmarshal(task.Payload(), &change); err != nil {
 		return fmt.Errorf("decode CAPI task: %w", asynq.SkipRetry)
 	}
-	if change.Enabled == nil && change.Sharing == nil {
+	if change.Enabled == nil && change.Sharing == nil && !change.RestartConsole {
 		return fmt.Errorf("empty CAPI change: %w", asynq.SkipRetry)
+	}
+	if change.RestartConsole && (change.Enabled != nil || change.Sharing != nil) {
+		return fmt.Errorf("mixed console restart and settings change: %w", asynq.SkipRetry)
 	}
 	return h.CAPI.Apply(ctx, change)
 }

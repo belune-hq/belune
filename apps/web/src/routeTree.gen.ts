@@ -27,6 +27,7 @@ import { Route as AppNotificationsRouteImport } from './routes/_app/notification
 import { Route as AppProxyRouteImport } from './routes/_app/proxy'
 import { Route as AppQuotasRouteImport } from './routes/_app/quotas'
 import { Route as AppServerRouteImport } from './routes/_app/server'
+import { Route as AppSourcesRouteImport } from './routes/_app/sources'
 import { Route as AppTeamRouteImport } from './routes/_app/team'
 import { Route as AppTemplatesRouteImport } from './routes/_app/templates'
 import { Route as DevThemeRouteImport } from './routes/dev.theme'
@@ -141,6 +142,11 @@ const AppQuotasRoute = AppQuotasRouteImport.update({
 const AppServerRoute = AppServerRouteImport.update({
   id: '/server',
   path: '/server',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSourcesRoute = AppSourcesRouteImport.update({
+  id: '/sources',
+  path: '/sources',
   getParentRoute: () => AppRoute,
 } as any)
 const AppTeamRoute = AppTeamRouteImport.update({
@@ -309,6 +315,7 @@ export interface FileRoutesByFullPath {
   '/proxy': typeof AppProxyRoute
   '/quotas': typeof AppQuotasRoute
   '/server': typeof AppServerRoute
+  '/sources': typeof AppSourcesRoute
   '/team': typeof AppTeamRoute
   '/templates': typeof AppTemplatesRoute
   '/dev/theme': typeof DevThemeRoute
@@ -354,6 +361,7 @@ export interface FileRoutesByTo {
   '/proxy': typeof AppProxyRoute
   '/quotas': typeof AppQuotasRoute
   '/server': typeof AppServerRoute
+  '/sources': typeof AppSourcesRoute
   '/team': typeof AppTeamRoute
   '/templates': typeof AppTemplatesRoute
   '/dev/theme': typeof DevThemeRoute
@@ -399,6 +407,7 @@ export interface FileRoutesById {
   '/_app/proxy': typeof AppProxyRoute
   '/_app/quotas': typeof AppQuotasRoute
   '/_app/server': typeof AppServerRoute
+  '/_app/sources': typeof AppSourcesRoute
   '/_app/team': typeof AppTeamRoute
   '/_app/templates': typeof AppTemplatesRoute
   '/dev/theme': typeof DevThemeRoute
@@ -446,6 +455,7 @@ export interface FileRouteTypes {
     | '/proxy'
     | '/quotas'
     | '/server'
+    | '/sources'
     | '/team'
     | '/templates'
     | '/dev/theme'
@@ -491,6 +501,7 @@ export interface FileRouteTypes {
     | '/proxy'
     | '/quotas'
     | '/server'
+    | '/sources'
     | '/team'
     | '/templates'
     | '/dev/theme'
@@ -535,6 +546,7 @@ export interface FileRouteTypes {
     | '/_app/proxy'
     | '/_app/quotas'
     | '/_app/server'
+    | '/_app/sources'
     | '/_app/team'
     | '/_app/templates'
     | '/dev/theme'
@@ -700,6 +712,13 @@ declare module '@tanstack/react-router' {
       path: '/server'
       fullPath: '/server'
       preLoaderRoute: typeof AppServerRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/sources': {
+      id: '/_app/sources'
+      path: '/sources'
+      fullPath: '/sources'
+      preLoaderRoute: typeof AppSourcesRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/team': {
@@ -970,6 +989,7 @@ interface AppRouteChildren {
   AppProxyRoute: typeof AppProxyRoute
   AppQuotasRoute: typeof AppQuotasRoute
   AppServerRoute: typeof AppServerRoute
+  AppSourcesRoute: typeof AppSourcesRoute
   AppTeamRoute: typeof AppTeamRoute
   AppTemplatesRoute: typeof AppTemplatesRoute
   AppProjectsProjectIdRoute: typeof AppProjectsProjectIdRouteWithChildren
@@ -991,6 +1011,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppProxyRoute: AppProxyRoute,
   AppQuotasRoute: AppQuotasRoute,
   AppServerRoute: AppServerRoute,
+  AppSourcesRoute: AppSourcesRoute,
   AppTeamRoute: AppTeamRoute,
   AppTemplatesRoute: AppTemplatesRoute,
   AppProjectsProjectIdRoute: AppProjectsProjectIdRouteWithChildren,

@@ -46,6 +46,7 @@ var targets = []target{
 	// applications.git_credentials_encrypted and dropped the table, so the
 	// target that used to be here made every run fail its select and exit 1.
 	{"applications", "id", "git_credentials_encrypted"},
+	{"applications", "id", "registry_password_encrypted"},
 	{"applications", "id", "webhook_secret_encrypted"},
 	{"applications", "id", "deploy_hook_token_encrypted"},
 	{"application_file_mounts", "id", "content_encrypted"},

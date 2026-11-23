@@ -35,11 +35,13 @@ Every deploy resolves the tag to its immutable digest and runs that instead of t
 
 ### Private Registries
 
-An administrator can add a registry host, username, and password under **Server → Configuration → Registries**. Use the host only, such as `ghcr.io`, `registry.example.com:5000`, or `docker.io` for Docker Hub. Credentials are shared across the installation, so image applications in every project can use the matching registry login.
+Project members can set a registry username and password or token beside the Docker image in the application's **Settings**. Administrators can also add shared logins under **Sources → Registries**, using a host such as `ghcr.io`, `registry.example.com:5000`, or `docker.io` for Docker Hub.
 
-Passwords are encrypted and write-only. Editing a credential with the password left blank preserves the stored password; supplying a new password rotates it. Removing a credential makes future pulls anonymous and leaves running applications unchanged. A host-side `docker login` does not configure Belune's pulls.
+Each pull chooses the application's credential first, a matching install-wide credential second, and anonymous access last. Settings show when an install-wide credential covers the image. Passwords are encrypted, write-only, and shown only as a set indicator; a blank password preserves the existing value. Choose **Remove application credential on save** to return to the fallback tier. Changing the image to a different registry host requires a replacement password or explicit removal, so the old token is never forwarded to another registry. Source changes and password rotation need a deploy to take effect.
 
-If a private image fails to pull, the deployment log names the registry and distinguishes a missing login from failed authentication. Add or correct the registry credential, then deploy again.
+Preview children inherit their parent's image credential. Switching an application to git drops the image credential. Removing an install-wide credential changes future fallback pulls and leaves running containers unchanged. A host-side `docker login` does not configure Belune's pulls.
+
+If a private image fails to pull, the deployment log distinguishes a missing login from rejected authentication. Correct the application credential or the install-wide fallback, then deploy again.
 
 ## Build Cache
 

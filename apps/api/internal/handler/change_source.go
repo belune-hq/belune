@@ -31,7 +31,9 @@ type changeSourceRequest struct {
 	Type string `json:"type"` // the type to switch TO
 
 	// Image target.
-	SourceImage string `json:"source_image"`
+	SourceImage      string  `json:"source_image"`
+	RegistryUsername *string `json:"registry_username"`
+	RegistryPassword *string `json:"registry_password"`
 
 	// Git target.
 	SourceRepo       string `json:"source_repo"`
@@ -144,6 +146,11 @@ func (h *Handler) buildChangeSourceParams(
 		if req.SourceImage == "" {
 			return p, fmt.Errorf("an image application needs a source_image")
 		}
+		registryUser, registryPassword, err := h.appService.ApplicationRegistryCredentials(generated.Application{}, "image", req.SourceImage, req.RegistryUsername, req.RegistryPassword, false)
+		if err != nil {
+			return p, err
+		}
+		p.RegistryUsername, p.RegistryPasswordEncrypted = registryUser, registryPassword
 		p.BuildType = "image"
 		p.SourceImage = pgtype.Text{String: req.SourceImage, Valid: true}
 		// Everything git-shaped is dropped. The credentials and the push
@@ -154,6 +161,8 @@ func (h *Handler) buildChangeSourceParams(
 		return p, nil
 
 	case "git":
+		// Drop both registry columns: this application no longer pulls from that registry.
+		// The zero values are written explicitly by ChangeApplicationSource.
 		if req.SourceRepo == "" {
 			return p, fmt.Errorf("a git application needs a source_repo")
 		}

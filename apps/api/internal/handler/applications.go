@@ -58,6 +58,8 @@ func resolveOptionalUUID(in *string, current pgtype.UUID) pgtype.UUID {
 // as "Build Method". The schema and JSON keep the original names, so when
 // something in the UI mentions Source or Build Method, this is the field.
 type createApplicationRequest struct {
+	RegistryUsername *string `json:"registry_username"`
+	RegistryPassword *string `json:"registry_password"`
 	Name             string  `json:"name"`
 	Slug             string  `json:"slug"`               // optional, auto-generated from name if empty
 	Type             string  `json:"type"`               // UI "Source": "git" or "image"
@@ -153,6 +155,8 @@ func (h *Handler) CreateApplication(w http.ResponseWriter, r *http.Request) {
 	}
 
 	app, err := h.appService.Create(r.Context(), service.CreateApplicationParams{
+		RegistryUsername: req.RegistryUsername,
+		RegistryPassword: req.RegistryPassword,
 		ProjectID:        projectUUID,
 		ProjectSlug:      project.Slug,
 		Name:             req.Name,
@@ -171,6 +175,10 @@ func (h *Handler) CreateApplication(w http.ResponseWriter, r *http.Request) {
 		RootDirectory:    req.RootDirectory,
 	})
 	if err != nil {
+		if errors.Is(err, service.ErrRegistryCredentialInvalid) {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		writeServerError(w, r, "failed to create application", err)
 		return
 	}
@@ -204,7 +212,13 @@ func (h *Handler) GetApplication(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, toApplicationResponse(app))
+	response := toApplicationResponse(app)
+	response.RegistryCredentialSource, err = service.NewRegistryCredentialService(h.queries, h.cfg.Keyring).Source(r.Context(), app)
+	if err != nil {
+		writeServerError(w, r, "failed to read registry credential source", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 // GetApplicationHealth returns the most recent post-deploy health probe
@@ -605,18 +619,21 @@ func (h *Handler) failDeploymentEnqueue(ctx context.Context, deploymentID pgtype
 // a 200. name, git_token and the fields the service ignores keep their
 // existing "empty means unchanged" reading.
 type updateApplicationRequest struct {
-	Name              string  `json:"name"`
-	SourceRepo        *string `json:"source_repo"`
-	SourceImage       *string `json:"source_image"`
-	DockerfilePath    *string `json:"dockerfile_path"`
-	BuildTypeOverride *string `json:"build_type_override"`
-	BuilderImage      *string `json:"builder_image"`
-	CPULimit          float64 `json:"cpu_limit"`
-	MemoryLimit       int64   `json:"memory_limit"`
-	GitToken          string  `json:"git_token"`         // PAT for private repos; encrypted server-side; empty = preserve existing
-	HealthCheckPath   string  `json:"health_check_path"` // HTTP path to poll after deploy; empty = clear
-	Branch            *string `json:"branch"`            // ref to build; absent = keep, empty = repository default
-	RootDirectory     *string `json:"root_directory"`    // subdirectory to build from; absent = keep, empty = repo root
+	RegistryUsername         *string `json:"registry_username"`
+	RegistryPassword         *string `json:"registry_password"`
+	ClearRegistryCredentials bool    `json:"clear_registry_credentials"`
+	Name                     string  `json:"name"`
+	SourceRepo               *string `json:"source_repo"`
+	SourceImage              *string `json:"source_image"`
+	DockerfilePath           *string `json:"dockerfile_path"`
+	BuildTypeOverride        *string `json:"build_type_override"`
+	BuilderImage             *string `json:"builder_image"`
+	CPULimit                 float64 `json:"cpu_limit"`
+	MemoryLimit              int64   `json:"memory_limit"`
+	GitToken                 string  `json:"git_token"`         // PAT for private repos; encrypted server-side; empty = preserve existing
+	HealthCheckPath          string  `json:"health_check_path"` // HTTP path to poll after deploy; empty = clear
+	Branch                   *string `json:"branch"`            // ref to build; absent = keep, empty = repository default
+	RootDirectory            *string `json:"root_directory"`    // subdirectory to build from; absent = keep, empty = repo root
 	// GitIntegrationID: pointer so we can tell "absent" (preserve) from ""
 	// (clear) from a UUID (set the connected provider account).
 	GitIntegrationID *string `json:"git_integration_id"`
@@ -699,21 +716,28 @@ func (h *Handler) UpdateApplication(w http.ResponseWriter, r *http.Request) {
 	}
 
 	app, err := h.appService.Update(r.Context(), applicationUUID, current, service.UpdateApplicationParams{
-		Name:              req.Name,
-		SourceRepo:        sourceRepo,
-		SourceImage:       sourceImage,
-		DockerfilePath:    dockerfilePath,
-		BuildTypeOverride: buildTypeOverride,
-		BuilderImage:      builderImage,
-		CPULimit:          req.CPULimit,
-		MemoryLimit:       req.MemoryLimit,
-		GitToken:          req.GitToken,
-		HealthCheckPath:   req.HealthCheckPath,
-		GitIntegrationID:  gitIntegrationID,
-		Branch:            branch,
-		RootDirectory:     rootDirectory,
+		RegistryUsername:         req.RegistryUsername,
+		RegistryPassword:         req.RegistryPassword,
+		ClearRegistryCredentials: req.ClearRegistryCredentials,
+		Name:                     req.Name,
+		SourceRepo:               sourceRepo,
+		SourceImage:              sourceImage,
+		DockerfilePath:           dockerfilePath,
+		BuildTypeOverride:        buildTypeOverride,
+		BuilderImage:             builderImage,
+		CPULimit:                 req.CPULimit,
+		MemoryLimit:              req.MemoryLimit,
+		GitToken:                 req.GitToken,
+		HealthCheckPath:          req.HealthCheckPath,
+		GitIntegrationID:         gitIntegrationID,
+		Branch:                   branch,
+		RootDirectory:            rootDirectory,
 	})
 	if err != nil {
+		if errors.Is(err, service.ErrRegistryCredentialInvalid) {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		writeServerError(w, r, "failed to update application", err)
 		return
 	}

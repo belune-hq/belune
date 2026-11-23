@@ -6,6 +6,8 @@ import { TriangleAlert, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { fieldError } from "@/lib/utils/field-error";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -53,6 +55,9 @@ type FormValues = {
   root_directory: string;
   build_type_override: string;
   git_token: string;
+  registry_username: string;
+  registry_password: string;
+  clear_registry_credentials: boolean;
   branch: string;
 };
 
@@ -116,9 +121,28 @@ export function ApplicationSettingsForm({
       root_directory: application.root_directory ?? "",
       build_type_override: application.build_type_override ?? "",
       git_token: "",
+      registry_username: application.registry_username ?? "",
+      registry_password: "",
+      clear_registry_credentials: false,
       branch: application.branch ?? "",
     } as FormValues,
     onSubmit: async ({ value }) => {
+      if (selectedType === "image" && !value.clear_registry_credentials) {
+        if (value.registry_password && !value.registry_username.trim()) {
+          toast.error("A registry username is required with a password");
+          return;
+        }
+        if (
+          value.registry_username.trim() &&
+          !value.registry_password &&
+          !application.has_registry_credentials
+        ) {
+          toast.error(
+            "A password is required for the application registry credential",
+          );
+          return;
+        }
+      }
       if (isSwitching) {
         // Guard the required field here, since the type control can flip to a
         // type whose source input the user has not filled in yet.
@@ -145,7 +169,13 @@ export function ApplicationSettingsForm({
         ),
         {
           loading: "Saving...",
-          success: "Settings saved",
+          success: () => {
+            form.setFieldValue("registry_password", "");
+            form.setFieldValue("clear_registry_credentials", false);
+            if (value.clear_registry_credentials)
+              form.setFieldValue("registry_username", "");
+            return "Settings saved";
+          },
           error: (err) => err.message,
         },
       );
@@ -157,7 +187,12 @@ export function ApplicationSettingsForm({
     const v = pending;
     const data =
       selectedType === "image"
-        ? { type: "image" as const, source_image: v.source_image.trim() }
+        ? {
+            type: "image" as const,
+            source_image: v.source_image.trim(),
+            registry_username: v.registry_username.trim() || undefined,
+            registry_password: v.registry_password || undefined,
+          }
         : {
             type: "git" as const,
             source_repo: v.source_repo.trim(),
@@ -174,6 +209,8 @@ export function ApplicationSettingsForm({
       loading: "Changing source...",
       success: () => {
         setPending(null);
+        form.setFieldValue("registry_password", "");
+        form.setFieldValue("clear_registry_credentials", false);
         return "Source changed — deploy to apply it";
       },
       error: (err) => err.message,
@@ -288,20 +325,127 @@ export function ApplicationSettingsForm({
             />
           )}
           {selectedType === "image" && (
-            <form.Field
-              name="source_image"
-              children={(field) => (
-                <div className="space-y-2">
-                  <Label>Docker Image</Label>
-                  <Input
-                    value={field.state.value}
-                    onBlur={field.handleBlur}
-                    onChange={(e) => field.handleChange(e.target.value)}
-                    placeholder="nginx:1.27"
-                  />
-                </div>
+            <div className="flex flex-col gap-4">
+              <form.Field
+                name="source_image"
+                validators={{
+                  onChange: z.string().min(1, "Docker image is required"),
+                }}
+                children={(field) => (
+                  <Field data-invalid={!!fieldError(field.state.meta.errors)}>
+                    <Label htmlFor="app-source-image">Docker Image</Label>
+                    <Input
+                      id="app-source-image"
+                      aria-invalid={!!fieldError(field.state.meta.errors)}
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onChange={(e) => field.handleChange(e.target.value)}
+                      placeholder="nginx:1.27"
+                    />
+                    {fieldError(field.state.meta.errors) && (
+                      <FieldError>
+                        {fieldError(field.state.meta.errors)}
+                      </FieldError>
+                    )}
+                  </Field>
+                )}
+              />
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">
+                  Application registry credential
+                </span>
+                {!isSwitching && application.has_registry_credentials && (
+                  <Badge variant="secondary">Password set</Badge>
+                )}
+              </div>
+              <p className="text-muted-foreground text-sm">
+                Applies to this application's image only. Leave the password
+                blank to preserve it; a registry host change requires a
+                replacement password or removal.
+              </p>
+              {!isSwitching && !application.has_registry_credentials && (
+                <p className="text-muted-foreground text-sm">
+                  {application.registry_credential_source === "install_wide"
+                    ? `${application.registry_host ?? "This registry"} is covered by an install-wide credential.`
+                    : "Without an application credential, a matching install-wide credential is used, then anonymous access."}
+                </p>
               )}
-            />
+              <form.Field
+                name="registry_username"
+                validators={{
+                  onChange: z
+                    .string()
+                    .max(255, "Username must be at most 255 characters"),
+                }}
+                children={(field) => (
+                  <Field data-invalid={!!fieldError(field.state.meta.errors)}>
+                    <Label htmlFor="app-registry-username">
+                      Registry username
+                    </Label>
+                    <Input
+                      id="app-registry-username"
+                      autoComplete="off"
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onChange={(e) => field.handleChange(e.target.value)}
+                      aria-invalid={!!fieldError(field.state.meta.errors)}
+                    />
+                    {fieldError(field.state.meta.errors) && (
+                      <FieldError>
+                        {fieldError(field.state.meta.errors)}
+                      </FieldError>
+                    )}
+                  </Field>
+                )}
+              />
+              <form.Field
+                name="registry_password"
+                validators={{
+                  onChange: z.string().max(65536, "Password is too long"),
+                }}
+                children={(field) => (
+                  <Field data-invalid={!!fieldError(field.state.meta.errors)}>
+                    <Label htmlFor="app-registry-password">
+                      Registry password or token
+                    </Label>
+                    <Input
+                      id="app-registry-password"
+                      type="password"
+                      autoComplete="new-password"
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onChange={(e) => field.handleChange(e.target.value)}
+                      placeholder="Leave blank to keep existing password"
+                      aria-invalid={!!fieldError(field.state.meta.errors)}
+                    />
+                    {fieldError(field.state.meta.errors) && (
+                      <FieldError>
+                        {fieldError(field.state.meta.errors)}
+                      </FieldError>
+                    )}
+                  </Field>
+                )}
+              />
+              {!isSwitching && application.has_registry_credentials && (
+                <form.Field
+                  name="clear_registry_credentials"
+                  children={(field) => (
+                    <Field orientation="horizontal">
+                      <Checkbox
+                        id="app-registry-remove"
+                        checked={field.state.value}
+                        onCheckedChange={(checked) =>
+                          field.handleChange(checked === true)
+                        }
+                      />
+                      <Label htmlFor="app-registry-remove">
+                        Remove application credential on save
+                      </Label>
+                    </Field>
+                  )}
+                />
+              )}
+            </div>
           )}
           {selectedType === "git" && (
             <>

@@ -122,6 +122,17 @@ func (q *Queries) ListRegistryCredentials(ctx context.Context) ([]ListRegistryCr
 	return items, nil
 }
 
+const registryCredentialExistsByHost = `-- name: RegistryCredentialExistsByHost :one
+SELECT EXISTS(SELECT 1 FROM registry_credentials WHERE registry_host = $1)
+`
+
+func (q *Queries) RegistryCredentialExistsByHost(ctx context.Context, registryHost string) (bool, error) {
+	row := q.db.QueryRow(ctx, registryCredentialExistsByHost, registryHost)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const updateRegistryCredential = `-- name: UpdateRegistryCredential :one
 UPDATE registry_credentials
 SET registry_host = $2, username = $3,

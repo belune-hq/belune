@@ -152,6 +152,20 @@ Changes run in the background and the card reports the result automatically. Cro
 
 Central API credentials and settings persist across container restarts and upgrades. Its toggle controls the external service; the separate CrowdSec switch still controls whether Caddy enforces the local decision list.
 
+
+### CrowdSec Console Enrollment
+
+The same **Community protection (Central API)** card has a **CrowdSec console account** section. Central API must be enabled and its local API healthy before enrolling. Enrollment links this instance and its alerts to your own account at [CrowdSec Console](https://app.crowdsec.net/).
+
+1. Review and save your sharing preferences. The consent dialog lists the saved values; enrollment preserves them rather than accepting the CLI's sharing defaults. Alerts include source IPs and scenario names. Alert context, when enabled, can contain attacked usernames; sharing manual decisions sends your own bans and their target addresses.
+2. Choose **Enroll with approval link** and confirm the consent. Open the temporary link and approve the instance in your CrowdSec account. The link is returned only for that request and is not stored by Belune; it disappears on reload. If it expires or cannot be read, choose **Use enrollment key** instead. The key is used once, never saved or placed in a background job, and cleared from the form after the request.
+3. After accepting in CrowdSec, choose **I accepted enrollment — restart CrowdSec**. This separate action briefly interrupts local protection. Belune waits for two healthy checks and local API authentication before reporting completion.
+4. Choose **Check enrollment** to confirm approval. It deliberately authenticates upstream once. Neither status polling, page focus nor retries check enrollment automatically.
+
+**Awaiting approval** is a local marker for a requested enrollment, not proof of approval. **Enrolled** means a deliberate check authenticated and CrowdSec confirmed the enrollment. An already-enrolled response is reported separately; quick enrollment cannot replace it. To replace an existing enrollment, use an enrollment key and explicitly select **Replace the existing console enrollment**.
+
+Connection checks, enrollment checks and enrollment requests share the one-hour rate-limit cooldown. If a request times out, its upstream outcome may be unknown: check your console and enrollment before sending another request. Disabling Central API does not detach the instance from your console account. Re-enabling registers a new watcher, so an old enrollment marker no longer confirms the new registration. Manage account transfers and removal in CrowdSec Console.
+
 ### What Is Never Banned
 
 The ban list is the one place in Belune where a mistake locks someone out, so the ways to get it wrong are closed off.

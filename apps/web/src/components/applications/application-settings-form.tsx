@@ -278,7 +278,7 @@ export function ApplicationSettingsForm({
                 <AlertDescription>
                   {selectedType === "image"
                     ? "Switching to an image removes the repository, branch, build settings, git credentials and push webhook secret. Domains, volumes, mounts, environment variables and the deploy hook are kept."
-                    : "Switching to git removes the image reference and builds from source instead. Domains, volumes, mounts, environment variables and the deploy hook are kept."}{" "}
+                    : "Switching to git removes the image reference and registry credential and builds from source instead. Domains, volumes, mounts, environment variables and the deploy hook are kept."}{" "}
                   You will confirm before anything changes, and the running
                   container keeps serving until you deploy.
                 </AlertDescription>

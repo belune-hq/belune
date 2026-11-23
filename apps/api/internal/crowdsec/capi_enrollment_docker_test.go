@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/belune-hq/belune/internal/pkg/redact"
 	containerRuntime "github.com/belune-hq/belune/internal/runtime"
@@ -69,7 +70,7 @@ func TestConsoleDockerEnrollmentProtocol(t *testing.T) {
 	require.NoError(t, err)
 	m.rt = &consoleDrillRuntime{rt, t}
 	m.runner = NewContainerRunner(m.rt)
-	_, err = m.store.UpsertSetting(ctx, generated.UpsertSettingParams{Key: "instance_name", Value: "Offline enrollment drill"})
+	_, err = m.store.UpsertSetting(ctx, generated.UpsertSettingParams{Key: "instance_name", Value: "  Offline enrollment drill  "})
 	require.NoError(t, err)
 	sharing := CAPISharing{Custom: true, Tainted: true}
 	request := CAPIEnrollRequest{Mode: "quick", Consent: true, Sharing: &sharing}
@@ -118,15 +119,35 @@ func TestConsoleDockerEnrollmentProtocol(t *testing.T) {
 	state, err := m.Status(ctx)
 	require.NoError(t, err)
 	require.Equal(t, CAPISharing{}, state.Sharing)
-	_, err = m.exec(ctx, name, []string{"wget", "-qO-", "http://127.0.0.1:8088/rate-limit"}, "")
-	require.NoError(t, err)
-	_, err = m.CheckEnrollment(ctx)
-	require.ErrorIs(t, err, ErrCAPIRateLimited)
-	limited := counts()
-	_, err = m.Enroll(ctx, request)
-	require.ErrorIs(t, err, ErrCAPIRateLimited)
-	_, err = m.CheckConnection(ctx)
-	require.NoError(t, err)
-	require.Equal(t, limited, counts(), "switching actions must not bypass a real CLI's zero-exit 403 warning")
+
+	for _, shape := range []string{"message", "empty", "html", "json_missing", "text"} {
+		t.Run("forbidden_"+shape, func(t *testing.T) {
+			previous, err := m.connectionRecord(ctx)
+			require.NoError(t, err)
+			if previous != nil {
+				previous.CheckedAt = time.Now().Add(-2 * time.Hour)
+				require.NoError(t, m.saveConnectionRecord(ctx, *previous))
+			}
+			before := counts()
+			_, err = m.exec(ctx, name, []string{"wget", "-qO-", "http://127.0.0.1:8088/rate-limit?shape=" + shape}, "")
+			require.NoError(t, err)
+			_, err = m.CheckEnrollment(ctx)
+			require.ErrorIs(t, err, ErrCAPIRateLimited)
+			limited := counts()
+			// cscli can retry JWT authentication within its one invocation. The
+			// invariant here is that later Belune actions spend no additional login.
+			require.Greater(t, limited["logins"].(float64), before["logins"].(float64))
+			t.Logf("initial CLI check made %.0f login requests", limited["logins"].(float64)-before["logins"].(float64))
+			_, err = m.CheckEnrollment(ctx)
+			require.ErrorIs(t, err, ErrCAPIRateLimited)
+			_, err = m.Enroll(ctx, request)
+			require.ErrorIs(t, err, ErrCAPIRateLimited)
+			connection, err := m.CheckConnection(ctx)
+			require.NoError(t, err)
+			require.Equal(t, "rate_limited", connection.State)
+			require.Equal(t, limited, counts(), "a repeated check or switching actions must not bypass the cooldown")
+		})
+	}
+
 	t.Log("real CLI: disabled refusal, quick URL, already enrolled, pending check, exact sharing, zero polling traffic and literal overwrite key and cross-action 403 cooldown verified offline")
 }

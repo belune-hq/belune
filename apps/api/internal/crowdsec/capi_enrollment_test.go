@@ -22,10 +22,14 @@ type consoleProbe struct {
 	health             string
 	execError          error
 	restarts           int
+	beforeConsole      func(context.Context)
 }
 
 func (r *consoleProbe) ContainerExec(ctx context.Context, name string, cmd []string, in io.Reader, out, stderr io.Writer) (int, error) {
 	if (cmd[0] == "sh" && strings.Contains(cmd[2], "console enroll")) || (cmd[0] == "timeout" && cmd[4] == "cscli") {
+		if r.beforeConsole != nil {
+			r.beforeConsole(ctx)
+		}
 		r.commands = append(r.commands, append([]string(nil), cmd...))
 		_, _ = io.WriteString(out, r.output)
 		_, _ = io.WriteString(stderr, r.diagnostic)
@@ -178,36 +182,54 @@ func TestConsoleEnrollmentConfirmationIsExplicitAndAuthenticated(t *testing.T) {
 	require.False(t, record.RestartRequired)
 }
 func TestConsoleActionsShareTierOneCooldownIncludingZeroExitWarnings(t *testing.T) {
-	m, rt, store, request := consoleFixture()
-	rt.diagnostic = "could not reach Central API: HTTP 403 Forbidden"
-	rt.output = `| Central API (CAPI) | ❌ unreachable |`
-	_, err := m.CheckEnrollment(context.Background())
-	require.ErrorIs(t, err, ErrCAPIRateLimited)
-	_, err = m.Enroll(context.Background(), request)
-	require.ErrorIs(t, err, ErrCAPIRateLimited)
-	check, err := m.CheckConnection(context.Background())
-	require.NoError(t, err)
-	require.Equal(t, "rate_limited", check.State)
-	queued := false
-	require.ErrorIs(t, m.Queue(context.Background(), CAPIChange{RestartConsole: true}, func([]byte) error { queued = true; return nil }), ErrCAPIRateLimited)
-	require.False(t, queued, "a restart would authenticate during daemon startup")
-	require.Len(t, rt.commands, 1)
-	check.CheckedAt = time.Now().Add(-2 * time.Hour)
-	require.NoError(t, m.saveConnectionRecord(context.Background(), check))
-	rt.output = ""
-	rt.diagnostic = "Please visit the following URL to enroll your instance: https://app.crowdsec.net/enroll/retry"
-	_, err = m.Enroll(context.Background(), request)
-	require.NoError(t, err)
-	require.Len(t, rt.commands, 2)
-	require.NotContains(t, fmt.Sprint(store.rows), "/enroll/retry")
+	for _, test := range []struct{ name, diagnostic string }{
+		{"json_message", "could not reach Central API: API error: Forbidden"},
+		{"empty_body", "could not reach Central API: API error: http code 403, no response body"},
+		{"html_body", "could not reach Central API: API error: http code 403, response: <html>403</html>"},
+		{"json_without_message", `could not reach Central API: API error: http code 403, response: {"detail":"rate limit"}`},
+		{"text_body", "could not reach Central API: API error: http code 403, response: rate limit reached"},
+		{"http_status", "could not reach Central API: HTTP 403 Forbidden"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+
+			m, rt, store, request := consoleFixture()
+			rt.diagnostic = test.diagnostic
+			rt.output = `| Central API (CAPI) | ❌ unreachable |`
+			_, err := m.CheckEnrollment(context.Background())
+			require.ErrorIs(t, err, ErrCAPIRateLimited)
+			_, err = m.Enroll(context.Background(), request)
+			require.ErrorIs(t, err, ErrCAPIRateLimited)
+			check, err := m.CheckConnection(context.Background())
+			require.NoError(t, err)
+			require.Equal(t, "rate_limited", check.State)
+			queued := false
+			require.ErrorIs(t, m.Queue(context.Background(), CAPIChange{RestartConsole: true}, func([]byte) error { queued = true; return nil }), ErrCAPIRateLimited)
+			require.False(t, queued, "a restart would authenticate during daemon startup")
+			require.Len(t, rt.commands, 1)
+			check.CheckedAt = time.Now().Add(-2 * time.Hour)
+			require.NoError(t, m.saveConnectionRecord(context.Background(), check))
+			rt.output = ""
+			rt.diagnostic = "Please visit the following URL to enroll your instance: https://app.crowdsec.net/enroll/retry"
+			_, err = m.Enroll(context.Background(), request)
+			require.NoError(t, err)
+			require.Len(t, rt.commands, 2)
+			require.NotContains(t, fmt.Sprint(store.rows), "/enroll/retry")
+
+		})
+	}
 }
 
 func TestConsoleApprovalTokensDoNotLookLikeRateLimitErrors(t *testing.T) {
-	m, rt, _, request := consoleFixture()
-	rt.diagnostic = "Please visit the following URL to enroll your instance: https://app.crowdsec.net/enroll/token403value"
-	result, err := m.Enroll(context.Background(), request)
-	require.NoError(t, err)
-	require.Contains(t, result.URL, "token403value")
+	for _, token := range []string{"token403value", "t403forbidden-abc", "http403x"} {
+		t.Run(token, func(t *testing.T) {
+			m, rt, _, request := consoleFixture()
+			link := "https://app.crowdsec.net/enroll/" + token
+			rt.diagnostic = "Please visit the following URL to enroll your instance: " + link
+			result, err := m.Enroll(context.Background(), request)
+			require.NoError(t, err)
+			require.Equal(t, link, result.URL)
+		})
+	}
 }
 
 func TestConsoleTimeoutRecordsUnknownOutcomeWithoutRetrying(t *testing.T) {
@@ -263,3 +285,57 @@ func TestConsoleEnrollmentTableRejectsMissingAndAmbiguousAuthentication(t *testi
 		require.Error(t, err)
 	}
 }
+
+func TestConsoleEnrollmentCheckPersistsCooldownAfterBrowserDisconnect(t *testing.T) {
+	m, rt, _, _ := consoleFixture()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	rt.beforeConsole = func(execCtx context.Context) {
+		require.NoError(t, execCtx.Err())
+		deadline, ok := execCtx.Deadline()
+		require.True(t, ok)
+		require.LessOrEqual(t, time.Until(deadline), 12*time.Second)
+	}
+	rt.diagnostic = "API error: http code 403, no response body"
+	_, err := m.CheckEnrollment(ctx)
+	require.ErrorIs(t, err, ErrCAPIRateLimited)
+	record, err := m.connectionRecord(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "rate_limited", record.State)
+}
+func TestConsoleEnrollmentUsesFriendlyTrimmedInstanceName(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		stored *string
+		want   string
+	}{
+		{name: "missing", want: "Belune"},
+		{name: "blank", stored: consoleNamePtr(""), want: "Belune"},
+		{name: "whitespace", stored: consoleNamePtr("   "), want: "Belune"},
+		{name: "configured", stored: consoleNamePtr("  My server  "), want: "My server"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			m, rt, store, request := consoleFixture()
+			if test.stored != nil {
+				_, err := store.UpsertSetting(context.Background(), generated.UpsertSettingParams{Key: "instance_name", Value: *test.stored})
+				require.NoError(t, err)
+			}
+			_, err := m.Enroll(context.Background(), request)
+			require.NoError(t, err)
+			args := rt.commands[0]
+			for i, arg := range args {
+				if arg == "--name" {
+					require.Equal(t, test.want, args[i+1])
+					return
+				}
+			}
+			t.Fatal("enrollment must pass an explicit friendly name")
+		})
+	}
+}
+func TestConsoleEnrollmentUnreachableIsActionable(t *testing.T) {
+	_, err := consoleEnrollmentResult("| Central API (CAPI) | ❌ unreachable - showing local options only |")
+	require.ErrorContains(t, err, "could not reach Central API")
+}
+
+func consoleNamePtr(value string) *string { return &value }

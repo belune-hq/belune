@@ -160,10 +160,10 @@ func (m *CAPIManager) consolePrerequisite(ctx context.Context) (string, map[stri
 func (m *CAPIManager) execConsole(ctx context.Context, name string, cmd []string, key string) (string, string, error) {
 	var stdout, stderr limitedBuffer
 	code, err := m.rt.ContainerExec(ctx, name, cmd, nil, &stdout, &stderr)
-	out, diagnostic := stdout.String(), stderr.String()
-	// Never return arbitrary CLI text. Apply both exact-key and generic redaction
+	out, rawStderr := stdout.String(), stderr.String()
+	diagnostic := rawStderr + "\n" + out
+	// Never expose arbitrary CLI text as an error. Apply exact-key and generic redaction
 	// before inspecting diagnostics, including runtime errors which may echo argv.
-	diagnostic += "\n" + out
 	if key != "" {
 		diagnostic = strings.ReplaceAll(diagnostic, key, "[REDACTED]")
 	}
@@ -181,12 +181,14 @@ func (m *CAPIManager) execConsole(ctx context.Context, name string, cmd []string
 	if err != nil || code != 0 {
 		return "", "", errors.New("CrowdSec console command failed; verify Central API is enabled, registered and reachable before trying again")
 	}
-	return out, stderr.String(), nil
+	// Raw streams are for parsing only; never log them as diagnostics.
+	return out, rawStderr, nil
 }
 
 // A quick-link token may itself contain 403; only error-shaped diagnostics
 // identify a rate limit here. console status can emit these with exit zero.
-var consoleRateLimit = regexp.MustCompile(`(?i)(http[ /:]+403\b|\b403[ :]+forbidden\b|api error:[ ]*forbidden)`)
+// apiclient/resperr.go emits "http code 403" for empty, non-JSON or unrecognised bodies.
+var consoleRateLimit = regexp.MustCompile(`(?i)(http[ /:]+403\b|http code 403\b|\b403[ :]+forbidden\b|api error:[ ]*forbidden)`)
 
 var consoleANSI = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
@@ -245,11 +247,17 @@ func (m *CAPIManager) Enroll(ctx context.Context, request CAPIEnrollRequest) (CA
 		return record, err
 	}
 	args := []string{"sh", "-ec", `exec timeout -s TERM 9 cscli --color no -o human console enroll "$@"`, "sh"}
-	if row, readErr := m.store.GetSetting(ctx, "instance_name"); readErr == nil && strings.TrimSpace(row.Value) != "" {
-		args = append(args, "--name", row.Value)
-	} else if readErr != nil && !errors.Is(readErr, pgx.ErrNoRows) {
+	// Match the user-visible default used by the settings handler, rather than
+	// letting cscli fall back to an opaque container hostname.
+	instanceName := "Belune"
+	if row, readErr := m.store.GetSetting(ctx, "instance_name"); readErr == nil {
+		if name := strings.TrimSpace(row.Value); name != "" {
+			instanceName = name
+		}
+	} else if !errors.Is(readErr, pgx.ErrNoRows) {
 		return record, readErr
 	}
+	args = append(args, "--name", instanceName)
 	for _, option := range []struct {
 		name    string
 		enabled bool
@@ -268,7 +276,7 @@ func (m *CAPIManager) Enroll(ctx context.Context, request CAPIEnrollRequest) (CA
 		}
 		args = append(args, "--", request.Key)
 	}
-	out, diagnostic, err := m.execConsole(ctx, name, args, request.Key)
+	out, rawStderr, err := m.execConsole(ctx, name, args, request.Key)
 	if err != nil {
 		// A timeout may follow a successful upstream request. Keep an honest local
 		// marker so the operator checks before sending another enrollment request.
@@ -283,7 +291,7 @@ func (m *CAPIManager) Enroll(ctx context.Context, request CAPIEnrollRequest) (CA
 		}
 		return record, err
 	}
-	output := out + "\n" + diagnostic
+	output := out + "\n" + rawStderr
 	if strings.Contains(strings.ToLower(output), "already enrolled") {
 		record.Outcome = "already_enrolled"
 		record.Reason = "CrowdSec reports this instance is already enrolled. Check enrollment, or use an enrollment key with explicit overwrite confirmation to replace it"
@@ -307,13 +315,14 @@ func (m *CAPIManager) Enroll(ctx context.Context, request CAPIEnrollRequest) (CA
 // CheckEnrollment is never used by Status, a timer, or a retry. Even a successful
 // cscli exit is insufficient: require an authenticated, unambiguous connection table.
 func (m *CAPIManager) CheckEnrollment(ctx context.Context) (CAPIEnrollment, error) {
+	// Preserve a 403 result if the browser disconnects after the login is sent.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 12*time.Second)
+	defer cancel()
 	release, err := m.beginConsoleAction(ctx)
 	if err != nil {
 		return CAPIEnrollment{}, err
 	}
 	defer release()
-	ctx, cancel := context.WithTimeout(ctx, 12*time.Second)
-	defer cancel()
 	name, _, err := m.consolePrerequisite(ctx)
 	if err != nil {
 		return CAPIEnrollment{}, err
@@ -350,7 +359,8 @@ func (m *CAPIManager) CheckEnrollment(ctx context.Context) (CAPIEnrollment, erro
 
 // JSON output unconditionally suppresses warnings in cscli v1.8.1 (even with
 // --warning), hiding 403s behind authenticated:false and exit 0. Read the
-// color-free human connection table instead, with exactly one login. Unknown
+// human connection table instead, with one CLI invocation. --color no forces
+// ASCII | borders; the colorised rounded-box style uses Unicode │ instead. Unknown
 // rows, missing authentication, or changed enrollment prose fail closed.
 func consoleEnrollmentResult(output string) (bool, error) {
 	values := map[string]string{}
@@ -369,6 +379,9 @@ func consoleEnrollmentResult(output string) (bool, error) {
 			return false, invalid
 		}
 		values[name] = value
+	}
+	if strings.HasPrefix(values["Central API (CAPI)"], "❌ unreachable") {
+		return false, errors.New("could not reach Central API; enrollment was not confirmed. Check the connection before trying again")
 	}
 	if values["Central API (CAPI)"] != "✅ authenticated" {
 		return false, invalid

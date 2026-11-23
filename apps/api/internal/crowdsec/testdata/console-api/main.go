@@ -34,7 +34,7 @@ func main() {
 		panic(err)
 	}
 	var mu sync.Mutex
-	rateLimited := false
+	rateLimited := ""
 	counts := struct {
 		Logins      int    `json:"logins"`
 		Enrollments int    `json:"enrollments"`
@@ -49,10 +49,26 @@ func main() {
 		counts.Logins++
 		limited := rateLimited
 		mu.Unlock()
-		if limited {
+		if limited != "" {
 			w.Header().Set("Content-Type", "application/json")
+			if limited == "html" {
+				w.Header().Set("Content-Type", "text/html")
+			}
+			if limited == "text" {
+				w.Header().Set("Content-Type", "text/plain")
+			}
 			w.WriteHeader(http.StatusForbidden)
-			_, _ = w.Write([]byte(`{"message":"Forbidden"}`))
+			switch limited {
+			case "empty":
+			case "html":
+				_, _ = w.Write([]byte("<html>403</html>"))
+			case "text":
+				_, _ = w.Write([]byte("rate limit reached"))
+			case "json_missing":
+				_, _ = w.Write([]byte(`{"detail":"rate limit"}`))
+			default:
+				_, _ = w.Write([]byte(`{"message":"Forbidden"}`))
+			}
 			return
 		}
 		payload, _ := json.Marshal(map[string]any{"exp": time.Now().Add(time.Hour).Unix(), "sub": "offline-watcher"})
@@ -96,7 +112,10 @@ func main() {
 	status := http.NewServeMux()
 	status.HandleFunc("/rate-limit", func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
-		rateLimited = true
+		rateLimited = r.URL.Query().Get("shape")
+		if rateLimited == "" {
+			rateLimited = "message"
+		}
 		mu.Unlock()
 		w.WriteHeader(204)
 	})

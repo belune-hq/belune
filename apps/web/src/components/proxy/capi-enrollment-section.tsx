@@ -174,8 +174,12 @@ export function CAPIEnrollmentSection({
         </Button>
       </div>
       <p className="text-muted-foreground text-sm">
-        Approval happens in your CrowdSec account. Checking enrollment contacts
-        CrowdSec once; refreshes and page focus never check it.
+        Approval happens in your CrowdSec account. Each click starts one
+        deliberate enrollment check; status refreshes and page focus never check
+        it, and Belune does not retry it. CrowdSec's client may retry a refused
+        login before returning, so one check can use several attempts against
+        the rate limit. A detected rate-limit refusal starts a shared one-hour
+        cooldown for console actions.
       </p>
       {record?.restart_required && (
         <div className="flex flex-col items-start gap-2">

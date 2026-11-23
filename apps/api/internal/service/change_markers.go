@@ -47,7 +47,9 @@ func (s *ApplicationService) MarkUpdate(ctx context.Context, before, after gener
 		before.Branch != after.Branch ||
 		before.GitIntegrationID != after.GitIntegrationID ||
 		before.RootDirectory != after.RootDirectory ||
-		!bytes.Equal(before.GitCredentialsEncrypted, after.GitCredentialsEncrypted)
+		!bytes.Equal(before.GitCredentialsEncrypted, after.GitCredentialsEncrypted) ||
+		before.RegistryUsername != after.RegistryUsername ||
+		!bytes.Equal(before.RegistryPasswordEncrypted, after.RegistryPasswordEncrypted)
 
 	// Not auto_deploy_branch: it only filters which pushes trigger a deploy, so
 	// changing it alone needs no deploy to take effect. It moves in lockstep

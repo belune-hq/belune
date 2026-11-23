@@ -172,7 +172,7 @@ function decorateChildren(children: PageTreeNode[], containerRoles: string[] | n
 // live-updates, account, git, … under API) as a non-collapsible separator
 // group — like the "Overview" group — instead of a collapsible folder. Only
 // the sidebar tree changes: the pages keep their own nested URLs
-// (`/docs/core/server/git`, …), so routing is unaffected. Doubly-nested
+// (`/docs/core/server/sources`, …), so routing is unaffected. Doubly-nested
 // folders (e.g. Application → Frameworks, or API's git → integrations/
 // providers) stay collapsible — this only flattens one level.
 //

@@ -28,8 +28,9 @@ type CAPISharing struct {
 }
 
 type CAPIChange struct {
-	Enabled *bool        `json:"enabled,omitempty"`
-	Sharing *CAPISharing `json:"sharing,omitempty"`
+	RestartConsole bool         `json:"restart_console,omitempty"`
+	Enabled        *bool        `json:"enabled,omitempty"`
+	Sharing        *CAPISharing `json:"sharing,omitempty"`
 }
 
 type CAPIOperation struct {
@@ -40,6 +41,7 @@ type CAPIOperation struct {
 }
 
 type CAPIStatus struct {
+	Enrollment       CAPIEnrollment       `json:"enrollment"`
 	State            string               `json:"state"`
 	Busy             bool                 `json:"busy"`
 	Phase            string               `json:"phase"`
@@ -55,7 +57,7 @@ type CAPIStore interface {
 	UpsertSetting(context.Context, generated.UpsertSettingParams) (generated.Setting, error)
 }
 
-// CAPIManager owns only anonymous Central API registration, never console enrollment.
+// CAPIManager serializes local CAPI changes and deliberate upstream actions.
 type CAPIManager struct {
 	rt            runtime.ContainerRuntime
 	runner        Runner
@@ -100,8 +102,11 @@ func (m *CAPIManager) saveOperation(ctx context.Context, state CAPIOperation) er
 // Queue persists pending state before enqueueing, under the same short lock the
 // worker takes at startup. A failed enqueue restores the previous UI state.
 func (m *CAPIManager) Queue(ctx context.Context, change CAPIChange, enqueue func([]byte) error) error {
-	if change.Enabled == nil && change.Sharing == nil {
+	if change.Enabled == nil && change.Sharing == nil && !change.RestartConsole {
 		return errors.New("an enabled state or sharing preferences are required")
+	}
+	if change.RestartConsole && (change.Enabled != nil || change.Sharing != nil) {
+		return errors.New("restart console enrollment separately from changing Central API settings")
 	}
 	m.queueMu.Lock()
 	defer m.queueMu.Unlock()
@@ -111,6 +116,11 @@ func (m *CAPIManager) Queue(ctx context.Context, change CAPIChange, enqueue func
 	}
 	if previous.Phase == "queued" || previous.Phase == "applying" {
 		return ErrCAPIBusy
+	}
+	if change.RestartConsole {
+		if err := m.capiCooldown(ctx); err != nil {
+			return err
+		}
 	}
 	raw, err := json.Marshal(change)
 	if err != nil {
@@ -208,6 +218,10 @@ func (m *CAPIManager) Status(ctx context.Context) (CAPIStatus, error) {
 		return CAPIStatus{}, err
 	}
 	result := CAPIStatus{State: "not_registered", Phase: operation.Phase, Reason: operation.Reason, Busy: operation.Phase == "queued" || operation.Phase == "applying"}
+	result.Enrollment, err = m.enrollmentRecord(ctx)
+	if err != nil {
+		return CAPIStatus{}, err
+	}
 	name, err := m.container(ctx)
 	if err != nil {
 		result.State = "unavailable"
@@ -224,6 +238,14 @@ func (m *CAPIManager) Status(ctx context.Context) (CAPIStatus, error) {
 			result.SharingAvailable = true
 		}
 		configured, localErr = m.localStateFromConfig(ctx, name, config)
+	}
+	if configured && localErr == nil {
+		record, bindErr := m.bindEnrollment(ctx, name, result.Enrollment)
+		if bindErr != nil {
+			result.Enrollment = CAPIEnrollment{State: "not_enrolled", Reason: "The current registration could not be read; enrollment is not confirmed"}
+		} else {
+			result.Enrollment = record
+		}
 	}
 	result.Connection, err = m.connectionRecord(ctx)
 	if err != nil {
@@ -352,6 +374,34 @@ func (m *CAPIManager) apply(ctx context.Context, change CAPIChange) (reverted bo
 	name, err := m.container(ctx)
 	if err != nil {
 		return false, err
+	}
+	if change.RestartConsole {
+		// Restarting authenticates CAPI during daemon startup. Do not turn a known
+		// IP ban into a fatal local-API restart.
+		if err := m.capiCooldown(ctx); err != nil {
+			return false, err
+		}
+		if _, _, err := m.consolePrerequisite(ctx); err != nil {
+			return false, err
+		}
+		record, err := m.enrollmentRecord(ctx)
+		if err != nil {
+			return false, err
+		}
+		record, err = m.bindEnrollment(ctx, name, record)
+		if err != nil {
+			return false, err
+		}
+		if !record.RestartRequired {
+			return false, errors.New("no console enrollment restart is pending")
+		}
+		if err := m.restartAndVerify(ctx, name); err != nil {
+			return false, err
+		}
+		record.RestartRequired = false
+		record.Outcome = ""
+		record.Reason = "CrowdSec restarted and the local API is healthy. Check enrollment to confirm the console state"
+		return false, m.saveEnrollment(ctx, record)
 	}
 	files, err := newCAPIFiles(ctx, m.rt, name)
 	if err != nil {

@@ -2,7 +2,7 @@
   "title": "Server",
   "defaultOpen": true,
   "pages": [
-    "git",
+    "sources",
     "certificates",
     "notifications",
     "users",

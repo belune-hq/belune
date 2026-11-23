@@ -621,7 +621,7 @@ func (h *TaskHandler) prepareImage(ctx context.Context, dc *deployContext) error
 		fmt.Fprintf(out, "Pulling image %s\n", dc.imageName)
 		slog.Info("pulling image", "image", dc.imageName)
 		pullCtx, pullCancel := context.WithTimeout(ctx, time.Duration(h.Config.ImagePullTimeoutMinutes)*time.Minute)
-		auth, err := service.NewRegistryCredentialService(h.Queries, h.Keyring).Resolve(pullCtx, dc.imageName)
+		auth, err := service.NewRegistryCredentialService(h.Queries, h.Keyring).Resolve(pullCtx, dc.applicationID, dc.imageName)
 		if err != nil {
 			pullCancel()
 			_, _ = fmt.Fprintf(out, "Failed to resolve registry credential: %v\n", err)

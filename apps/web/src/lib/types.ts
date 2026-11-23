@@ -54,6 +54,10 @@ export interface Application {
   // values come from audited reveal endpoints.
   has_webhook_secret: boolean;
   has_git_credentials: boolean;
+  has_registry_credentials?: boolean;
+  registry_host?: string;
+  registry_username?: string | null;
+  registry_credential_source?: "application" | "install_wide" | "anonymous";
   deploy_hook_enabled: boolean;
   health_check_path: string | null;
   // "http" (control-plane probe of a path), "command" (Docker HEALTHCHECK run

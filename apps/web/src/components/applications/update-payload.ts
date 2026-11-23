@@ -9,6 +9,9 @@ export interface SourceFormValues {
   root_directory: string;
   build_type_override: string;
   git_token: string;
+  registry_username?: string;
+  registry_password?: string;
+  clear_registry_credentials?: boolean;
   branch: string;
 }
 
@@ -46,6 +49,16 @@ export function buildUpdatePayload(
 ): UpdatePayload {
   return {
     name: value.name || undefined,
+    registry_username:
+      !isGit && !value.clear_registry_credentials
+        ? value.registry_username?.trim() || undefined
+        : undefined,
+    registry_password:
+      !isGit && !value.clear_registry_credentials
+        ? value.registry_password || undefined
+        : undefined,
+    clear_registry_credentials:
+      !isGit && value.clear_registry_credentials ? true : undefined,
     source_repo: isGit ? value.source_repo : "",
     source_image: isGit ? "" : value.source_image,
     dockerfile_path: isGit ? value.dockerfile_path : "",

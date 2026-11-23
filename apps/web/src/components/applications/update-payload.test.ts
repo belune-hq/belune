@@ -205,3 +205,36 @@ describe("buildUpdatePayload is the inline literal it replaced", () => {
     expect(checked).toBe(2048);
   });
 });
+
+describe("application registry credential intent", () => {
+  it("omits a blank password and preserves the stored credential", () => {
+    const data = buildUpdatePayload(
+      { ...filled, registry_username: "app-user", registry_password: "" },
+      image,
+    );
+    expect(data.registry_username).toBe("app-user");
+    expect(data.registry_password).toBeUndefined();
+  });
+  it("sends explicit removal without sending a credential", () => {
+    const data = buildUpdatePayload(
+      {
+        ...filled,
+        registry_username: "app-user",
+        registry_password: "secret",
+        clear_registry_credentials: true,
+      },
+      image,
+    );
+    expect(data.clear_registry_credentials).toBe(true);
+    expect(data.registry_username).toBeUndefined();
+    expect(data.registry_password).toBeUndefined();
+  });
+  it("never sends image credentials on the git path", () => {
+    const data = buildUpdatePayload(
+      { ...filled, registry_username: "app-user", registry_password: "secret" },
+      gitUrl,
+    );
+    expect(data.registry_username).toBeUndefined();
+    expect(data.registry_password).toBeUndefined();
+  });
+});

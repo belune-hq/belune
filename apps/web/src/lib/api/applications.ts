@@ -24,6 +24,8 @@ export function createApplication(
     git_integration_id?: string;
     /** PAT for a private repo cloned by URL; omitted/empty = public repo. */
     git_token?: string;
+    registry_username?: string;
+    registry_password?: string;
     /** Ref to build; empty/omitted = the repository's default ref. */
     branch?: string;
     /** Subdirectory to build from; empty/omitted = the repo root. */
@@ -44,6 +46,9 @@ export function updateApplication(
     build_type_override?: string;
     builder_image?: string;
     git_token?: string;
+    registry_username?: string;
+    registry_password?: string;
+    clear_registry_credentials?: boolean;
     /** Ref to build; empty string clears it back to the repository default. */
     branch?: string;
     git_integration_id?: string;
@@ -203,6 +208,8 @@ export function changeApplicationSource(
     root_directory?: string;
     git_integration_id?: string;
     git_token?: string;
+    registry_username?: string;
+    registry_password?: string;
   },
 ) {
   return api.post<Application>(

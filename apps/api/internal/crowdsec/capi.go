@@ -13,6 +13,7 @@ import (
 	"github.com/belune-hq/belune/internal/runtime"
 	"github.com/belune-hq/belune/internal/store/generated"
 	"github.com/jackc/pgx/v5"
+	"gopkg.in/yaml.v3"
 )
 
 const capiOperationKey = "crowdsec_capi_operation"
@@ -57,7 +58,7 @@ type CAPIStore interface {
 // CAPIManager owns only anonymous Central API registration, never console enrollment.
 type CAPIManager struct {
 	rt            runtime.ContainerRuntime
-	runner        *ContainerRunner
+	runner        Runner
 	store         CAPIStore
 	queueMu       sync.Mutex
 	applyMu       sync.Mutex
@@ -150,30 +151,53 @@ func (m *CAPIManager) container(ctx context.Context) (string, error) {
 	return name, nil
 }
 
-func (m *CAPIManager) sharing(ctx context.Context) (CAPISharing, error) {
-	raw, err := m.runner.Run(ctx, "console", "status", "-o", "json")
+// console status authenticates when CAPI is configured, even if it exits 0
+// after an upstream error. There must be no command fallback for a failed read.
+func (m *CAPIManager) sharing(ctx context.Context, name string, config map[string]any) (CAPISharing, error) {
+	path := "/etc/crowdsec/console.yaml"
+	api, _ := config["api"].(map[string]any)
+	server, _ := api["server"].(map[string]any)
+	if configured, exists := server["console_path"]; exists && configured != nil {
+		value, ok := configured.(string)
+		if !ok {
+			return CAPISharing{}, errors.New("CrowdSec console path is not a string")
+		}
+		if value != "" {
+			path = value
+		}
+	}
+	raw, err := m.readLocalFile(ctx, name, path)
 	if err != nil {
 		return CAPISharing{}, err
 	}
-	return parseCAPISharing([]byte(raw))
+	return parseCAPISharing(raw)
 }
 
 func parseCAPISharing(raw []byte) (CAPISharing, error) {
-	var status struct {
-		Sharing *struct {
-			Manual  *bool `json:"manual"`
-			Custom  *bool `json:"custom"`
-			Tainted *bool `json:"tainted"`
-			Context *bool `json:"context"`
-		} `json:"sharing_options"`
+	var options struct {
+		Manual  *bool `yaml:"share_manual_decisions"`
+		Custom  *bool `yaml:"share_custom"`
+		Tainted *bool `yaml:"share_tainted"`
+		Context *bool `yaml:"share_context"`
 	}
-	if err := json.Unmarshal(raw, &status); err != nil {
+	if err := yaml.Unmarshal(raw, &options); err != nil {
 		return CAPISharing{}, errors.New("could not read CrowdSec sharing preferences")
 	}
-	if status.Sharing == nil || status.Sharing.Manual == nil || status.Sharing.Custom == nil || status.Sharing.Tainted == nil || status.Sharing.Context == nil {
-		return CAPISharing{}, errors.New("CrowdSec did not report all four sharing preferences")
+	// CrowdSec v1.8.1 LoadConsoleConfig defaults each absent/null key separately.
+	sharing := CAPISharing{Custom: true, Tainted: true}
+	if options.Manual != nil {
+		sharing.Manual = *options.Manual
 	}
-	return CAPISharing{Manual: *status.Sharing.Manual, Custom: *status.Sharing.Custom, Tainted: *status.Sharing.Tainted, Context: *status.Sharing.Context}, nil
+	if options.Custom != nil {
+		sharing.Custom = *options.Custom
+	}
+	if options.Tainted != nil {
+		sharing.Tainted = *options.Tainted
+	}
+	if options.Context != nil {
+		sharing.Context = *options.Context
+	}
+	return sharing, nil
 }
 
 func (m *CAPIManager) Status(ctx context.Context) (CAPIStatus, error) {
@@ -191,16 +215,20 @@ func (m *CAPIManager) Status(ctx context.Context) (CAPIStatus, error) {
 		return result, nil
 	}
 	result.Health, _ = m.rt.ContainerHealth(ctx, name)
-	sharing, sharingErr := m.sharing(ctx)
-	if sharingErr == nil {
-		result.Sharing = sharing
-		result.SharingAvailable = true
+	config, localErr := m.localConfig(ctx, name)
+	configured := false
+	if localErr == nil {
+		sharing, sharingErr := m.sharing(ctx, name, config)
+		if sharingErr == nil {
+			result.Sharing = sharing
+			result.SharingAvailable = true
+		}
+		configured, localErr = m.localStateFromConfig(ctx, name, config)
 	}
 	result.Connection, err = m.connectionRecord(ctx)
 	if err != nil {
 		return CAPIStatus{}, err
 	}
-	configured, localErr := m.localState(ctx, name)
 	switch {
 	case configured && localErr == nil && result.Health == "healthy":
 		result.State = "enabled"

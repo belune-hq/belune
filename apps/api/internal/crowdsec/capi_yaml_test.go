@@ -43,11 +43,26 @@ func TestCAPICredentialsValidatedBeforeApply(t *testing.T) {
 	}
 }
 
-func TestCAPISharingRequiresActualValues(t *testing.T) {
-	sharing, err := parseCAPISharing([]byte(`{"sharing_options":{"manual":false,"custom":true,"tainted":true,"context":false}}`))
-	require.NoError(t, err)
-	require.Equal(t, CAPISharing{Custom: true, Tainted: true}, sharing)
-	for _, raw := range []string{`{}`, `{"sharing_options":{"custom":true}}`, `not-json`} {
+func TestCAPISharingMatchesCrowdSecDefaults(t *testing.T) {
+	defaults := CAPISharing{Custom: true, Tainted: true}
+	for name, tc := range map[string]struct {
+		raw  string
+		want CAPISharing
+	}{
+		"missing file":    {"", defaults},
+		"empty mapping":   {"{}", defaults},
+		"partial file":    {"share_custom: false\nshare_context: true\n", CAPISharing{Tainted: true, Context: true}},
+		"unknown key":     {"future_option: true\n", defaults},
+		"explicit values": {"share_manual_decisions: true\nshare_custom: false\nshare_tainted: false\nshare_context: true\n", CAPISharing{Manual: true, Context: true}},
+		"null keys":       {"share_custom: null\nshare_manual_decisions: null\n", defaults},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got, err := parseCAPISharing([]byte(tc.raw))
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+		})
+	}
+	for _, raw := range []string{"[broken", "share_custom: definitely-not-a-boolean", "scalar"} {
 		_, err := parseCAPISharing([]byte(raw))
 		require.Error(t, err)
 	}

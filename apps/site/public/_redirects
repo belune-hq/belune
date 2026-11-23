@@ -36,7 +36,7 @@
 /docs/server/certificates  /docs/core/server/certificates  301
 /docs/server/configurations  /docs/core/server/configurations  301
 /docs/server/docker  /docs/core/server/docker  301
-/docs/server/git  /docs/core/server/git  301
+/docs/server/git  /docs/core/server/sources  301
 /docs/server/notifications  /docs/core/server/notifications  301
 /docs/server/quotas  /docs/core/server/quotas  301
 /docs/server/users  /docs/core/server/users  301
@@ -63,3 +63,5 @@
 # Bare /docs now sends a visitor straight into the Core guides rather than
 # stopping at the intro page first.
 /docs  /docs/core  301
+
+/docs/core/server/git  /docs/core/server/sources  301

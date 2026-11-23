@@ -3,6 +3,7 @@ package handler
 import (
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/belune-hq/belune/internal/runtime"
 	"github.com/belune-hq/belune/internal/service"
 	"github.com/belune-hq/belune/internal/store/generated"
 )
@@ -61,9 +62,14 @@ type applicationResponse struct {
 	HealthCheckStartPeriodSeconds pgtype.Int4 `json:"health_check_start_period_seconds"`
 
 	// Presence flags standing in for the secrets themselves.
-	HasWebhookSecret  bool `json:"has_webhook_secret"`
-	HasGitCredentials bool `json:"has_git_credentials"`
-	DeployHookEnabled bool `json:"deploy_hook_enabled"`
+	HasWebhookSecret         bool        `json:"has_webhook_secret"`
+	HasGitCredentials        bool        `json:"has_git_credentials"`
+	HasRegistryCredentials   bool        `json:"has_registry_credentials"`
+	RegistryUsername         pgtype.Text `json:"registry_username"`
+	RegistryCredentialSource string      `json:"registry_credential_source,omitempty"`
+	// Response metadata only: derive once with the same parser used for pulls.
+	RegistryHost      string `json:"registry_host,omitempty"`
+	DeployHookEnabled bool   `json:"deploy_hook_enabled"`
 
 	LastDeployedAt pgtype.Timestamptz `json:"last_deployed_at"`
 
@@ -78,7 +84,12 @@ type applicationResponse struct {
 
 // toApplicationResponse masks an application row for the wire.
 func toApplicationResponse(a generated.Application) applicationResponse {
+	host := ""
+	if a.Type == "image" {
+		host, _ = runtime.RegistryHost(a.SourceImage.String)
+	}
 	return applicationResponse{
+		RegistryHost:              host,
 		ID:                        a.ID,
 		ProjectID:                 a.ProjectID,
 		Name:                      a.Name,
@@ -120,9 +131,11 @@ func toApplicationResponse(a generated.Application) applicationResponse {
 		HealthCheckStartPeriodSeconds: a.HealthCheckStartPeriodSeconds,
 
 		// Either column counts — a row may not be backfilled yet.
-		HasWebhookSecret:  len(a.WebhookSecretEncrypted) > 0 || (a.WebhookSecret.Valid && a.WebhookSecret.String != ""),
-		HasGitCredentials: len(a.GitCredentialsEncrypted) > 0,
-		DeployHookEnabled: len(a.DeployHookTokenHash) > 0,
+		HasWebhookSecret:       len(a.WebhookSecretEncrypted) > 0 || (a.WebhookSecret.Valid && a.WebhookSecret.String != ""),
+		HasGitCredentials:      len(a.GitCredentialsEncrypted) > 0,
+		HasRegistryCredentials: len(a.RegistryPasswordEncrypted) > 0,
+		RegistryUsername:       a.RegistryUsername,
+		DeployHookEnabled:      len(a.DeployHookTokenHash) > 0,
 
 		LastDeployedAt:  a.LastDeployedAt,
 		PendingChange:   service.ApplicationPendingChange(a),

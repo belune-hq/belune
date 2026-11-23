@@ -18779,6 +18779,9 @@
           "has_git_credentials": {
             "type": "boolean"
           },
+          "has_registry_credentials": {
+            "type": "boolean"
+          },
           "has_webhook_secret": {
             "type": "boolean"
           },
@@ -18885,6 +18888,18 @@
           },
           "readonly_rootfs": {
             "type": "boolean"
+          },
+          "registry_credential_source": {
+            "type": "string"
+          },
+          "registry_host": {
+            "type": "string"
+          },
+          "registry_username": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "root_directory": {
             "type": [
@@ -19319,6 +19334,18 @@
           "git_token": {
             "type": "string"
           },
+          "registry_password": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "registry_username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "root_directory": {
             "type": "string"
           },
@@ -19410,6 +19437,18 @@
           },
           "name": {
             "type": "string"
+          },
+          "registry_password": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "registry_username": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "root_directory": {
             "type": "string"
@@ -22542,6 +22581,9 @@
               "null"
             ]
           },
+          "clear_registry_credentials": {
+            "type": "boolean"
+          },
           "cpu_limit": {
             "type": "number"
           },
@@ -22568,6 +22610,18 @@
           },
           "name": {
             "type": "string"
+          },
+          "registry_password": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "registry_username": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "root_directory": {
             "type": [

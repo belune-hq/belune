@@ -370,7 +370,7 @@ func (h *Handler) HandleGitHubAppManifestCallback(w http.ResponseWriter, r *http
 		return
 	}
 
-	http.Redirect(w, r, h.cfg.PublicBaseURL+"/git?tab=providers&connected=github", http.StatusFound)
+	http.Redirect(w, r, h.cfg.PublicBaseURL+"/sources?tab=providers&connected=github", http.StatusFound)
 }
 
 // convertGitHubManifest exchanges a manifest code for App credentials.

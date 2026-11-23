@@ -250,10 +250,10 @@ func (h *Handler) HandleGitIntegrationCallback(w http.ResponseWriter, r *http.Re
 	}
 	redirectURI := base + "/api/git/integrations/callback"
 	if _, err := h.gitIntegrationSvc.Connect(ctx, st.Provider, st.BaseURL, redirectURI, r.URL.Query(), userID); err != nil {
-		http.Redirect(w, r, base+"/git?tab=connections&error="+st.Provider, http.StatusFound)
+		http.Redirect(w, r, base+"/sources?tab=connections&error="+st.Provider, http.StatusFound)
 		return
 	}
-	http.Redirect(w, r, base+"/git?tab=connections&connected="+st.Provider, http.StatusFound)
+	http.Redirect(w, r, base+"/sources?tab=connections&connected="+st.Provider, http.StatusFound)
 }
 
 // DeleteGitIntegration disconnects a connected account.

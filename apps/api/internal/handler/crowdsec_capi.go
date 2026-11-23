@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/belune-hq/belune/internal/crowdsec"
+	"github.com/belune-hq/belune/internal/pkg/redact"
 	"github.com/belune-hq/belune/internal/worker"
 	"github.com/hibiken/asynq"
 )
@@ -48,8 +49,12 @@ func (h *Handler) UpdateCrowdSecCAPI(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid Central API settings")
 		return
 	}
-	if change.Enabled == nil && change.Sharing == nil {
+	if change.Enabled == nil && change.Sharing == nil && !change.RestartConsole {
 		writeError(w, http.StatusBadRequest, "an enabled state or sharing preferences are required")
+		return
+	}
+	if change.RestartConsole && (change.Enabled != nil || change.Sharing != nil) {
+		writeError(w, http.StatusBadRequest, "restart console enrollment separately from changing Central API settings")
 		return
 	}
 	err := h.capi.Queue(r.Context(), change, func(payload []byte) error {
@@ -59,12 +64,14 @@ func (h *Handler) UpdateCrowdSecCAPI(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, crowdsec.ErrCAPIBusy) || errors.Is(err, asynq.ErrTaskIDConflict) {
 			writeError(w, http.StatusConflict, "a Central API change is already in progress")
+		} else if errors.Is(err, crowdsec.ErrCAPIRateLimited) {
+			writeError(w, http.StatusTooManyRequests, err.Error())
 		} else {
 			writeServerError(w, r, "could not queue Central API change", err)
 		}
 		return
 	}
-	details := map[string]any{}
+	details := map[string]any{"restart_console": change.RestartConsole}
 	if change.Enabled != nil {
 		details["enabled"] = *change.Enabled
 	}
@@ -96,4 +103,56 @@ func (h *Handler) CheckCrowdSecCAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	h.audit(r, "check_crowdsec_capi", "crowdsec", "default", map[string]any{"state": result.State})
 	writeJSON(w, http.StatusOK, result)
+}
+
+//apidoc:tag platform/maintenance
+//apidoc:title Enroll In CrowdSec Console
+//apidoc:order 18
+func (h *Handler) EnrollCrowdSecConsole(w http.ResponseWriter, r *http.Request) {
+	if h.capi == nil {
+		writeError(w, http.StatusServiceUnavailable, "Central API management is unavailable")
+		return
+	}
+	var request crowdsec.CAPIEnrollRequest
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&request) != nil {
+		writeError(w, http.StatusBadRequest, "invalid console enrollment request")
+		return
+	}
+	result, err := h.capi.Enroll(r.Context(), request)
+	if err != nil {
+		writeConsoleActionError(w, err)
+		return
+	}
+	h.audit(r, "enroll_crowdsec_console", "crowdsec", "default", map[string]any{"mode": request.Mode, "overwrite": request.Overwrite, "state": result.State, "outcome": result.Outcome})
+	writeJSON(w, http.StatusOK, result)
+}
+
+//apidoc:tag platform/maintenance
+//apidoc:title Check CrowdSec Console Enrollment
+//apidoc:order 19
+func (h *Handler) CheckCrowdSecConsole(w http.ResponseWriter, r *http.Request) {
+	if h.capi == nil {
+		writeError(w, http.StatusServiceUnavailable, "Central API management is unavailable")
+		return
+	}
+	result, err := h.capi.CheckEnrollment(r.Context())
+	if err != nil {
+		writeConsoleActionError(w, err)
+		return
+	}
+	h.audit(r, "check_crowdsec_console", "crowdsec", "default", map[string]any{"state": result.State})
+	writeJSON(w, http.StatusOK, result)
+}
+func writeConsoleActionError(w http.ResponseWriter, err error) {
+	code := http.StatusBadRequest
+	if errors.Is(err, crowdsec.ErrCAPIBusy) {
+		code = http.StatusConflict
+	}
+	if errors.Is(err, crowdsec.ErrCAPIRateLimited) {
+		code = http.StatusTooManyRequests
+	}
+	// The service returns actionable, redacted errors, never arbitrary CLI output.
+	writeError(w, code, redact.Error(err.Error()))
 }

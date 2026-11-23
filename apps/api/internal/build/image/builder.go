@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/belune-hq/belune/internal/build"
 	"github.com/belune-hq/belune/internal/runtime"
 )
 
 type AuthResolver interface {
-	Resolve(context.Context, string) (*runtime.RegistryAuth, error)
+	Resolve(context.Context, pgtype.UUID, string) (*runtime.RegistryAuth, error)
 }
 
 // Builder handles pre-built images — just pull and deploy, no build step.
@@ -29,7 +31,11 @@ func (b *Builder) CanBuild(ctx context.Context, sourceDir string) bool {
 }
 
 func (b *Builder) Build(ctx context.Context, opts build.BuildOptions) (*build.BuildResult, error) {
-	auth, err := b.resolver.Resolve(ctx, opts.ImageTag)
+	var appID pgtype.UUID
+	if err := appID.Scan(opts.ApplicationID); err != nil {
+		return nil, fmt.Errorf("invalid application id for image pull: %w", err)
+	}
+	auth, err := b.resolver.Resolve(ctx, appID, opts.ImageTag)
 	if err != nil {
 		return nil, err
 	}

@@ -728,6 +728,8 @@ func registerRoutes(r chi.Router, h *handler.Handler, auth *service.AuthService,
 					r.With(middleware.RequireSession(), withTimeout(handlerTimeout)).Get("/api/maintenance/proxy/crowdsec/capi", h.GetCrowdSecCAPI)
 					r.With(middleware.RequireSession(), withTimeout(handlerTimeout)).Put("/api/maintenance/proxy/crowdsec/capi", h.UpdateCrowdSecCAPI)
 					r.With(middleware.RequireSession(), withTimeout(handlerTimeout)).Post("/api/maintenance/proxy/crowdsec/capi/check", h.CheckCrowdSecCAPI)
+					r.With(middleware.RequireSession(), withTimeout(handlerTimeout)).Post("/api/maintenance/proxy/crowdsec/capi/enroll", h.EnrollCrowdSecConsole)
+					r.With(middleware.RequireSession(), withTimeout(handlerTimeout)).Post("/api/maintenance/proxy/crowdsec/capi/enrollment/check", h.CheckCrowdSecConsole)
 					r.With(withTimeout(handlerTimeout)).Get("/api/maintenance/proxy/crowdsec", h.GetCrowdSecStatus)
 					r.With(withTimeout(handlerTimeout)).Put("/api/maintenance/proxy/crowdsec", h.UpdateCrowdSec)
 					r.With(withTimeout(handlerTimeout)).Get("/api/maintenance/proxy/crowdsec/decisions", h.ListCrowdSecDecisions)

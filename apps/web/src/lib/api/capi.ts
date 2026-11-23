@@ -7,6 +7,7 @@ export interface CAPISharing {
   share_context: boolean;
 }
 export interface CAPIChange {
+  restart_console?: boolean;
   enabled?: boolean;
   sharing?: CAPISharing;
 }
@@ -15,7 +16,24 @@ export interface CAPIConnectionCheck {
   reason: string;
   checked_at?: string;
 }
+export interface CAPIEnrollment {
+  state: "not_enrolled" | "awaiting_approval" | "enrolled";
+  outcome?: "already_enrolled" | "link_unreadable" | "unknown";
+  reason?: string;
+  requested_at?: string;
+  checked_at?: string;
+  restart_required: boolean;
+  url?: string;
+}
+export interface CAPIEnrollRequest {
+  mode: "quick" | "key";
+  key?: string;
+  overwrite: boolean;
+  consent: boolean;
+  sharing: CAPISharing;
+}
 export interface CAPIStatus {
+  enrollment?: CAPIEnrollment;
   connection?: CAPIConnectionCheck;
   state:
     "not_registered" | "enabled" | "failed_reverted" | "failed" | "unavailable";
@@ -33,3 +51,8 @@ export const changeCAPI = (change: CAPIChange) =>
 
 export const checkCAPIConnection = () =>
   api.post<CAPIConnectionCheck>(`${PATH}/check`);
+
+export const enrollCAPI = (request: CAPIEnrollRequest) =>
+  api.post<CAPIEnrollment>(`${PATH}/enroll`, request);
+export const checkCAPIEnrollment = () =>
+  api.post<CAPIEnrollment>(`${PATH}/enrollment/check`);

@@ -67,12 +67,30 @@ func (s *RegistryCredentialService) Save(ctx context.Context, id pgtype.UUID, ho
 	return s.queries.UpdateRegistryCredential(ctx, generated.UpdateRegistryCredentialParams{ID: id, RegistryHost: current.RegistryHost, Username: current.Username, PasswordEncrypted: enc})
 }
 
-// Resolve decrypts immediately before an application pull. Missing credentials
-// are valid for public images; the runtime explains anonymous auth failures.
-func (s *RegistryCredentialService) Resolve(ctx context.Context, image string) (*runtime.RegistryAuth, error) {
+// Resolve chooses application, then matching install-wide, then anonymous auth.
+// The app credential wins because its owner knows which account can pull the image.
+// Derive its host from source_image; a second stored host could drift and leak a token.
+func (s *RegistryCredentialService) Resolve(ctx context.Context, applicationID pgtype.UUID, image string) (*runtime.RegistryAuth, error) {
 	host, err := runtime.RegistryHost(image)
 	if err != nil {
 		return nil, err
+	}
+	if applicationID.Valid {
+		app, err := s.queries.GetApplication(ctx, applicationID)
+		if err != nil {
+			return nil, fmt.Errorf("resolve application registry credential: %w", err)
+		}
+		if len(app.RegistryPasswordEncrypted) > 0 {
+			appHost, err := runtime.RegistryHost(app.SourceImage.String)
+			if err != nil || appHost != host {
+				return nil, fmt.Errorf("application registry credential does not match the image host")
+			}
+			password, err := s.keyring.Decrypt(app.RegistryPasswordEncrypted)
+			if err != nil {
+				return nil, fmt.Errorf("decrypt application registry credential: %w", err)
+			}
+			return &runtime.RegistryAuth{Username: app.RegistryUsername.String, Password: string(password), ServerAddress: host}, nil
+		}
 	}
 	row, err := s.queries.GetRegistryCredentialByHost(ctx, host)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -86,4 +104,26 @@ func (s *RegistryCredentialService) Resolve(ctx context.Context, image string) (
 		return nil, fmt.Errorf("decrypt registry credential for %s: %w", host, err)
 	}
 	return &runtime.RegistryAuth{Username: row.Username, Password: string(password), ServerAddress: host}, nil
+}
+
+// Source exposes only which tier would be selected, never an install-wide login.
+func (s *RegistryCredentialService) Source(ctx context.Context, app generated.Application) (string, error) {
+	if len(app.RegistryPasswordEncrypted) > 0 {
+		return "application", nil
+	}
+	if app.Type != "image" {
+		return "anonymous", nil
+	}
+	host, err := runtime.RegistryHost(app.SourceImage.String)
+	if err != nil {
+		return "anonymous", nil
+	}
+	exists, err := s.queries.RegistryCredentialExistsByHost(ctx, host)
+	if err != nil {
+		return "", err
+	}
+	if exists {
+		return "install_wide", nil
+	}
+	return "anonymous", nil
 }

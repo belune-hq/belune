@@ -21,3 +21,6 @@ FROM registry_credentials ORDER BY registry_host;
 
 -- name: DeleteRegistryCredential :one
 DELETE FROM registry_credentials WHERE id = $1 RETURNING id;
+
+-- name: RegistryCredentialExistsByHost :one
+SELECT EXISTS(SELECT 1 FROM registry_credentials WHERE registry_host = $1);

@@ -38,6 +38,9 @@ cd "$ROOT"
 PROJECT=belunesmoke
 ENV_FILE=".env.smoke"
 BELUNE_URL=http://127.0.0.1:18081
+# An unrouted name reaches the same SPA through Caddy's HTTP catch-all, without
+# the dashboard hostname's HTTPS redirect or secure-context browser APIs.
+HTTP_URL=http://unrouted.smoke.internal:18080
 
 # The release the install is told exists. It must NOT exist in the registry —
 # that is the whole mechanism: the pull fails, so the update never starts, and
@@ -112,6 +115,12 @@ fi
 # being reported as a missing button.
 KEEP=1 ./scripts/smoke-prod.sh
 
+# Resolve only for this probe; Chromium uses its own project resolver rule.
+# Capture before grep so a successful match cannot give curl a SIGPIPE.
+body="$(curl --noproxy '*' --resolve unrouted.smoke.internal:18080:127.0.0.1 -fsS "$HTTP_URL/login")"
+grep -q '<div id="root"' <<<"$body"
+info "Plain-HTTP dashboard answered at $HTTP_URL"
+
 info "Seeding an update that cannot be pulled (v$TARGET)"
 # Written straight to settings, the same way the daily check writes its cache.
 # These keys are deliberately absent from updatableSettings — a token must not
@@ -145,6 +154,7 @@ info "Driving the dashboard in a real browser"
   # ${COMPOSE[*]} flattens the array into one string, so BELUNE_E2E_PSQL would break
   # on a path containing a space; neither $ROOT nor the env file has one.
   BELUNE_E2E_URL="$BELUNE_URL" \
+  BELUNE_E2E_HTTP_URL="$HTTP_URL" \
   BELUNE_E2E_EMAIL="$SMOKE_ADMIN_EMAIL" \
   BELUNE_E2E_PASSWORD="$SMOKE_ADMIN_PASSWORD" \
   BELUNE_E2E_TARGET="$TARGET" \

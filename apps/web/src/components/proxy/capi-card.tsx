@@ -185,8 +185,10 @@ function CAPIForm({ status }: { status: CAPIStatus }) {
         ) : null}
       </div>
       <p className="text-muted-foreground text-sm">
-        Status refreshes use local configuration and health only. Checking the
-        connection contacts CrowdSec and authenticates once.
+        Status refreshes use local configuration and health only. Each click
+        starts one deliberate connection check, and Belune does not retry it.
+        CrowdSec's client may retry a refused login twice before returning. A
+        detected rate-limit refusal starts the shared one-hour cooldown.
       </p>
       <Button
         variant="outline"

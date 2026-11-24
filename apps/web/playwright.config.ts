@@ -1,5 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
-import { AUTH_FILE } from "./e2e/support/auth";
+import { AUTH_FILE, HTTP_AUTH_FILE } from "./e2e/support/auth";
 
 /**
  * Playwright drives the REAL production stack, not a dev server.
@@ -15,19 +15,33 @@ import { AUTH_FILE } from "./e2e/support/auth";
  * scripts/smoke-browser.sh is the entry point that does both. Run that, not
  * `playwright test`.
  *
- * Reached directly on Belune's own port rather than through Caddy: an app or
- * dashboard hostname force-redirects HTTP→HTTPS (correct for a login form), and
- * every defect here is in the bundle Belune itself serves, which is exactly
- * what this port returns.
+ * The loopback project reaches Belune directly; the insecure-HTTP project uses
+ * an unrouted name through Caddy's catch-all, which has no HTTPS redirect.
  */
+const httpURL = process.env.BELUNE_E2E_HTTP_URL;
+const httpUse = httpURL
+  ? {
+      ...devices["Desktop Chrome"],
+      baseURL: httpURL,
+      // DNS mapping only: this does not grant the origin secure-context APIs.
+      launchOptions: {
+        args: [
+          `--host-resolver-rules=MAP ${new URL(httpURL).hostname} 127.0.0.1`,
+        ],
+      },
+    }
+  : undefined;
+
+const budgetIgnore = process.env.BELUNE_E2E_BUDGET
+  ? []
+  : ["**/request-budget.spec.ts"];
+
 export default defineConfig({
   testDir: "./e2e",
   // The request-budget drill holds each page open for a full rate-limit window,
   // so it takes about ten minutes — too long to sit in the prod-smoke job on
   // every push and pull request. Run it deliberately with BELUNE_E2E_BUDGET=1.
-  testIgnore: process.env.BELUNE_E2E_BUDGET
-    ? []
-    : ["**/request-budget.spec.ts"],
+  testIgnore: budgetIgnore,
   // One shared stack, and the drills mutate install-wide settings. Parallel
   // workers would be editing each other's install.
   workers: 1,
@@ -59,8 +73,25 @@ export default defineConfig({
     // would triple the install and the runtime to re-answer the same question.
     {
       name: "chromium",
+      testIgnore: [...budgetIgnore, /insecure-http\.spec\.ts/],
       dependencies: ["setup"],
       use: { ...devices["Desktop Chrome"], storageState: AUTH_FILE },
     },
+    ...(httpUse
+      ? [
+          {
+            name: "insecure-http-setup",
+            testMatch: /insecure-http\.setup\.ts/,
+            use: httpUse,
+          },
+          {
+            name: "insecure-http",
+            // Run after the loopback suite's WAF changes, so refusal is visible.
+            dependencies: ["chromium", "insecure-http-setup"],
+            testMatch: /insecure-http\.spec\.ts/,
+            use: { ...httpUse, storageState: HTTP_AUTH_FILE },
+          },
+        ]
+      : []),
   ],
 });

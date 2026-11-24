@@ -9,3 +9,8 @@ import { fileURLToPath } from "node:url";
 export const AUTH_FILE = fileURLToPath(
   new URL("../.auth/admin.json", import.meta.url),
 );
+
+/** A genuine login issued by the plain-HTTP Caddy origin, kept separately. */
+export const HTTP_AUTH_FILE = fileURLToPath(
+  new URL("../.auth/http-admin.json", import.meta.url),
+);

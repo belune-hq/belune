@@ -29,3 +29,14 @@ export function deleteVolume(
     `/projects/${projectId}/applications/${applicationId}/volumes/${volumeId}${query}`,
   );
 }
+
+export function adoptVolume(
+  projectId: string,
+  applicationId: string,
+  data: { name: string; mount_path: string; external_name: string },
+) {
+  return api.post<ApplicationVolume>(
+    `/projects/${projectId}/applications/${applicationId}/volumes/adopt`,
+    data,
+  );
+}

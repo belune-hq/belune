@@ -1,3 +1,4 @@
+import { useVolumes } from "@/lib/hooks/use-volumes";
 import { useDialogBody } from "@/lib/hooks/use-dialog-body";
 import { useId, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
@@ -64,6 +65,13 @@ function DeleteApplicationDialogBody({
 }) {
   const navigate = useNavigate();
   const deleteApplication = useDeleteApplication(projectId);
+  const {
+    data: volumes,
+    isPending: volumesPending,
+    isError: volumesFailed,
+  } = useVolumes(projectId, applicationId);
+  const managed = volumes?.filter((v) => !v.external_name) ?? [];
+  const adopted = volumes?.filter((v) => v.external_name) ?? [];
   const inputId = useId();
   const [confirmText, setConfirmText] = useState("");
 
@@ -77,27 +85,31 @@ function DeleteApplicationDialogBody({
         <AlertDialogTitle>Delete {applicationName}?</AlertDialogTitle>
         <AlertDialogDescription>
           This will stop the running container and permanently delete this
-          application — its persistent volumes, file mounts, domains,
-          environment variables and deployment history included. This action
-          cannot be undone.
+          application, its managed data volumes, file mounts, domains,
+          environment variables and deployment history. This action cannot be
+          undone.
         </AlertDialogDescription>
-        {/* Backups are called out separately for the same reason as in
-            DeleteProjectDialog: they are the one thing that survives losing
-            the server, so an operator may reasonably believe they are a
-            safety net here. They are not. Unlike a database — which offers
-            keep-or-destroy at deletion time and writes a tombstone so its
-            backups stay restorable — an application has no such choice and
-            no tombstone: cleanupVolumeBackups erases every archive
-            unconditionally, local files and remote objects both. Saying so
-            is the whole point; the dialog previously named only the
-            container, which is what the database dialog's own impact
-            endpoint exists to avoid ("instead of implying only the
-            container and its data are at stake").
-            Static wording, not a count: there is no deletion-impact
-            endpoint for applications, and a dialog is the wrong place to
-            learn a number is missing. Worded to claim nothing about what
-            this application actually has, so it reads correctly for an app
-            with no volumes at all. */}
+        <AlertDialogDescription>
+          {volumesPending ? (
+            "Checking volumes…"
+          ) : volumesFailed ? (
+            "Could not check volumes. Try again before deleting."
+          ) : (
+            <>
+              {managed.length} managed volume{managed.length === 1 ? "" : "s"}{" "}
+              will be removed
+              {managed.length > 0
+                ? `: ${managed.map((v) => v.name).join(", ")}`
+                : ""}
+              . {adopted.length} adopted volume{adopted.length === 1 ? "" : "s"}{" "}
+              will be left behind and remain protected from cleanup
+              {adopted.length > 0
+                ? `: ${adopted.map((v) => v.external_name).join(", ")}`
+                : ""}
+              .
+            </>
+          )}
+        </AlertDialogDescription>
         <AlertDialogDescription className="text-destructive font-medium">
           Every backup of its volumes is destroyed as well, including copies
           already uploaded to a remote destination. Restore from them will no
@@ -125,7 +137,7 @@ function DeleteApplicationDialogBody({
         <AlertDialogCancel>Cancel</AlertDialogCancel>
         <AlertDialogAction
           variant="destructive-solid"
-          disabled={!confirmed}
+          disabled={!confirmed || volumesPending || volumesFailed}
           onClick={() => {
             toast.promise(
               deleteApplication.mutateAsync(applicationId).then(() => {

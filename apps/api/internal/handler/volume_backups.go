@@ -432,6 +432,10 @@ func (h *Handler) RestoreVolumeBackup(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if vol.ExternalName.Valid {
+		writeError(w, http.StatusConflict, "restoring into an adopted volume is disabled; its existing data is preserved")
+		return
+	}
 	var backupUUID pgtype.UUID
 	if err := backupUUID.Scan(chi.URLParam(r, "backupId")); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid backup id")

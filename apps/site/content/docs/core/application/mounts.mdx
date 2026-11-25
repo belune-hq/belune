@@ -16,11 +16,23 @@ Both survive redeploys and restarts.
 
 **Add Volume** takes a name and an absolute mount path inside the container, e.g. `/data`. A volume attaches when the container is created, so a [reload](/docs/core/application/deployments) is enough to apply a newly-added one with no rebuild needed, and the application's status badge flags when a reload is outstanding. 
 
-Removing a volume detaches it on the next deploy. By default the underlying data is kept (so recreating a volume at the same path reattaches it); check **Also permanently delete the stored data** to destroy it immediately and irreversibly.
+Removing a volume detaches it on the next deploy. By default the underlying data is kept (so recreating a volume with the same name reattaches it); check **Also permanently delete the stored data** to destroy it immediately and irreversibly.
 
 <Callout type="warn" title="About the mount path">
 The mount path should not be a system path like `/`, `/tmp`, or `/etc`.
 </Callout>
+
+### Adopting Existing Volumes
+
+An administrator can choose **Adopt Existing Volume** to attach data already stored in a Docker named volume on this server. Enter its exact Docker volume name, a mount name for this application, and the absolute path inside the container. Reload the application to attach it; Belune does not copy the data or create a replacement if the named volume is missing.
+
+Remove the old external container first, while keeping its volume. A volume already attached to another application or managed by Belune cannot be adopted. One adopted volume can belong to only one application at a time.
+
+For example, a Postgres container previously run by raw Docker Compose can move into Belune as an **image application**, using its existing image and volume mount. This does not turn it into a managed database. Adoption into managed databases, host bind mounts, shared volumes, external network joins, and remote servers are outside this feature.
+
+Adopted volumes are marked **Adopted**. Removing their mount, deleting the application, or deleting its project leaves their data behind and protected from manual and scheduled cleanup. An unattached adopted volume can be adopted again. After detaching, reload the old application before adopting its volume elsewhere: a running container can still hold the old mount until it is replaced. In **Docker → Volumes**, unattached names remain visible as **Adopted, no application**. They are retained deliberately; removing the Docker volume is a host-side operation with `docker volume rm <name>`. Belune has no Release action. Protection remains for the name if the volume is later recreated.
+
+Backups can read an adopted volume. Restoring into one is disabled to preserve its existing data. Deleting an application still destroys that application's volume backup archives, including remote copies, even though its adopted volume itself is retained.
 
 ### Backing Up Volumes
 

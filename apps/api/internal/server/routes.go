@@ -258,6 +258,9 @@ func registerRoutes(r chi.Router, h *handler.Handler, auth *service.AuthService,
 				r.Use(middleware.RequireRole("admin"))
 				r.Use(middleware.RequireScopeByMethod())
 
+				// Adoption reaches install-wide Docker storage, beyond project ownership.
+				r.With(middleware.RequireSession()).Post("/api/projects/{projectId}/applications/{applicationId}/volumes/adopt", h.AdoptApplicationVolume)
+
 				// User management is credential issuance — an admin-role PAT
 				// creating a fresh admin account (with a password it chose)
 				// and logging in as it would sail straight through every

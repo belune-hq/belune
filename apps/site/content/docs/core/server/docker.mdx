@@ -29,13 +29,15 @@ Every container on the host, and not just the ones Belune manages, with its name
 
 Every locally-pulled image and its size, including layers built for your applications and the platform's own base images (Postgres, Redis, Caddy, BuildKit).
 
-## Volumes and Networks
+## Volumes And Networks
 
 <Screenshot name="docker-volumes" alt="Docker volumes with their on-disk sizes." />
 
 <Screenshot name="docker-networks" alt="Docker networks and the containers attached to each." />
 
 Volumes with their on-disk size, and networks with the containers currently attached to each, including the private per-project networks described in [Architecture](/docs/core/architecture#networking), so you can confirm which containers actually share a network.
+
+Adopted volumes show their owning application. After detachment or application deletion, they show **Adopted, no application** and remain protected from cleanup. This retention is deliberate. To remove the actual volume, run `docker volume rm <name>` on the host after removing any container references. Belune provides no Release button; if that name is recreated, it remains protected. A **Missing** badge means the protected name is currently absent from Docker.
 
 ## Why It's Read-Only
 

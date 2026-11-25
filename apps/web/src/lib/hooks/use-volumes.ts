@@ -25,6 +25,7 @@ export function useCreateVolume(projectId: string, applicationId: string) {
         qc.invalidateQueries({
           queryKey: queryKeys.applications.detail(projectId, applicationId),
         }),
+        qc.invalidateQueries({ queryKey: queryKeys.docker.volumes }),
       ]),
   });
 }
@@ -51,6 +52,35 @@ export function useDeleteVolume(projectId: string, applicationId: string) {
         qc.invalidateQueries({
           queryKey: queryKeys.applications.detail(projectId, applicationId),
         }),
+        qc.invalidateQueries({ queryKey: queryKeys.docker.volumes }),
       ]),
+  });
+}
+
+export function useAdoptVolume(projectId: string, applicationId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    retry: false,
+    mutationFn: (data: {
+      name: string;
+      mount_path: string;
+      external_name: string;
+    }) => volumesApi.adoptVolume(projectId, applicationId, data),
+    onSuccess: async () => {
+      // An initial inventory may still carry a pre-adoption snapshot. Cancel
+      // it even when it has no cached data, then request the committed rows.
+      await qc.cancelQueries({
+        queryKey: queryKeys.volumes.all(projectId, applicationId),
+      });
+      await Promise.all([
+        qc.invalidateQueries({
+          queryKey: queryKeys.volumes.all(projectId, applicationId),
+        }),
+        qc.invalidateQueries({
+          queryKey: queryKeys.applications.detail(projectId, applicationId),
+        }),
+        qc.invalidateQueries({ queryKey: queryKeys.docker.volumes }),
+      ]);
+    },
   });
 }

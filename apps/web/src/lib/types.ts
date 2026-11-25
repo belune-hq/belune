@@ -130,6 +130,7 @@ export interface Deployment {
 }
 
 export interface ApplicationVolume {
+  external_name?: string | null;
   id: string;
   name: string;
   mount_path: string;
@@ -872,6 +873,8 @@ export interface DockerImage {
 }
 
 export interface DockerVolume {
+  adopted?: boolean;
+  missing?: boolean;
   name: string;
   driver: string;
   mountpoint: string;

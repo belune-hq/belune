@@ -11,6 +11,7 @@ import (
 	"github.com/belune-hq/belune/internal/pkg/crypto"
 	"github.com/belune-hq/belune/internal/runtime"
 	"github.com/belune-hq/belune/internal/server"
+	"github.com/belune-hq/belune/internal/service"
 	"github.com/belune-hq/belune/internal/store/generated"
 	"github.com/belune-hq/belune/internal/terminal"
 )
@@ -43,7 +44,11 @@ type TestEnv struct {
 
 // SetupTestServer creates a full HTTP test server with real DB and mock external deps.
 // Called from TestMain so does not take *testing.T.
-func SetupTestServer(pool *pgxpool.Pool, queries *generated.Queries) *TestEnv {
+func SetupTestServer(pool *pgxpool.Pool, queries *generated.Queries, audits ...*service.AuditService) *TestEnv {
+	var auditSvc *service.AuditService
+	if len(audits) > 0 {
+		auditSvc = audits[0]
+	}
 	keyring, err := crypto.ParseKeyringEnv("", TestEncryptionKey, "")
 	if err != nil {
 		panic("testutil: build test keyring: " + err.Error())
@@ -82,7 +87,7 @@ func SetupTestServer(pool *pgxpool.Pool, queries *generated.Queries) *TestEnv {
 	// reaches its auth gates instead of short-circuiting on a nil manager.
 	termMgr := terminal.NewManager(2)
 
-	srv := server.New(cfg, pool, queries, mockAsynq, mockInspector, runtime.NewLocalRuntimes(mockRuntime), mockProxy, mockReconciler, rdb, nil, nil, nil, termMgr, nil)
+	srv := server.New(cfg, pool, queries, mockAsynq, mockInspector, runtime.NewLocalRuntimes(mockRuntime), mockProxy, mockReconciler, rdb, nil, auditSvc, nil, termMgr, nil)
 	srv.SetCapabilities(mockCaps)
 	srv.SetAccessLog(mockAccessLog)
 	srv.SetWAF(mockWAF)

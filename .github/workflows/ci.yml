@@ -239,6 +239,8 @@ jobs:
           psql -h localhost -U belune -d belune \
             -c "INSERT INTO settings (key, value) VALUES ('restore_drill_marker', 'phase7') ON CONFLICT (key) DO NOTHING;"
           psql -h localhost -U belune -d belune \
+            -c "INSERT INTO adopted_volumes (name) VALUES ('restore-drill-adopted');"
+          psql -h localhost -U belune -d belune \
             -c "INSERT INTO users (email, password_hash, role, username, first_name, last_name) VALUES ('drill@example.com', '\$2a\$10\$aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'admin', 'drill', 'Drill', 'User');"
 
       - name: Dump database
@@ -275,7 +277,19 @@ jobs:
             -c "SELECT COUNT(*) FROM users WHERE email = 'drill@example.com';")
           [ "${COUNT}" = "1" ] || { echo "FAIL: user row missing after restore"; exit 1; }
 
+          ADOPTED=$(psql -h localhost -U belune -d belune -t -A \
+            -c "SELECT COUNT(*) FROM adopted_volumes WHERE name = 'restore-drill-adopted';")
+          [ "${ADOPTED}" = "1" ] || { echo "FAIL: adopted volume protection missing after restore"; exit 1; }
+
           echo "Restore drill passed: all rows survived the round-trip."
+
+      # The destructive sweep targets only the marked disposable daemon, never
+      # the runner's own volumes. Keep this regression check with data recovery.
+      - name: Verify adopted volume lifecycle in isolated Docker
+        env:
+          DOCKER_HOST: unix:///var/run/docker.sock
+          BELUNE_ADOPTION_INTEGRATION: "1"
+        run: go test -v -count=1 -timeout=360s ./internal/worker -run '^TestAdoptedVolumeDockerLifecycle$'
 
   # Building the image proved only that it compiles. Every bug found during the
   # v0.0.29 VPS trial compiled perfectly and shipped a running container that
@@ -387,4 +401,3 @@ jobs:
           path: apps/web/test-results
           if-no-files-found: ignore
           retention-days: 7
-

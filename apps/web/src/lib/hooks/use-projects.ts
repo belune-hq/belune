@@ -40,7 +40,11 @@ export function useDeleteProject() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => projectsApi.deleteProject(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.projects.all }),
+    onSuccess: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: queryKeys.projects.all }),
+        qc.invalidateQueries({ queryKey: queryKeys.docker.volumes }),
+      ]),
   });
 }
 

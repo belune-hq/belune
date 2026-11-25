@@ -93,7 +93,10 @@ func (c *Client) VolumeSizes(ctx context.Context, names []string) (map[string]in
 	if len(names) == 0 {
 		return out, nil
 	}
-	du, err := c.cli.DiskUsage(ctx, types.DiskUsageOptions{
+	// Size enrichment must finish before the HTTP inventory deadline.
+	usageCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	du, err := c.cli.DiskUsage(usageCtx, types.DiskUsageOptions{
 		Types: []types.DiskUsageObject{types.VolumeObject},
 	})
 	if err != nil {
@@ -130,9 +133,13 @@ func (c *Client) ListVolumes(ctx context.Context) (result []runtime.VolumeInfo, 
 	}
 
 	// Sizes/ref-counts only come from the disk-usage endpoint. Best-effort: if
-	// it fails we still return the volume list with -1 (unknown) sizes.
+	// it fails we still return the volume list with -1 (unknown) sizes. Bound
+	// this optional scan independently: adoption needs the names/labels even
+	// on hosts where measuring every volume would exhaust the HTTP deadline.
 	usage := make(map[string]*volume.UsageData)
-	if du, duErr := c.cli.DiskUsage(ctx, types.DiskUsageOptions{
+	usageCtx, usageCancel := context.WithTimeout(ctx, 2*time.Second)
+	defer usageCancel()
+	if du, duErr := c.cli.DiskUsage(usageCtx, types.DiskUsageOptions{
 		Types: []types.DiskUsageObject{types.VolumeObject},
 	}); duErr == nil {
 		for _, v := range du.Volumes {

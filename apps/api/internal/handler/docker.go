@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -397,6 +398,8 @@ func (h *Handler) imageTagOwners(ctx context.Context) map[string]*dockerOwner {
 }
 
 type dockerVolumeResponse struct {
+	Adopted    bool         `json:"adopted"`
+	Missing    bool         `json:"missing,omitempty"`
 	Name       string       `json:"name"`
 	Driver     string       `json:"driver"`
 	Mountpoint string       `json:"mountpoint"`
@@ -434,11 +437,31 @@ func (h *Handler) ListDockerVolumes(w http.ResponseWriter, r *http.Request) {
 	// Volumes carry no application-id label, so ownership is resolved by
 	// reconstructing the platform's deterministic volume names from the
 	// application_volumes / databases tables (see volumeOwners).
-	owners := h.volumeOwners(ctx)
+	owners, err := h.volumeOwners(ctx)
+	if err != nil {
+		writeServerError(w, r, "failed to resolve volume ownership", err)
+		return
+	}
 
+	registry, err := h.queries.ListAdoptedVolumes(ctx)
+	if err != nil {
+		writeServerError(w, r, "failed to read adopted volumes", err)
+		return
+	}
+	adopted := map[string]bool{}
+	seen := map[string]bool{}
+	for _, v := range registry {
+		adopted[v.Name] = true
+	}
 	out := make([]dockerVolumeResponse, 0, len(volumes))
 	for _, v := range volumes {
+		seen[v.Name] = true
+		kind := volumeKind(v.Labels)
+		if adopted[v.Name] {
+			kind = "data"
+		}
 		out = append(out, dockerVolumeResponse{
+			Adopted:    adopted[v.Name],
 			Name:       v.Name,
 			Driver:     v.Driver,
 			Mountpoint: v.Mountpoint,
@@ -446,10 +469,15 @@ func (h *Handler) ListDockerVolumes(w http.ResponseWriter, r *http.Request) {
 			Size:       v.Size,
 			RefCount:   v.RefCount,
 			Managed:    isManaged(v.Labels),
-			Kind:       volumeKind(v.Labels),
+			Kind:       kind,
 			Owner:      owners[v.Name],
 			CreatedAt:  rfc3339(v.CreatedAt),
 		})
+	}
+	for _, v := range registry {
+		if !seen[v.Name] {
+			out = append(out, dockerVolumeResponse{Name: v.Name, Adopted: true, Missing: true, Kind: "data", Size: -1, RefCount: -1, Owner: owners[v.Name], CreatedAt: rfc3339(v.AdoptedAt.Time)})
+		}
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -458,34 +486,26 @@ func (h *Handler) ListDockerVolumes(w http.ResponseWriter, r *http.Request) {
 // database that owns it. Volumes have no application-id label, but their names
 // are deterministic — app volumes are naming.VolumeNameFor(appID, name, externalName) and
 // managed-DB volumes are "<dbSlug>-vol" — so ownership is reconstructed from
-// the DB. Failures degrade to an empty map (volumes then show no owner).
-func (h *Handler) volumeOwners(ctx context.Context) map[string]*dockerOwner {
+// the DB. A failed lookup must not turn an attached adopted volume into a
+// confidently reported orphan.
+func (h *Handler) volumeOwners(ctx context.Context) (map[string]*dockerOwner, error) {
 	owners := map[string]*dockerOwner{}
-
-	if appVols, err := h.queries.ListApplicationVolumeOwners(ctx); err == nil {
-		for _, v := range appVols {
-			name := naming.VolumeNameFor(uuidToString(v.ApplicationID), v.Name, v.ExternalName.String)
-			owners[name] = &dockerOwner{
-				Type:      "application",
-				ID:        uuidToString(v.ApplicationID),
-				Name:      v.ApplicationName,
-				ProjectID: uuidToString(v.ProjectID),
-			}
-		}
+	appVols, err := h.queries.ListApplicationVolumeOwners(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list application volume owners: %w", err)
 	}
-
-	if dbs, err := h.queries.ListAllDatabases(ctx); err == nil {
-		for _, db := range dbs {
-			owners[db.Slug+"-vol"] = &dockerOwner{
-				Type:      "database",
-				ID:        uuidToString(db.ID),
-				Name:      db.Name,
-				ProjectID: uuidToString(db.ProjectID),
-			}
-		}
+	for _, v := range appVols {
+		name := naming.VolumeNameFor(uuidToString(v.ApplicationID), v.Name, v.ExternalName.String)
+		owners[name] = &dockerOwner{Type: "application", ID: uuidToString(v.ApplicationID), Name: v.ApplicationName, ProjectID: uuidToString(v.ProjectID)}
 	}
-
-	return owners
+	dbs, err := h.queries.ListAllDatabases(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list database volume owners: %w", err)
+	}
+	for _, db := range dbs {
+		owners[db.Slug+"-vol"] = &dockerOwner{Type: "database", ID: uuidToString(db.ID), Name: db.Name, ProjectID: uuidToString(db.ProjectID)}
+	}
+	return owners, nil
 }
 
 // volumeKind classifies a platform volume as persistent data or disposable

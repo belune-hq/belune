@@ -1,3 +1,4 @@
+import { useVolumes } from "@/lib/hooks/use-volumes";
 import { ScheduleText } from "@/components/ui/schedule-text";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -83,6 +84,12 @@ export function VolumeBackupConfigDrawer({
   onOpenChange,
 }: Props) {
   const volumeId = config.application_volume_id;
+  const { data: volumes, isPending: volumePending } = useVolumes(
+    projectId,
+    applicationId,
+  );
+  const currentVolume = volumes?.find((v) => v.id === volumeId);
+  const adopted = Boolean(currentVolume?.external_name);
   const { data: allBackups } = useVolumeBackups(
     projectId,
     applicationId,
@@ -274,6 +281,9 @@ export function VolumeBackupConfigDrawer({
                                 variant="ghost"
                                 size="icon-sm"
                                 aria-label="Restore"
+                                disabled={
+                                  volumePending || !currentVolume || adopted
+                                }
                                 onClick={() => setRestoreTarget(b.id)}
                               />
                             }
@@ -281,7 +291,11 @@ export function VolumeBackupConfigDrawer({
                             <RotateCcwIcon className="h-4 w-4" />
                           </TooltipTrigger>
                           <TooltipPositioner>
-                            <TooltipContent>Restore</TooltipContent>
+                            <TooltipContent>
+                              {adopted
+                                ? "Restoring into an adopted volume is disabled"
+                                : "Restore"}
+                            </TooltipContent>
                           </TooltipPositioner>
                         </Tooltip>
                       )}
@@ -292,6 +306,12 @@ export function VolumeBackupConfigDrawer({
             )}
           </div>
 
+          {adopted && (
+            <p className="text-muted-foreground text-sm">
+              Restoring into an adopted volume is disabled to preserve its
+              existing data.
+            </p>
+          )}
           {/* Recent restores */}
           {restores.length > 0 && (
             <>

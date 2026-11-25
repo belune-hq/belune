@@ -891,8 +891,8 @@ func parseFileMode(mode string) os.FileMode {
 func (h *TaskHandler) createAndStart(ctx context.Context, dc *deployContext, t *deployTarget) error {
 	// Load persistent volumes and ensure the backing Docker volumes exist
 	// before creating the container. Volumes are keyed by application ID + name
-	// (naming.AppVolumeName) so every redeploy reattaches the same data. The
-	// CreateDataVolume label opts them out of PruneVolumes. Previews are
+	// (naming.VolumeNameFor) so every redeploy reattaches the same data. Managed
+	// volumes have protective labels; adopted volumes rely on DB claims. Previews are
 	// distinct application rows with no volume records, so they stay stateless
 	// and never mount the parent's data.
 	volRows, err := h.Queries.ListApplicationVolumes(ctx, dc.applicationID)
@@ -901,9 +901,16 @@ func (h *TaskHandler) createAndStart(ctx context.Context, dc *deployContext, t *
 	}
 	volumes := make(map[string]string, len(volRows))
 	for _, v := range volRows {
-		volName := naming.AppVolumeName(dc.payload.ApplicationID, v.Name)
-		if err := dc.runtime.CreateDataVolume(ctx, volName); err != nil {
-			return fmt.Errorf("ensure volume %s: %w", volName, err)
+		volName := naming.VolumeNameFor(dc.payload.ApplicationID, v.Name, v.ExternalName.String)
+		if v.ExternalName.Valid {
+			if err := runtime.RequireVolume(ctx, dc.runtime, v.ExternalName.String); err != nil {
+				return err
+			}
+		}
+		if !v.ExternalName.Valid {
+			if err := dc.runtime.CreateDataVolume(ctx, volName); err != nil {
+				return fmt.Errorf("ensure volume %s: %w", volName, err)
+			}
 		}
 		volumes[volName] = v.MountPath
 	}

@@ -115,7 +115,7 @@ func (h *Handler) ListApplicationVolumes(w http.ResponseWriter, r *http.Request)
 	// A runtime error here must not fail the listing — sizes fall back to 0.
 	names := make([]string, 0, len(volumes))
 	for _, v := range volumes {
-		names = append(names, naming.AppVolumeName(applicationID, v.Name))
+		names = append(names, naming.VolumeNameFor(applicationID, v.Name, v.ExternalName.String))
 	}
 	sizes, err := h.applicationVolumeSizes(r.Context(), applicationUUID, names)
 	if err != nil {
@@ -129,7 +129,7 @@ func (h *Handler) ListApplicationVolumes(w http.ResponseWriter, r *http.Request)
 			ID:        uuidToString(v.ID),
 			Name:      v.Name,
 			MountPath: v.MountPath,
-			SizeBytes: sizes[naming.AppVolumeName(applicationID, v.Name)],
+			SizeBytes: sizes[naming.VolumeNameFor(applicationID, v.Name, v.ExternalName.String)],
 			CreatedAt: v.CreatedAt.Time.Format("2006-01-02T15:04:05Z07:00"),
 		})
 	}
@@ -259,7 +259,7 @@ func (h *Handler) DeleteApplicationVolume(w http.ResponseWriter, r *http.Request
 	deleteData := r.URL.Query().Get("delete_data") == "true"
 	warning := ""
 	if deleteData {
-		volName := naming.AppVolumeName(applicationID, vol.Name)
+		volName := naming.VolumeNameFor(applicationID, vol.Name, vol.ExternalName.String)
 		rt, err := h.runtimeForApplication(r.Context(), applicationUUID)
 		if err != nil {
 			slog.Warn("delete volume: failed to reach the application's server", "volume", volName, "error", err)

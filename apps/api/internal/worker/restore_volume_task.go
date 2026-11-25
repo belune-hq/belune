@@ -77,7 +77,7 @@ func (h *TaskHandler) HandleRestoreVolumeTask(ctx context.Context, t *asynq.Task
 	if err != nil {
 		return fmt.Errorf("resolve runtime: %w", err)
 	}
-	volumeName := naming.AppVolumeName(appIDStr, vol.Name)
+	volumeName := naming.VolumeNameFor(appIDStr, vol.Name, vol.ExternalName.String)
 
 	// Record the restore run so the UI can show progress/outcome.
 	run, err := h.Queries.InsertApplicationVolumeRestore(ctx, generated.InsertApplicationVolumeRestoreParams{

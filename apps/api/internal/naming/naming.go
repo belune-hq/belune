@@ -78,3 +78,12 @@ func AppVolumeName(applicationID, volumeName string) string {
 	}
 	return fmt.Sprintf("belune-vol-%s-%s", id, volumeName)
 }
+
+// VolumeNameFor decides the Docker name in one place. Adopted volumes carry
+// their literal name; managed volumes keep deriving from immutable inputs.
+func VolumeNameFor(applicationID, volumeName, externalName string) string {
+	if externalName != "" {
+		return externalName
+	}
+	return AppVolumeName(applicationID, volumeName)
+}

@@ -456,7 +456,7 @@ func (h *Handler) ListDockerVolumes(w http.ResponseWriter, r *http.Request) {
 
 // volumeOwners maps each platform-created Docker volume name to the app or
 // database that owns it. Volumes have no application-id label, but their names
-// are deterministic — app volumes are naming.AppVolumeName(appID, name) and
+// are deterministic — app volumes are naming.VolumeNameFor(appID, name, externalName) and
 // managed-DB volumes are "<dbSlug>-vol" — so ownership is reconstructed from
 // the DB. Failures degrade to an empty map (volumes then show no owner).
 func (h *Handler) volumeOwners(ctx context.Context) map[string]*dockerOwner {
@@ -464,7 +464,7 @@ func (h *Handler) volumeOwners(ctx context.Context) map[string]*dockerOwner {
 
 	if appVols, err := h.queries.ListApplicationVolumeOwners(ctx); err == nil {
 		for _, v := range appVols {
-			name := naming.AppVolumeName(uuidToString(v.ApplicationID), v.Name)
+			name := naming.VolumeNameFor(uuidToString(v.ApplicationID), v.Name, v.ExternalName.String)
 			owners[name] = &dockerOwner{
 				Type:      "application",
 				ID:        uuidToString(v.ApplicationID),

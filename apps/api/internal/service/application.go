@@ -351,7 +351,7 @@ func (s *ApplicationService) Delete(ctx context.Context, appID pgtype.UUID, proj
 		slog.Warn("could not list data volumes during app deletion", "application_id", appIDStr, "error", err)
 	}
 	for _, v := range dataVols {
-		volName := naming.AppVolumeName(appIDStr, v.Name)
+		volName := naming.VolumeNameFor(appIDStr, v.Name, v.ExternalName.String)
 		if err := rt.RemoveVolume(ctx, volName); err != nil {
 			slog.Debug("could not remove data volume during app deletion (may not exist)", "volume", volName, "error", err)
 		}

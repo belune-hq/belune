@@ -10,6 +10,11 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AdoptedVolume struct {
+	Name      string             `json:"name"`
+	AdoptedAt pgtype.Timestamptz `json:"adopted_at"`
+}
+
 type AlertPreference struct {
 	UserID                pgtype.UUID `json:"user_id"`
 	DeployFailures        bool        `json:"deploy_failures"`
@@ -168,6 +173,7 @@ type ApplicationVolume struct {
 	MountPath     string             `json:"mount_path"`
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+	ExternalName  pgtype.Text        `json:"external_name"`
 }
 
 type ApplicationVolumeBackup struct {

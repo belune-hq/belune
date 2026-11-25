@@ -79,9 +79,13 @@ function DeleteProjectDialogBody({
         <AlertDialogTitle>Delete {projectName}?</AlertDialogTitle>
         <AlertDialogDescription>
           This will permanently delete the project and everything in it — every
-          application and database, their containers and volumes, and all
-          configuration including environment variables, domains, backup
+          application and database, their containers and managed volumes, and
+          all configuration including environment variables, domains, backup
           destinations and schedules. This action cannot be undone.
+        </AlertDialogDescription>
+        <AlertDialogDescription>
+          Adopted application volumes are left behind and remain protected from
+          cleanup.
         </AlertDialogDescription>
         {/* Backups are called out separately because they are the one thing
             that survives losing the server, so an operator may reasonably

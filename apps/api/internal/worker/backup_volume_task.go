@@ -99,7 +99,12 @@ func (h *TaskHandler) HandleBackupVolumeTask(ctx context.Context, t *asynq.Task)
 	if err != nil {
 		return fmt.Errorf("resolve runtime: %w", err)
 	}
-	volumeName := naming.AppVolumeName(appIDStr, vol.Name)
+	volumeName := naming.VolumeNameFor(appIDStr, vol.Name, vol.ExternalName.String)
+	if vol.ExternalName.Valid {
+		if err := runtime.RequireVolume(ctx, rt, volumeName); err != nil {
+			return err
+		}
+	}
 
 	// Record the run up front so the UI shows a "running" backup immediately.
 	run, err := h.Queries.InsertApplicationVolumeBackup(ctx, generated.InsertApplicationVolumeBackupParams{

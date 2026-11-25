@@ -100,13 +100,40 @@ export function DockerVolumesTab({ enabled }: { enabled: boolean }) {
               </Link>
             );
           }
+          if (row.original.adopted) {
+            return (
+              <div className="flex max-w-sm flex-col gap-1">
+                <Badge variant="secondary">Adopted, no application</Badge>
+                <p className="text-muted-foreground text-xs whitespace-normal">
+                  Retained deliberately.{" "}
+                  {row.original.missing ? (
+                    "The volume is absent; this name remains protected if recreated."
+                  ) : (
+                    <>
+                      To remove it, run{" "}
+                      <code className="break-all">
+                        docker volume rm {row.original.name}
+                      </code>{" "}
+                      on the host.
+                    </>
+                  )}
+                </p>
+              </div>
+            );
+          }
           return <ManagedBadge managed={managed} />;
         },
       },
       {
         id: "flags",
         header: "",
-        cell: ({ row }) => <KindBadge kind={row.original.kind} />,
+        cell: ({ row }) => (
+          <div className="flex gap-1">
+            <KindBadge kind={row.original.kind} />
+            {row.original.adopted && <Badge variant="secondary">Adopted</Badge>}
+            {row.original.missing && <Badge variant="outline">Missing</Badge>}
+          </div>
+        ),
       },
       {
         accessorKey: "created_at",

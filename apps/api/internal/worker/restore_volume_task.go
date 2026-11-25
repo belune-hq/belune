@@ -51,6 +51,9 @@ func (h *TaskHandler) HandleRestoreVolumeTask(ctx context.Context, t *asynq.Task
 	if err != nil {
 		return errors.Join(fmt.Errorf("get volume (permanent): %w", err), asynq.SkipRetry)
 	}
+	if vol.ExternalName.Valid {
+		return errors.Join(errors.New("restoring into an adopted volume is disabled"), asynq.SkipRetry)
+	}
 	bk, err := h.Queries.GetApplicationVolumeBackup(ctx, backupID)
 	if err != nil {
 		return errors.Join(fmt.Errorf("get backup (permanent): %w", err), asynq.SkipRetry)
@@ -77,7 +80,7 @@ func (h *TaskHandler) HandleRestoreVolumeTask(ctx context.Context, t *asynq.Task
 	if err != nil {
 		return fmt.Errorf("resolve runtime: %w", err)
 	}
-	volumeName := naming.AppVolumeName(appIDStr, vol.Name)
+	volumeName := naming.VolumeNameFor(appIDStr, vol.Name, vol.ExternalName.String)
 
 	// Record the restore run so the UI can show progress/outcome.
 	run, err := h.Queries.InsertApplicationVolumeRestore(ctx, generated.InsertApplicationVolumeRestoreParams{

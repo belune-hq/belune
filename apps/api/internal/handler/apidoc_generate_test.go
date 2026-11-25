@@ -534,8 +534,8 @@ func TestGenerateAPIReference(t *testing.T) {
 	// destroy_boundary_test.go and reveal_boundary_test.go's own sanity floors
 	// give for their sets.
 	// 58 -> 61: CAPI status, configuration and explicit connection check require sessions.
-	// 61 -> 63: console enrollment and its deliberate approval check are admin session actions.
-	require.Equal(t, 63, sessionRoutes, "expected exactly 63 RequireSession routes")
+	// 63 -> 64: adopting host-wide storage requires an admin session.
+	require.Equal(t, 64, sessionRoutes, "expected exactly 64 RequireSession routes")
 
 	sig, directives, behaviour, reg := apidocExtractTypes(t)
 	apidocAssertEmbedsPromoted(t, reg)

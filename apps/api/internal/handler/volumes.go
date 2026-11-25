@@ -82,11 +82,12 @@ func validateMountPath(p string) error {
 // with the live on-disk size of the backing Docker volume (0 until the volume
 // has been materialised on the first deploy).
 type applicationVolumeResponse struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	MountPath string `json:"mount_path"`
-	SizeBytes int64  `json:"size_bytes"`
-	CreatedAt string `json:"created_at"`
+	ID           string  `json:"id"`
+	ExternalName *string `json:"external_name,omitempty"`
+	Name         string  `json:"name"`
+	MountPath    string  `json:"mount_path"`
+	SizeBytes    int64   `json:"size_bytes"`
+	CreatedAt    string  `json:"created_at"`
 }
 
 //apidoc:tag applications/volumes-backups
@@ -115,7 +116,7 @@ func (h *Handler) ListApplicationVolumes(w http.ResponseWriter, r *http.Request)
 	// A runtime error here must not fail the listing — sizes fall back to 0.
 	names := make([]string, 0, len(volumes))
 	for _, v := range volumes {
-		names = append(names, naming.AppVolumeName(applicationID, v.Name))
+		names = append(names, naming.VolumeNameFor(applicationID, v.Name, v.ExternalName.String))
 	}
 	sizes, err := h.applicationVolumeSizes(r.Context(), applicationUUID, names)
 	if err != nil {
@@ -126,11 +127,12 @@ func (h *Handler) ListApplicationVolumes(w http.ResponseWriter, r *http.Request)
 	out := make([]applicationVolumeResponse, 0, len(volumes))
 	for _, v := range volumes {
 		out = append(out, applicationVolumeResponse{
-			ID:        uuidToString(v.ID),
-			Name:      v.Name,
-			MountPath: v.MountPath,
-			SizeBytes: sizes[naming.AppVolumeName(applicationID, v.Name)],
-			CreatedAt: v.CreatedAt.Time.Format("2006-01-02T15:04:05Z07:00"),
+			ID:           uuidToString(v.ID),
+			ExternalName: nullableVolumeName(v.ExternalName),
+			Name:         v.Name,
+			MountPath:    v.MountPath,
+			SizeBytes:    sizes[naming.VolumeNameFor(applicationID, v.Name, v.ExternalName.String)],
+			CreatedAt:    v.CreatedAt.Time.Format("2006-01-02T15:04:05Z07:00"),
 		})
 	}
 
@@ -246,6 +248,10 @@ func (h *Handler) DeleteApplicationVolume(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if vol.ExternalName.Valid && r.URL.Query().Get("delete_data") == "true" {
+		writeError(w, http.StatusBadRequest, "adopted data cannot be deleted here; detach it, then release its protection in Docker")
+		return
+	}
 	if err := h.queries.DeleteApplicationVolume(r.Context(), volumeUUID); err != nil {
 		writeServerError(w, r, "failed to delete volume", err)
 		return
@@ -258,8 +264,11 @@ func (h *Handler) DeleteApplicationVolume(w http.ResponseWriter, r *http.Request
 	// is what detaches the mount on the next deploy.
 	deleteData := r.URL.Query().Get("delete_data") == "true"
 	warning := ""
+	if vol.ExternalName.Valid {
+		warning = "adopted volume " + vol.ExternalName.String + " is detached and retained; removing the application does not remove its data"
+	}
 	if deleteData {
-		volName := naming.AppVolumeName(applicationID, vol.Name)
+		volName := naming.VolumeNameFor(applicationID, vol.Name, vol.ExternalName.String)
 		rt, err := h.runtimeForApplication(r.Context(), applicationUUID)
 		if err != nil {
 			slog.Warn("delete volume: failed to reach the application's server", "volume", volName, "error", err)
@@ -293,4 +302,11 @@ func (h *Handler) applicationVolumeSizes(ctx context.Context, appID pgtype.UUID,
 		return nil, err
 	}
 	return rt.VolumeSizes(ctx, names)
+}
+
+func nullableVolumeName(name pgtype.Text) *string {
+	if !name.Valid {
+		return nil
+	}
+	return &name.String
 }

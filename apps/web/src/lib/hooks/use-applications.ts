@@ -86,6 +86,7 @@ export function useDeleteApplication(projectId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.applications.all(projectId) });
       qc.invalidateQueries({ queryKey: queryKeys.projects.detail(projectId) });
+      qc.invalidateQueries({ queryKey: queryKeys.docker.volumes });
     },
     onError: (error) => toast.error(error.message),
   });

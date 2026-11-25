@@ -1,3 +1,6 @@
+import { useAuthStore } from "@/lib/stores/auth";
+import { AdoptVolumeDialog } from "./adopt-volume-dialog";
+import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
 import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
@@ -52,6 +55,8 @@ export function VolumesSection({ projectId, applicationId, canDelete }: Props) {
   const deleteVolume = useDeleteVolume(projectId, applicationId);
 
   const [addOpen, setAddOpen] = useState(false);
+  const [adoptOpen, setAdoptOpen] = useState(false);
+  const isAdmin = useAuthStore((s) => s.user?.role === "admin");
 
   const [removeTarget, setRemoveTarget] = useState<ApplicationVolume | null>(
     null,
@@ -109,16 +114,27 @@ export function VolumesSection({ projectId, applicationId, canDelete }: Props) {
             Persistent storage mounted into the container. Data survives
             redeploys and restarts.
           </p>
-          <Button
-            size="sm"
-            className="shrink-0"
-            onClick={() => {
-              addForm.reset();
-              setAddOpen(true);
-            }}
-          >
-            Add Volume
-          </Button>
+          <div className="flex shrink-0 gap-2">
+            {isAdmin && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setAdoptOpen(true)}
+              >
+                Adopt Existing Volume
+              </Button>
+            )}
+            <Button
+              size="sm"
+              className="shrink-0"
+              onClick={() => {
+                addForm.reset();
+                setAddOpen(true);
+              }}
+            >
+              Add Volume
+            </Button>
+          </div>
         </div>
 
         <div className="bg-muted/40 text-muted-foreground flex items-start gap-2 rounded-lg border p-3 text-sm">
@@ -156,7 +172,17 @@ export function VolumesSection({ projectId, applicationId, canDelete }: Props) {
                     <HardDriveIcon aria-hidden="true" className="size-4" />
                   </div>
                   <div className="min-w-0">
-                    <div className="truncate font-medium">{vol.name}</div>
+                    <div className="flex items-center gap-2 font-medium">
+                      {vol.name}
+                      {vol.external_name && (
+                        <Badge variant="secondary">Adopted</Badge>
+                      )}
+                    </div>
+                    {vol.external_name && (
+                      <p className="text-muted-foreground text-xs">
+                        {vol.external_name} · retained when detached
+                      </p>
+                    )}
                     <div className="text-text-faint truncate font-mono text-sm">
                       {vol.mount_path}
                     </div>
@@ -185,6 +211,14 @@ export function VolumesSection({ projectId, applicationId, canDelete }: Props) {
         )}
       </CardContent>
 
+      {isAdmin && (
+        <AdoptVolumeDialog
+          projectId={projectId}
+          applicationId={applicationId}
+          open={adoptOpen}
+          onOpenChange={setAdoptOpen}
+        />
+      )}
       {/* Add volume dialog */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent>
@@ -316,26 +350,29 @@ export function VolumesSection({ projectId, applicationId, canDelete }: Props) {
           <AlertDialogHeader>
             <AlertDialogTitle>Remove {removeTarget?.name}?</AlertDialogTitle>
             <AlertDialogDescription>
-              The volume will be detached from the application on its next
-              deploy. By default the stored data is kept and can be reattached
-              by recreating a volume at the same mount path.
+              {removeTarget?.external_name
+                ? `The adopted volume ${removeTarget.external_name} will be detached on the next deploy. Its data is left behind and remains protected from cleanup. It can be adopted again when unattached.`
+                : "The volume will be detached on the next deploy. Stored data is kept unless you choose to delete it."}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <Label className="flex items-start gap-2 rounded-md border p-3 text-sm font-normal">
-            <Checkbox
-              className="mt-0.5"
-              checked={deleteData}
-              onCheckedChange={setDeleteData}
-            />
-            <span>
-              <span className="text-destructive font-medium">
-                Also permanently delete the stored data
+          {!removeTarget?.external_name && (
+            <Label className="flex items-start gap-2 rounded-md border p-3 text-sm font-normal">
+              <Checkbox
+                className="mt-0.5"
+                checked={deleteData}
+                onCheckedChange={setDeleteData}
+              />
+              <span>
+                <span className="text-destructive font-medium">
+                  Also permanently delete the stored data
+                </span>
+                <span className="text-muted-foreground block">
+                  This cannot be undone. The underlying data volume is
+                  destroyed.
+                </span>
               </span>
-              <span className="text-muted-foreground block">
-                This cannot be undone. The underlying data volume is destroyed.
-              </span>
-            </span>
-          </Label>
+            </Label>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction

@@ -1,5 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
-import { AUTH_FILE, HTTP_AUTH_FILE } from "./e2e/support/auth";
+import {
+  ADOPTION_AUTH_FILE,
+  AUTH_FILE,
+  HTTP_AUTH_FILE,
+} from "./e2e/support/auth";
 
 /**
  * Playwright drives the REAL production stack, not a dev server.
@@ -73,7 +77,11 @@ export default defineConfig({
     // would triple the install and the runtime to re-answer the same question.
     {
       name: "chromium",
-      testIgnore: [...budgetIgnore, /insecure-http\.spec\.ts/],
+      testIgnore: [
+        ...budgetIgnore,
+        /insecure-http\.spec\.ts/,
+        /adopt-existing-volume\.spec\.ts/,
+      ],
       dependencies: ["setup"],
       use: { ...devices["Desktop Chrome"], storageState: AUTH_FILE },
     },
@@ -81,6 +89,7 @@ export default defineConfig({
       ? [
           {
             name: "insecure-http-setup",
+            dependencies: ["setup"],
             testMatch: /insecure-http\.setup\.ts/,
             use: httpUse,
           },
@@ -93,5 +102,11 @@ export default defineConfig({
           },
         ]
       : []),
+    {
+      name: "adoption",
+      dependencies: ["chromium"],
+      testMatch: /adopt-existing-volume\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"], storageState: ADOPTION_AUTH_FILE },
+    },
   ],
 });

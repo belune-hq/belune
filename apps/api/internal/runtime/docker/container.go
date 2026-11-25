@@ -350,15 +350,22 @@ func mapContainerSummaries(containers []container.Summary) []runtime.ContainerIn
 			}
 		}
 
+		var volumeNames []string
+		for _, m := range ctr.Mounts {
+			if m.Type == "volume" {
+				volumeNames = append(volumeNames, m.Name)
+			}
+		}
 		result = append(result, runtime.ContainerInfo{
-			ID:        ctr.ID,
-			Name:      name,
-			Image:     ctr.Image,
-			Status:    string(ctr.State),
-			Ports:     ports,
-			Labels:    ctr.Labels,
-			CreatedAt: time.Unix(ctr.Created, 0),
-			Addrs:     addrs,
+			VolumeNames: volumeNames,
+			ID:          ctr.ID,
+			Name:        name,
+			Image:       ctr.Image,
+			Status:      string(ctr.State),
+			Ports:       ports,
+			Labels:      ctr.Labels,
+			CreatedAt:   time.Unix(ctr.Created, 0),
+			Addrs:       addrs,
 		})
 	}
 	return result

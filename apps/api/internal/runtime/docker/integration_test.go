@@ -148,7 +148,7 @@ func TestIntegration_PruneVolumes_PreservesDataAndCache(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = c.RemoveVolume(context.Background(), foreign) })
 
-	require.NoError(t, c.PruneVolumes(ctx))
+	require.NoError(t, c.PruneVolumes(ctx, nil))
 
 	assert.True(t, volumeExists(t, c, data), "belune-data volume must survive prune")
 	assert.True(t, volumeExists(t, c, cache), "belune-cache volume must survive prune")

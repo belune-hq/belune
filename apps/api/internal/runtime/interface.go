@@ -84,13 +84,15 @@ type ContainerMount struct {
 }
 
 type ContainerInfo struct {
-	ID        string
-	Name      string
-	Image     string
-	Status    string
-	Ports     map[string]string
-	Labels    map[string]string
-	CreatedAt time.Time
+	// VolumeNames come from Docker summaries, including stopped containers.
+	VolumeNames []string
+	ID          string
+	Name        string
+	Image       string
+	Status      string
+	Ports       map[string]string
+	Labels      map[string]string
+	CreatedAt   time.Time
 	// Addrs are the container's IP addresses, one per network it is attached to.
 	// Empty for a container that is not running.
 	Addrs []string
@@ -229,7 +231,7 @@ type ContainerRuntime interface {
 	RemoveVolume(ctx context.Context, name string) error
 	RemoveImage(ctx context.Context, image string) error
 	PruneImages(ctx context.Context) error
-	PruneVolumes(ctx context.Context) error
+	PruneVolumes(ctx context.Context, keep []string) error
 	// PruneBuildCache reclaims build caches: it removes the platform's per-app
 	// CNB cache volumes (labelled belune-cache, which PruneVolumes deliberately
 	// preserves) and prunes the BuildKit builder cache. Disposable — the next

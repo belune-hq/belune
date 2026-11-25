@@ -11,20 +11,35 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const acquireVolumeClaimsLock = `-- name: AcquireVolumeClaimsLock :exec
+SELECT pg_advisory_xact_lock($1::bigint)
+`
+
+func (q *Queries) AcquireVolumeClaimsLock(ctx context.Context, lockID int64) error {
+	_, err := q.db.Exec(ctx, acquireVolumeClaimsLock, lockID)
+	return err
+}
+
 const createApplicationVolume = `-- name: CreateApplicationVolume :one
-INSERT INTO application_volumes (application_id, name, mount_path)
-VALUES ($1, $2, $3)
-RETURNING id, application_id, name, mount_path, created_at, updated_at
+INSERT INTO application_volumes (application_id, name, mount_path, external_name)
+VALUES ($1, $2, $3, $4)
+RETURNING id, application_id, name, mount_path, created_at, updated_at, external_name
 `
 
 type CreateApplicationVolumeParams struct {
 	ApplicationID pgtype.UUID `json:"application_id"`
 	Name          string      `json:"name"`
 	MountPath     string      `json:"mount_path"`
+	ExternalName  pgtype.Text `json:"external_name"`
 }
 
 func (q *Queries) CreateApplicationVolume(ctx context.Context, arg CreateApplicationVolumeParams) (ApplicationVolume, error) {
-	row := q.db.QueryRow(ctx, createApplicationVolume, arg.ApplicationID, arg.Name, arg.MountPath)
+	row := q.db.QueryRow(ctx, createApplicationVolume,
+		arg.ApplicationID,
+		arg.Name,
+		arg.MountPath,
+		arg.ExternalName,
+	)
 	var i ApplicationVolume
 	err := row.Scan(
 		&i.ID,
@@ -33,6 +48,7 @@ func (q *Queries) CreateApplicationVolume(ctx context.Context, arg CreateApplica
 		&i.MountPath,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ExternalName,
 	)
 	return i, err
 }
@@ -47,7 +63,7 @@ func (q *Queries) DeleteApplicationVolume(ctx context.Context, id pgtype.UUID) e
 }
 
 const getApplicationVolume = `-- name: GetApplicationVolume :one
-SELECT id, application_id, name, mount_path, created_at, updated_at FROM application_volumes WHERE id = $1
+SELECT id, application_id, name, mount_path, created_at, updated_at, external_name FROM application_volumes WHERE id = $1
 `
 
 func (q *Queries) GetApplicationVolume(ctx context.Context, id pgtype.UUID) (ApplicationVolume, error) {
@@ -60,12 +76,56 @@ func (q *Queries) GetApplicationVolume(ctx context.Context, id pgtype.UUID) (App
 		&i.MountPath,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ExternalName,
 	)
 	return i, err
 }
 
+const getExternalVolumeAttachment = `-- name: GetExternalVolumeAttachment :one
+SELECT id, application_id, name, mount_path, created_at, updated_at, external_name FROM application_volumes WHERE external_name = $1
+`
+
+func (q *Queries) GetExternalVolumeAttachment(ctx context.Context, externalName pgtype.Text) (ApplicationVolume, error) {
+	row := q.db.QueryRow(ctx, getExternalVolumeAttachment, externalName)
+	var i ApplicationVolume
+	err := row.Scan(
+		&i.ID,
+		&i.ApplicationID,
+		&i.Name,
+		&i.MountPath,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ExternalName,
+	)
+	return i, err
+}
+
+const listAdoptedVolumes = `-- name: ListAdoptedVolumes :many
+SELECT name, adopted_at FROM adopted_volumes ORDER BY name
+`
+
+func (q *Queries) ListAdoptedVolumes(ctx context.Context) ([]AdoptedVolume, error) {
+	rows, err := q.db.Query(ctx, listAdoptedVolumes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AdoptedVolume{}
+	for rows.Next() {
+		var i AdoptedVolume
+		if err := rows.Scan(&i.Name, &i.AdoptedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listApplicationVolumeOwners = `-- name: ListApplicationVolumeOwners :many
-SELECT av.application_id, av.name, a.name AS application_name, a.project_id
+SELECT av.application_id, av.name, av.external_name, a.name AS application_name, a.project_id
 FROM application_volumes av
 JOIN applications a ON a.id = av.application_id
 `
@@ -73,6 +133,7 @@ JOIN applications a ON a.id = av.application_id
 type ListApplicationVolumeOwnersRow struct {
 	ApplicationID   pgtype.UUID `json:"application_id"`
 	Name            string      `json:"name"`
+	ExternalName    pgtype.Text `json:"external_name"`
 	ApplicationName string      `json:"application_name"`
 	ProjectID       pgtype.UUID `json:"project_id"`
 }
@@ -80,7 +141,7 @@ type ListApplicationVolumeOwnersRow struct {
 // Maps each application volume to its owning app so the admin Docker page can
 // link Docker volumes back to the application. Volumes carry no application-id
 // label, but the Docker volume name is reconstructable from (application_id,
-// name) via naming.AppVolumeName, so ownership is resolved from this table.
+// name) via naming.VolumeNameFor, unless external_name records an adopted name.
 func (q *Queries) ListApplicationVolumeOwners(ctx context.Context) ([]ListApplicationVolumeOwnersRow, error) {
 	rows, err := q.db.Query(ctx, listApplicationVolumeOwners)
 	if err != nil {
@@ -93,6 +154,7 @@ func (q *Queries) ListApplicationVolumeOwners(ctx context.Context) ([]ListApplic
 		if err := rows.Scan(
 			&i.ApplicationID,
 			&i.Name,
+			&i.ExternalName,
 			&i.ApplicationName,
 			&i.ProjectID,
 		); err != nil {
@@ -107,7 +169,7 @@ func (q *Queries) ListApplicationVolumeOwners(ctx context.Context) ([]ListApplic
 }
 
 const listApplicationVolumes = `-- name: ListApplicationVolumes :many
-SELECT id, application_id, name, mount_path, created_at, updated_at FROM application_volumes
+SELECT id, application_id, name, mount_path, created_at, updated_at, external_name FROM application_volumes
 WHERE application_id = $1
 ORDER BY mount_path
 `
@@ -128,6 +190,7 @@ func (q *Queries) ListApplicationVolumes(ctx context.Context, applicationID pgty
 			&i.MountPath,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ExternalName,
 		); err != nil {
 			return nil, err
 		}
@@ -137,4 +200,13 @@ func (q *Queries) ListApplicationVolumes(ctx context.Context, applicationID pgty
 		return nil, err
 	}
 	return items, nil
+}
+
+const registerAdoptedVolume = `-- name: RegisterAdoptedVolume :exec
+INSERT INTO adopted_volumes (name) VALUES ($1) ON CONFLICT (name) DO NOTHING
+`
+
+func (q *Queries) RegisterAdoptedVolume(ctx context.Context, name string) error {
+	_, err := q.db.Exec(ctx, registerAdoptedVolume, name)
+	return err
 }

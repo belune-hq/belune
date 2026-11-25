@@ -10585,6 +10585,77 @@
         ]
       }
     },
+    "/api/projects/{projectId}/applications/{applicationId}/volumes/adopt": {
+      "post": {
+        "operationId": "AdoptApplicationVolume",
+        "summary": "Adopt Existing Volume",
+        "description": "Requires the Admin role.",
+        "tags": [
+          "Application Volumes \u0026 Backups"
+        ],
+        "x-belune-order": 3,
+        "x-belune-roles": [
+          "admin"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/adoptVolumeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/applicationVolumeResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/projects/{projectId}/applications/{applicationId}/volumes/{volumeId}": {
       "delete": {
         "operationId": "DeleteApplicationVolume",
@@ -18724,6 +18795,20 @@
         },
         "type": "object"
       },
+      "adoptVolumeRequest": {
+        "properties": {
+          "external_name": {
+            "type": "string"
+          },
+          "mount_path": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "alertPreferencesResponse": {
         "properties": {
           "build_failures": {
@@ -19120,6 +19205,12 @@
         "properties": {
           "created_at": {
             "type": "string"
+          },
+          "external_name": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "type": "string"
@@ -20570,6 +20661,9 @@
       },
       "dockerVolumeResponse": {
         "properties": {
+          "adopted": {
+            "type": "boolean"
+          },
           "created_at": {
             "type": "string"
           },
@@ -20580,6 +20674,9 @@
             "type": "string"
           },
           "managed": {
+            "type": "boolean"
+          },
+          "missing": {
             "type": "boolean"
           },
           "mountpoint": {

@@ -18,12 +18,16 @@ import (
 
 // MockContainerRuntime implements runtime.ContainerRuntime for testing.
 type MockContainerRuntime struct {
-	mu           sync.Mutex
-	StopCalls    []string
-	RemoveCalls  []string
-	RestartCalls []string
-	RestartErr   error
-	StartCalls   []string
+	RemoveVolumeCalls     []string
+	CreateDataVolumeCalls []string
+	VolumeListCalls       int
+	PruneVolumeCalls      [][]string
+	mu                    sync.Mutex
+	StopCalls             []string
+	RemoveCalls           []string
+	RestartCalls          []string
+	RestartErr            error
+	StartCalls            []string
 	// StartCtxErrs records ctx.Err() at each StartContainer, like RemoveCtxErrs.
 	StartCtxErrs []error
 	StartErr     error // when set, StartContainer returns it
@@ -217,6 +221,7 @@ func (m *MockContainerRuntime) ListImages(_ context.Context) ([]runtime.ImageInf
 func (m *MockContainerRuntime) ListVolumes(_ context.Context) ([]runtime.VolumeInfo, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.VolumeListCalls++
 	if m.ListVolumes_ == nil {
 		return []runtime.VolumeInfo{}, nil
 	}
@@ -278,18 +283,33 @@ func (m *MockContainerRuntime) ConnectContainerToNetwork(_ context.Context, _, _
 }
 func (m *MockContainerRuntime) CreateVolume(_ context.Context, _ string) error      { return nil }
 func (m *MockContainerRuntime) CreateCacheVolume(_ context.Context, _ string) error { return nil }
-func (m *MockContainerRuntime) CreateDataVolume(_ context.Context, _ string) error  { return nil }
+func (m *MockContainerRuntime) CreateDataVolume(_ context.Context, name string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.CreateDataVolumeCalls = append(m.CreateDataVolumeCalls, name)
+	return nil
+}
 func (m *MockContainerRuntime) VolumeSize(_ context.Context, _ string) (int64, error) {
 	return 0, nil
 }
 func (m *MockContainerRuntime) VolumeSizes(_ context.Context, _ []string) (map[string]int64, error) {
 	return map[string]int64{}, nil
 }
-func (m *MockContainerRuntime) RemoveVolume(_ context.Context, _ string) error { return nil }
-func (m *MockContainerRuntime) RemoveImage(_ context.Context, _ string) error  { return nil }
-func (m *MockContainerRuntime) PruneImages(_ context.Context) error            { return nil }
-func (m *MockContainerRuntime) PruneVolumes(_ context.Context) error           { return nil }
-func (m *MockContainerRuntime) PruneBuildCache(_ context.Context) error        { return nil }
+func (m *MockContainerRuntime) RemoveVolume(_ context.Context, name string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.RemoveVolumeCalls = append(m.RemoveVolumeCalls, name)
+	return nil
+}
+func (m *MockContainerRuntime) RemoveImage(_ context.Context, _ string) error { return nil }
+func (m *MockContainerRuntime) PruneImages(_ context.Context) error           { return nil }
+func (m *MockContainerRuntime) PruneVolumes(_ context.Context, keep []string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.PruneVolumeCalls = append(m.PruneVolumeCalls, append([]string(nil), keep...))
+	return nil
+}
+func (m *MockContainerRuntime) PruneBuildCache(_ context.Context) error { return nil }
 func (m *MockContainerRuntime) ContainerStats(ctx context.Context, name string) (*runtime.ContainerResourceStats, error) {
 	if m.StatsFunc != nil {
 		return m.StatsFunc(ctx, name)

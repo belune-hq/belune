@@ -16,6 +16,7 @@ import (
 
 	"github.com/belune-hq/belune/internal/naming"
 	"github.com/belune-hq/belune/internal/runtime"
+	"github.com/belune-hq/belune/internal/store"
 	"github.com/belune-hq/belune/internal/store/generated"
 )
 
@@ -134,8 +135,15 @@ func (h *TaskHandler) HandleCleanupTask(ctx context.Context, t *asynq.Task) erro
 				}
 			}
 			if wants("volumes") {
-				if err := rt.PruneVolumes(ctx); err != nil {
-					slog.Warn("failed to prune volumes", "error", err)
+				if err := store.WithVolumeClaimsLock(ctx, h.DB, func(lockCtx context.Context, q *generated.Queries) error {
+					keep, err := collectVolumeClaims(lockCtx, q)
+					if err != nil {
+						return err
+					}
+					return rt.PruneVolumes(lockCtx, keep)
+				}); err != nil {
+					// Failed claims or lock acquisition must never become an empty list.
+					slog.Warn("volume prune skipped or failed", "error", err)
 				}
 			}
 			if wants("build_cache") {
@@ -634,4 +642,34 @@ func formatUUID(u pgtype.UUID) string {
 	}
 	b := u.Bytes
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
+// collectVolumeClaims over-lists across all placements. Missing a local name can
+// destroy data; including a remote name merely spares nothing on this host.
+func collectVolumeClaims(ctx context.Context, q *generated.Queries) ([]string, error) {
+	appVolumes, err := q.ListApplicationVolumeOwners(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list application volume claims: %w", err)
+	}
+	databases, err := q.ListAllDatabases(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list database volume claims: %w", err)
+	}
+	adopted, err := q.ListAdoptedVolumes(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list adopted volume claims: %w", err)
+	}
+	names := make([]string, 0, len(appVolumes)+len(databases)+len(adopted))
+	for _, v := range appVolumes {
+		if !v.ExternalName.Valid {
+			names = append(names, naming.VolumeNameFor(formatUUID(v.ApplicationID), v.Name, ""))
+		}
+	}
+	for _, v := range adopted {
+		names = append(names, v.Name)
+	}
+	for _, db := range databases {
+		names = append(names, db.Slug+"-vol")
+	}
+	return names, nil
 }

@@ -224,10 +224,15 @@ func isPlatformVolume(name string, labels map[string]string) bool {
 // a persistent app or database data volume that is momentarily unreferenced (app
 // stopped, database reconfiguring, or a container removed between deploys) and
 // happens to be unlabeled. Instead it lists dangling volumes and skips every
-// platform-owned one (see isPlatformVolume), removing only foreign orphans.
+// platform-owned one (see isPlatformVolume) and every DB-claimed name in keep.
+// A successfully collected empty keep-list is legitimate on an empty install.
 // Removal is non-forced, so a volume that becomes referenced between the list
 // and the remove is left untouched.
-func (c *Client) PruneVolumes(ctx context.Context) (err error) {
+func (c *Client) PruneVolumes(ctx context.Context, keep []string) (err error) {
+	protected := make(map[string]bool, len(keep))
+	for _, name := range keep {
+		protected[name] = true
+	}
 	defer func() { metrics.RecordDockerOp("prune_volumes", err) }()
 
 	resp, err := c.cli.VolumeList(ctx, volume.ListOptions{
@@ -237,7 +242,7 @@ func (c *Client) PruneVolumes(ctx context.Context) (err error) {
 		return fmt.Errorf("list dangling volumes: %w", err)
 	}
 	for _, v := range resp.Volumes {
-		if v == nil || isPlatformVolume(v.Name, v.Labels) {
+		if v == nil || protected[v.Name] || isPlatformVolume(v.Name, v.Labels) {
 			continue
 		}
 		if rmErr := c.cli.VolumeRemove(ctx, v.Name, false); rmErr != nil {

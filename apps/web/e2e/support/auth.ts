@@ -14,3 +14,8 @@ export const AUTH_FILE = fileURLToPath(
 export const HTTP_AUTH_FILE = fileURLToPath(
   new URL("../.auth/http-admin.json", import.meta.url),
 );
+
+/** A separate admin's genuine loopback login for the adoption project. */
+export const ADOPTION_AUTH_FILE = fileURLToPath(
+  new URL("../.auth/adoption-admin.json", import.meta.url),
+);

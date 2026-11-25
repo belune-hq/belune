@@ -73,7 +73,11 @@ export default defineConfig({
     // would triple the install and the runtime to re-answer the same question.
     {
       name: "chromium",
-      testIgnore: [...budgetIgnore, /insecure-http\.spec\.ts/],
+      testIgnore: [
+        ...budgetIgnore,
+        /insecure-http\.spec\.ts/,
+        /adopt-existing-volume\.spec\.ts/,
+      ],
       dependencies: ["setup"],
       use: { ...devices["Desktop Chrome"], storageState: AUTH_FILE },
     },
@@ -93,5 +97,11 @@ export default defineConfig({
           },
         ]
       : []),
+    {
+      name: "adoption",
+      dependencies: ["chromium"],
+      testMatch: /adopt-existing-volume\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"], storageState: AUTH_FILE },
+    },
   ],
 });

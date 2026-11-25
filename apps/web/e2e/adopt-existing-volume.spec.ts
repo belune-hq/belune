@@ -167,9 +167,4 @@ test("adoption and deletion explain and preserve existing Docker data", async ({
     if (projectID) await api(page, "DELETE", `/projects/${projectID}`);
     execFileSync("docker", ["volume", "rm", external]);
   }
-  // The original suite already approaches the shared admin's 600/min budget.
-  // Let this additional journey's requests expire before the remaining specs;
-  // close the page first so background polling cannot keep spending it.
-  await page.close();
-  await new Promise((resolve) => setTimeout(resolve, 60_000));
 });
